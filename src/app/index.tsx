@@ -1,109 +1,115 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
-  View,
   Text,
-  TextInput,
-  TouchableOpacity,
+  View,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
+  TouchableOpacity,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { useTheme } from '@/hooks/use-theme';
 
-export default function LoginScreen() {
+const sections = [
+  { key: 'cardapio', label: 'Cardápio', icon: '🍽️', route: '/cardapio' },
+  { key: 'pedidos', label: 'Pedidos', icon: '📋', route: '/pedidos' },
+  { key: 'estoque', label: 'Estoque', icon: '📦', route: '/estoque' },
+  { key: 'financeiro', label: 'Financeiro', icon: '💰', route: '/financeiro' },
+] as const;
+
+export default function HomeScreen() {
+  const theme = useTheme();
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
-
-  function handleLogin() {
-    // TODO: integrar com autenticação real
-    console.log('Login:', email, senha);
-  }
 
   return (
-    <LinearGradient colors={['#2D1B4E', '#0F1B3C']} style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.form}
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Header */}
+      <LinearGradient
+        colors={[theme.gradientStart, theme.gradientEnd]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.header}
       >
-        <Text style={styles.title}>Organiza+</Text>
-        <Text style={styles.subtitle}>Acesse sua conta</Text>
+        <Text style={styles.headerTitle}>Organiza+</Text>
+        <Text style={styles.headerSubtitle}>Painel principal</Text>
+      </LinearGradient>
 
-        <TextInput
-          style={styles.input}
-          placeholder="E-mail"
-          placeholderTextColor="#9A94B0"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-
-        <TextInput
-          style={styles.input}
-          placeholder="Senha"
-          placeholderTextColor="#9A94B0"
-          value={senha}
-          onChangeText={setSenha}
-          secureTextEntry
-        />
-
-        <TouchableOpacity style={styles.button} onPress={handleLogin}>
-          <Text style={styles.buttonText}>Entrar</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => router.push('/cadastro')}>
-          <Text style={styles.link}>Criar conta</Text>
-        </TouchableOpacity>
-      </KeyboardAvoidingView>
-    </LinearGradient>
+      {/* Grid */}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.grid}>
+          {sections.map((section) => (
+            <TouchableOpacity
+              key={section.key}
+              activeOpacity={0.8}
+              style={[
+                styles.card,
+                {
+                  backgroundColor: theme.backgroundElement,
+                  borderColor: theme.inputBorder,
+                },
+              ]}
+              onPress={() => router.push(section.route as any)}
+            >
+              <Text style={styles.cardIcon}>{section.icon}</Text>
+              <Text style={[styles.cardLabel, { color: theme.text }]}>
+                {section.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
   },
-  form: {
+  header: {
+    paddingTop: 60,
+    paddingBottom: 28,
     paddingHorizontal: 24,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '600',
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: '800',
     color: '#FFFFFF',
-    marginBottom: 4,
   },
-  subtitle: {
+  headerSubtitle: {
     fontSize: 14,
-    color: '#C9C3DE',
-    marginBottom: 32,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 4,
   },
-  input: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: '#FFFFFF',
-    marginBottom: 16,
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 40,
   },
-  button: {
-    backgroundColor: '#7C5CFF',
-    borderRadius: 10,
-    paddingVertical: 14,
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  card: {
+    width: '47%',
+    aspectRatio: 1,
+    borderRadius: 20,
+    borderWidth: 1,
     alignItems: 'center',
-    marginTop: 8,
+    justifyContent: 'center',
+    gap: 12,
   },
-  buttonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+  cardIcon: {
+    fontSize: 40,
+  },
+  cardLabel: {
     fontSize: 16,
-  },
-  link: {
-    color: '#B39DFF',
-    textAlign: 'center',
-    marginTop: 20,
-    fontSize: 13,
+    fontWeight: '600',
   },
 });

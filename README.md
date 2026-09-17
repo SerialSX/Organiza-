@@ -2,9 +2,9 @@
 
 > Central digital prática e simplificada para apoiar a sobrevivência e o crescimento de pequenos negócios — combatendo a alta taxa de mortalidade precoce de microempresas.
 
-![React Native](https://img.shields.io/badge/React_Native-0.86-61DAFB?logo=react&logoColor=white)
-![Expo](https://img.shields.io/badge/Expo-SDK_57-000020?logo=expo&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-ES2024-F7DF1E?logo=javascript&logoColor=black)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
@@ -27,19 +27,19 @@ A proposta é entregar uma central digital que vai além da gestão operacional,
 
 ## 🧩 Os 4 Pilares
 
-| Pilar | O que oferece | Objetivo |
-|-------|---------------|----------|
-| 💼 **Gestão** | Calculadora de preço de venda, fluxo de caixa simplificado, modelos de contrato e checklists operacionais | Controlar o dinheiro e operações sem planilhas complexas |
-| 🧠 **Saúde** | E-book de saúde mental, diário de bem-estar e apoio à sobrecarga | Cuidar do empreendedor que carrega o negócio sozinho |
-| 📚 **Educação** | Trilhas curtas, e-books e direcionamento para cursos do **Sebrae** | Estimular capacitação contínua e formalização (MEI) |
-| 📣 **Marketing** | Templates prontos para redes sociais e calendário de conteúdo | Divulgação simples sem depender de agência |
+| Pilar            | O que oferece                                                                                             | Objetivo                                                 |
+| ---------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| 💼 **Gestão**    | Calculadora de preço de venda, fluxo de caixa simplificado, modelos de contrato e checklists operacionais | Controlar o dinheiro e operações sem planilhas complexas |
+| 🧠 **Saúde**     | E-book de saúde mental, diário de bem-estar e apoio à sobrecarga                                          | Cuidar do empreendedor que carrega o negócio sozinho     |
+| 📚 **Educação**  | Trilhas curtas, e-books e direcionamento para cursos do **Sebrae**                                        | Estimular capacitação contínua e formalização (MEI)      |
+| 📣 **Marketing** | Templates prontos para redes sociais e calendário de conteúdo                                             | Divulgação simples sem depender de agência               |
 
 ---
 
 ## 🎨 Identidade Visual
 
 - **Modo escuro** (padrão): fundo azul-escuro profundo com acentos em roxo
-- **Modo claro**: fundo claro com roxo como cor de destaque
+- **Modo claro**: fundo claro com laranja como cor de destaque
 - Gradientes em **elementos de destaque** (botões, headers) — não no fundo inteiro
 - Cores de status: 🟢 verde para "pago/confirmado" · 🟠 âmbar para "pendente"
 
@@ -50,7 +50,6 @@ A proposta é entregar uma central digital que vai além da gestão operacional,
 ### Pré-requisitos
 
 - [Node.js](https://nodejs.org/) (v18+)
-- [Expo Go](https://expo.dev/go) no celular
 
 ### Instalação
 
@@ -63,10 +62,10 @@ cd Organiza-
 npm install
 
 # Inicie o servidor de desenvolvimento
-npx expo start
+npm run dev
 ```
 
-Escaneie o QR code com o **Expo Go** ou abra em um emulador.
+Abra o link mostrado no terminal (geralmente `http://localhost:5173`) no navegador.
 
 ---
 
@@ -75,39 +74,38 @@ Escaneie o QR code com o **Expo Go** ou abra em um emulador.
 ```
 Organiza-/
 ├── src/
-│   ├── app/               # Telas (file-based routing)
-│   │   ├── _layout.tsx     # Layout raiz
-│   │   ├── index.tsx       # Home — hub principal
-│   │   └── cadastro.tsx    # Tela de cadastro
-│   ├── components/         # Componentes reutilizáveis
-│   ├── constants/
-│   │   └── theme.ts        # Paleta de cores e tokens de design
-│   └── hooks/              # Hooks customizados (useTheme, etc.)
-├── assets/                 # Imagens e ícones
-├── app.json                # Configuração do Expo
-├── package.json
-└── tsconfig.json
+│   ├── pages/              # Telas do app
+│   │   ├── Login.jsx
+│   │   ├── Cadastro.jsx
+│   │   └── Home.jsx
+│   ├── context/
+│   │   └── ThemeContext.jsx # Paleta de cores e tema (dark/light)
+│   ├── App.jsx              # Rotas (React Router)
+│   └── main.jsx
+├── public/                  # Imagens e ícones estáticos
+├── vite.config.js
+└── package.json
 ```
 
 ---
 
 ## 🛠️ Stack
 
-- **[Expo](https://expo.dev/)** — plataforma de desenvolvimento React Native
-- **[Expo Router](https://docs.expo.dev/router/introduction/)** — roteamento baseado em arquivos
-- **[TypeScript](https://www.typescriptlang.org/)** — tipagem estática
-- **[React Native](https://reactnative.dev/)** — framework mobile multiplataforma
+- **[React](https://react.dev/)** — biblioteca para construção de interfaces
+- **[Vite](https://vitejs.dev/)** — build tool e servidor de desenvolvimento
+- **[React Router](https://reactrouter.com/)** — roteamento entre páginas
+- Backend planejado em **Java** (repositório/projeto à parte)
 
 ---
 
 ## 👥 Equipe — UNIFOR (ADS)
 
-| Membro | Função |
-|--------|--------|
+| Membro                   | Função            |
+| ------------------------ | ----------------- |
 | **João Emanuel Rohsler** | Gestão de Projeto |
-| **Éderson Façanha** | Desenvolvimento |
-| **Lauan Moreira** | Desenvolvimento |
-| **João Arthur Abreu** | Conteúdo |
+| **Éderson Façanha**      | Desenvolvimento   |
+| **Lauan Moreira**        | Desenvolvimento   |
+| **João Arthur Abreu**    | Conteúdo          |
 
 ---
 

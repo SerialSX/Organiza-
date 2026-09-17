@@ -1,0 +1,58 @@
+.home-container {
+  min-height: 100vh;
+}
+
+.home-header {
+  padding: 60px 24px 28px;
+  border-bottom-left-radius: 24px;
+  border-bottom-right-radius: 24px;
+  color: #FFFFFF;
+}
+
+.home-header h1 {
+  font-size: 26px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.home-header p {
+  font-size: 14px;
+  margin: 4px 0 0;
+  opacity: 0.7;
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  padding: 20px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.home-card {
+  aspect-ratio: 1;
+  border-radius: 20px;
+  border: 1px solid;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.home-card-icon {
+  font-size: 40px;
+}
+
+.home-card-label {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+@media (min-width: 768px) {
+  .home-grid {
+    max-width: 700px;
+  }
+}

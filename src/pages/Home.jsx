@@ -1,12 +1,13 @@
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
+import logo from '../assets/logo.svg';
 import './Home.css';
 
 const sections = [
-  { key: 'cardapio', label: 'Cardápio', icon: '🍽️', route: '/cardapio' },
+  { key: 'produtos', label: 'Produtos', icon: '📦', route: '/produtos' },
   { key: 'pedidos', label: 'Pedidos', icon: '📋', route: '/pedidos' },
-  { key: 'estoque', label: 'Estoque', icon: '📦', route: '/estoque' },
-  { key: 'financeiro', label: 'Financeiro', icon: '💰', route: '/financeiro' },
+  { key: 'cozinha', label: 'Cozinha', icon: '🍳', route: '/cozinha' },
+  { key: 'relatorios', label: 'Relatórios', icon: '📊', route: '/relatorios' },
 ];
 
 export default function Home() {
@@ -21,7 +22,7 @@ export default function Home() {
           background: `linear-gradient(90deg, ${theme.gradientStart}, ${theme.gradientEnd})`,
         }}
       >
-        <h1>Organiza+</h1>
+        <img src={logo} alt="Organiza+" className="home-header-logo" />
         <p>Painel principal</p>
       </header>
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
+import logo from '../assets/logo.svg';
 import './Login.css';
 
 export default function Cadastro() {
@@ -36,6 +37,7 @@ export default function Cadastro() {
       }}
     >
       <form className="login-form" onSubmit={handleCadastro}>
+        <img src={logo} alt="Organiza+" className="login-logo" />
         <h1 style={{ color: theme.text }}>Criar conta</h1>
         <p style={{ color: theme.textSecondary }}>Cadastre seu negócio no Organiza+</p>
 

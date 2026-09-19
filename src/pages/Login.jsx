@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
+import logo from '../assets/logo.svg';
 import './Login.css';
 
 export default function Login() {
@@ -23,7 +24,7 @@ export default function Login() {
       }}
     >
       <form className="login-form" onSubmit={handleLogin}>
-        <h1 style={{ color: theme.text }}>Organiza+</h1>
+        <img src={logo} alt="Organiza+" className="login-logo" />
         <p style={{ color: theme.textSecondary }}>Acesse sua conta</p>
 
         <input

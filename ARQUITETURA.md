@@ -14,7 +14,7 @@ Este documento define a arquitetura técnica do projeto e o plano de desenvolvim
 
 - **Hospedagem:** front-end na Vercel (grátis, como SPA estática gerada pelo `vite build`), banco e back-end no Supabase (grátis, dentro do limite do plano free, suficiente para o escopo do TCC).
 
-- **Estilo visual:** Tailwind configurado com tokens de marca (`brand-dark` = `#2D2D2D`, `brand-orange` = `#E8823C`). O `ThemeContext.jsx` (usado por Login, Cadastro e Home) foi ajustado para a mesma paleta oficial. Assets oficiais da equipe: `public/icon.png` (favicon, mark isolado), `src/assets/logo.svg` (logotipo horizontal com texto branco, para fundo escuro — usado atualmente) e `src/assets/logo-light.svg` (mesmo logotipo com texto escuro, para um eventual modo claro).
+- **Estilo visual:** Tailwind configurado com tokens de marca (`brand-dark` = `#2D2D2D`, `brand-orange` = `#E8823C`) e tokens de superfície (`--surface`, `--surface-alt`, `--surface-card`, `--text-primary`, `--text-secondary`, `--border-subtle`) que trocam de valor conforme `[data-theme]`, permitindo um alternador claro/escuro real (botão de sol/lua no `Navbar` e no `AppNav`, estado em `ThemeContext.jsx`, persistido em `localStorage`). Cada seção autenticada tem uma cor de destaque própria (`--color-accent-produtos`, `-pedidos`, `-cozinha`, `-relatorios`) para diferenciação visual rápida. Assets oficiais da equipe: `public/icon.png` (favicon, mark isolado), `src/assets/logo.svg` (logotipo horizontal com texto branco, para fundo escuro) e `src/assets/logo-light.svg` (mesmo logotipo com texto escuro, para fundo claro) — o componente escolhe qual usar de acordo com o tema ativo.
 
 ## Modelo de dados (Postgres)
 
@@ -61,23 +61,31 @@ Row Level Security: toda tabela filtra por `negocio_id` do usuário autenticado 
 ```
 /src
   /pages
-    Login.jsx
+    Landing.jsx        (landing page pública, rota "/")
+    Login.jsx           (rota "/login")
     Cadastro.jsx
-    Home.jsx          (hub pós-login)
-    Produtos.jsx       (CRUD de produtos, tela do admin)
-    Pedidos.jsx        (tela de lançamento de pedidos, atendente/balcão)
-    Cozinha.jsx        (tela em tempo real da cozinha)
-    Relatorios.jsx     (dashboard de relatórios)
-  /components          (componentes reutilizáveis de UI)
+    Home.jsx           (painel pós-login, rota "/home")
+    Produtos.jsx        (CRUD de produtos, tela do admin)
+    Pedidos.jsx         (tela de lançamento de pedidos, atendente/balcão)
+    Cozinha.jsx         (tela em tempo real da cozinha)
+    Relatorios.jsx      (dashboard de relatórios)
+  /components
+    Navbar.jsx          (barra do topo da landing, pública)
+    AppNav.jsx          (navegação fixa pós-login: topo no desktop, barra inferior no mobile)
+    ThemeToggle.jsx      (botão de alternar claro/escuro)
+    ProductMockup.jsx    (ilustração do produto usada no hero da landing)
+    /icons
+      FeatureIcons.jsx   (ícones da seção de funcionalidades da landing)
+      AppIcons.jsx       (ícones da navegação interna + sol/lua)
   /context
-    ThemeContext.jsx
+    ThemeContext.jsx     (estado de tema claro/escuro, persistido em localStorage)
   /lib
-    supabaseClient.js  (configuração do cliente Supabase)
-  App.jsx              (rotas)
+    supabaseClient.js   (configuração do cliente Supabase)
+  App.jsx               (rotas)
   main.jsx
-  index.css            (entrada do Tailwind + tokens de marca)
+  index.css             (entrada do Tailwind + tokens de marca e de tema)
 /supabase
-  schema.sql           (tabelas + Row Level Security)
+  schema.sql            (tabelas + Row Level Security)
 ```
 
 ## Plano de fases

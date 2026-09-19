@@ -3,14 +3,38 @@
 @theme {
   --color-brand-dark: #2D2D2D;
   --color-brand-orange: #E8823C;
+  --color-accent-produtos: #E8823C;
+  --color-accent-pedidos: #4C8DFF;
+  --color-accent-cozinha: #E85C4C;
+  --color-accent-relatorios: #3CA66E;
 }
 
 :root {
-  color-scheme: light dark;
+  --surface: #2D2D2D;
+  --surface-alt: #242424;
+  --surface-card: rgba(255, 255, 255, 0.05);
+  --surface-card-hover: rgba(255, 255, 255, 0.08);
+  --text-primary: #FFFFFF;
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+
+  color-scheme: dark;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-theme='light'] {
+  --surface: #F7F5F2;
+  --surface-alt: #FFFFFF;
+  --surface-card: #FFFFFF;
+  --surface-card-hover: #FBFAF8;
+  --text-primary: #1A1A1A;
+  --text-secondary: rgba(26, 26, 26, 0.6);
+  --border-subtle: rgba(0, 0, 0, 0.08);
+
+  color-scheme: light;
 }
 
 body {

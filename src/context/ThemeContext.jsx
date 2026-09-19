@@ -27,8 +27,16 @@ const themes = {
 
 const ThemeContext = createContext(null);
 
+function getInitialMode() {
+  try {
+    return localStorage.getItem('organiza-theme') === 'light' ? 'light' : 'dark';
+  } catch {
+    return 'dark';
+  }
+}
+
 export function ThemeProvider({ children }) {
-  const [mode, setMode] = useState('dark');
+  const [mode, setMode] = useState(getInitialMode);
   const theme = themes[mode];
 
   useEffect(() => {
@@ -36,7 +44,13 @@ export function ThemeProvider({ children }) {
     Object.entries(theme).forEach(([key, value]) => {
       root.style.setProperty(`--${key}`, value);
     });
-  }, [theme]);
+    root.dataset.theme = mode;
+    try {
+      localStorage.setItem('organiza-theme', mode);
+    } catch {
+      // localStorage indisponível (modo privado etc.) — segue só em memória
+    }
+  }, [theme, mode]);
 
   function toggleTheme() {
     setMode((prev) => (prev === 'dark' ? 'light' : 'dark'));

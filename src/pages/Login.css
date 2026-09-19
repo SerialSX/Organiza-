@@ -14,10 +14,44 @@
 }
 
 .login-logo {
-  height: 40px;
+  height: 56px;
   width: auto;
   align-self: center;
   margin-bottom: 24px;
+  cursor: pointer;
+}
+
+.login-success {
+  text-align: center;
+  padding: 24px 0 8px;
+}
+
+.login-success-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: rgba(232, 130, 60, 0.15);
+  color: #E8823C;
+  font-size: 28px;
+  margin-bottom: 16px;
+}
+
+.login-success h1 {
+  margin-bottom: 4px;
+}
+
+.login-success-banner {
+  background: rgba(232, 130, 60, 0.15);
+  color: #E8823C;
+  border: 1px solid rgba(232, 130, 60, 0.4);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 20px;
 }
 
 .login-form h1 {

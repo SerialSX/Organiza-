@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import logo from '../assets/logo.svg';
 import './Login.css';
@@ -7,6 +7,7 @@ import './Login.css';
 export default function Login() {
   const { theme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
 
@@ -24,7 +25,19 @@ export default function Login() {
       }}
     >
       <form className="login-form" onSubmit={handleLogin}>
-        <img src={logo} alt="Organiza+" className="login-logo" />
+        <img
+          src={logo}
+          alt="Organiza+"
+          className="login-logo"
+          onClick={() => navigate('/')}
+        />
+
+        {location.state?.justCreated && (
+          <p className="login-success-banner">
+            Conta criada com sucesso! Faça login para continuar.
+          </p>
+        )}
+
         <p style={{ color: theme.textSecondary }}>Acesse sua conta</p>
 
         <input

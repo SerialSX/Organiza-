@@ -12,6 +12,7 @@ export default function Cadastro() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
+  const [sucesso, setSucesso] = useState(false);
 
   function handleCadastro(e) {
     e.preventDefault();
@@ -21,6 +22,10 @@ export default function Cadastro() {
     }
     // TODO: integrar com cadastro real
     console.log('Cadastro:', { nome, negocio, email, senha });
+    setSucesso(true);
+    setTimeout(() => {
+      navigate('/login', { state: { justCreated: true } });
+    }, 1500);
   }
 
   const inputStyle = {
@@ -38,60 +43,71 @@ export default function Cadastro() {
     >
       <form className="login-form" onSubmit={handleCadastro}>
         <img src={logo} alt="Organiza+" className="login-logo" />
-        <h1 style={{ color: theme.text }}>Criar conta</h1>
-        <p style={{ color: theme.textSecondary }}>Cadastre seu negócio no Organiza+</p>
 
-        <input
-          type="text"
-          placeholder="Nome completo"
-          value={nome}
-          onChange={(e) => setNome(e.target.value)}
-          style={inputStyle}
-        />
+        {sucesso ? (
+          <div className="login-success">
+            <span className="login-success-icon">✓</span>
+            <h1 style={{ color: theme.text }}>Conta criada com sucesso!</h1>
+            <p style={{ color: theme.textSecondary }}>Redirecionando para o login...</p>
+          </div>
+        ) : (
+          <>
+            <h1 style={{ color: theme.text }}>Criar conta</h1>
+            <p style={{ color: theme.textSecondary }}>Cadastre seu negócio no Organiza+</p>
 
-        <input
-          type="text"
-          placeholder="Nome do negócio"
-          value={negocio}
-          onChange={(e) => setNegocio(e.target.value)}
-          style={inputStyle}
-        />
+            <input
+              type="text"
+              placeholder="Nome completo"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              style={inputStyle}
+            />
 
-        <input
-          type="email"
-          placeholder="E-mail"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={inputStyle}
-        />
+            <input
+              type="text"
+              placeholder="Nome do negócio"
+              value={negocio}
+              onChange={(e) => setNegocio(e.target.value)}
+              style={inputStyle}
+            />
 
-        <input
-          type="password"
-          placeholder="Senha"
-          value={senha}
-          onChange={(e) => setSenha(e.target.value)}
-          style={inputStyle}
-        />
+            <input
+              type="email"
+              placeholder="E-mail"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={inputStyle}
+            />
 
-        <input
-          type="password"
-          placeholder="Confirmar senha"
-          value={confirmarSenha}
-          onChange={(e) => setConfirmarSenha(e.target.value)}
-          style={inputStyle}
-        />
+            <input
+              type="password"
+              placeholder="Senha"
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              style={inputStyle}
+            />
 
-        <button type="submit" style={{ backgroundColor: theme.accent }}>
-          Cadastrar
-        </button>
+            <input
+              type="password"
+              placeholder="Confirmar senha"
+              value={confirmarSenha}
+              onChange={(e) => setConfirmarSenha(e.target.value)}
+              style={inputStyle}
+            />
 
-        <p
-          className="login-link"
-          style={{ color: theme.link }}
-          onClick={() => navigate('/')}
-        >
-          Já tenho conta
-        </p>
+            <button type="submit" style={{ backgroundColor: theme.accent }}>
+              Cadastrar
+            </button>
+
+            <p
+              className="login-link"
+              style={{ color: theme.link }}
+              onClick={() => navigate('/login')}
+            >
+              Já tenho conta
+            </p>
+          </>
+        )}
       </form>
     </div>
   );

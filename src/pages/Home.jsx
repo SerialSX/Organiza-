@@ -1,47 +1,88 @@
 import { useNavigate } from 'react-router-dom';
-import { useTheme } from '../context/ThemeContext';
-import logo from '../assets/logo.svg';
-import './Home.css';
+import AppNav from '../components/AppNav';
+import { ProductsIcon, OrdersIcon, KitchenIcon, ReportsIcon } from '../components/icons/AppIcons';
 
-const sections = [
-  { key: 'produtos', label: 'Produtos', icon: '📦', route: '/produtos' },
-  { key: 'pedidos', label: 'Pedidos', icon: '📋', route: '/pedidos' },
-  { key: 'cozinha', label: 'Cozinha', icon: '🍳', route: '/cozinha' },
-  { key: 'relatorios', label: 'Relatórios', icon: '📊', route: '/relatorios' },
+const cards = [
+  {
+    key: 'produtos',
+    label: 'Produtos',
+    description: 'Cadastre o que você vende',
+    route: '/produtos',
+    icon: ProductsIcon,
+    accent: 'var(--color-accent-produtos)',
+  },
+  {
+    key: 'pedidos',
+    label: 'Pedidos',
+    description: 'Anote um novo pedido',
+    route: '/pedidos',
+    icon: OrdersIcon,
+    accent: 'var(--color-accent-pedidos)',
+  },
+  {
+    key: 'cozinha',
+    label: 'Cozinha',
+    description: 'Veja o que precisa preparar',
+    route: '/cozinha',
+    icon: KitchenIcon,
+    accent: 'var(--color-accent-cozinha)',
+    badge: '0 pendentes',
+  },
+  {
+    key: 'relatorios',
+    label: 'Relatórios',
+    description: 'Veja o que mais vendeu',
+    route: '/relatorios',
+    icon: ReportsIcon,
+    accent: 'var(--color-accent-relatorios)',
+  },
 ];
 
 export default function Home() {
-  const { theme } = useTheme();
   const navigate = useNavigate();
 
   return (
-    <div className="home-container" style={{ backgroundColor: theme.background }}>
-      <header
-        className="home-header"
-        style={{
-          background: `linear-gradient(90deg, ${theme.gradientStart}, ${theme.gradientEnd})`,
-        }}
-      >
-        <img src={logo} alt="Organiza+" className="home-header-logo" />
-        <p>Painel principal</p>
-      </header>
+    <div className="min-h-screen bg-[var(--surface)] pb-24 md:pb-0">
+      <AppNav />
 
-      <div className="home-grid">
-        {sections.map((section) => (
-          <button
-            key={section.key}
-            className="home-card"
-            style={{
-              backgroundColor: theme.backgroundElement,
-              borderColor: theme.inputBorder,
-              color: theme.text,
-            }}
-            onClick={() => navigate(section.route)}
-          >
-            <span className="home-card-icon">{section.icon}</span>
-            <span className="home-card-label">{section.label}</span>
-          </button>
-        ))}
+      <div className="max-w-4xl mx-auto px-6 py-10">
+        <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-1">
+          Painel principal
+        </h1>
+        <p className="text-[var(--text-secondary)] text-sm mb-8">
+          O que você quer fazer agora?
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {cards.map(({ key, label, description, route, icon: Icon, accent, badge }) => (
+            <button
+              key={key}
+              onClick={() => navigate(route)}
+              className="text-left bg-[var(--surface-card)] hover:bg-[var(--surface-card-hover)] border border-[var(--border-subtle)] rounded-2xl p-6 flex items-start gap-4 transition"
+            >
+              <span
+                className="inline-flex items-center justify-center w-14 h-14 rounded-2xl shrink-0"
+                style={{ backgroundColor: accent }}
+              >
+                <Icon className="w-7 h-7 text-white" />
+              </span>
+              <span className="flex flex-col">
+                <span className="flex items-center gap-2">
+                  <span className="font-semibold text-lg text-[var(--text-primary)]">{label}</span>
+                  {badge && (
+                    <span
+                      className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-white"
+                      style={{ backgroundColor: accent }}
+                    >
+                      {badge}
+                    </span>
+                  )}
+                </span>
+                <span className="text-sm text-[var(--text-secondary)] mt-0.5">{description}</span>
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

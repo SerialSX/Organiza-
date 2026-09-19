@@ -13,6 +13,13 @@
   flex-direction: column;
 }
 
+.login-logo {
+  height: 40px;
+  width: auto;
+  align-self: center;
+  margin-bottom: 24px;
+}
+
 .login-form h1 {
   font-size: 28px;
   font-weight: 600;

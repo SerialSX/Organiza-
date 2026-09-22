@@ -39,7 +39,7 @@ Detalhes da arquitetura, modelo de dados e plano de fases em [`ARQUITETURA.md`](
 
 ## Identidade visual
 
-Fundo escuro (`#2D2D2D`) com laranja (`#E8823C`) como cor de destaque.
+Fundo escuro (`#0A192F`) com laranja (`#EE9448`) como cor de destaque.
 
 ## Equipe
 

@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-dark: #2D2D2D;
-  --color-brand-orange: #E8823C;
-  --color-accent-produtos: #E8823C;
+  --color-brand-dark: #0A192F;
+  --color-brand-orange: #EE9448;
+  --color-accent-produtos: #EE9448;
   --color-accent-pedidos: #4C8DFF;
   --color-accent-cozinha: #E85C4C;
   --color-accent-relatorios: #3CA66E;
 }
 
 :root {
-  --surface: #2D2D2D;
-  --surface-alt: #242424;
+  --surface: #0A192F;
+  --surface-alt: #071322;
   --surface-card: rgba(255, 255, 255, 0.05);
   --surface-card-hover: rgba(255, 255, 255, 0.08);
   --text-primary: #FFFFFF;

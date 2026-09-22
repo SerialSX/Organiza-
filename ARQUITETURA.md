@@ -14,7 +14,7 @@ Este documento define a arquitetura técnica do projeto e o plano de desenvolvim
 
 - **Hospedagem:** front-end na Vercel (grátis, como SPA estática gerada pelo `vite build`), banco e back-end no Supabase (grátis, dentro do limite do plano free, suficiente para o escopo do TCC).
 
-- **Estilo visual:** Tailwind configurado com tokens de marca (`brand-dark` = `#2D2D2D`, `brand-orange` = `#E8823C`) e tokens de superfície (`--surface`, `--surface-alt`, `--surface-card`, `--text-primary`, `--text-secondary`, `--border-subtle`) que trocam de valor conforme `[data-theme]`, permitindo um alternador claro/escuro real (botão de sol/lua no `Navbar` e no `AppNav`, estado em `ThemeContext.jsx`, persistido em `localStorage`). Cada seção autenticada tem uma cor de destaque própria (`--color-accent-produtos`, `-pedidos`, `-cozinha`, `-relatorios`) para diferenciação visual rápida. Assets oficiais da equipe: `public/icon.png` (favicon, mark isolado), `src/assets/logo.svg` (logotipo horizontal com texto branco, para fundo escuro) e `src/assets/logo-light.svg` (mesmo logotipo com texto escuro, para fundo claro) — o componente escolhe qual usar de acordo com o tema ativo.
+- **Estilo visual:** Tailwind configurado com tokens de marca (`brand-dark` = `#0A192F`, `brand-orange` = `#EE9448`) e tokens de superfície (`--surface`, `--surface-alt`, `--surface-card`, `--text-primary`, `--text-secondary`, `--border-subtle`) que trocam de valor conforme `[data-theme]`, permitindo um alternador claro/escuro real (botão de sol/lua no `Navbar` e no `AppNav`, estado em `ThemeContext.jsx`, persistido em `localStorage`). Cada seção autenticada tem uma cor de destaque própria (`--color-accent-produtos`, `-pedidos`, `-cozinha`, `-relatorios`) para diferenciação visual rápida. Assets oficiais da equipe: `public/icon.png` (favicon, mark isolado), `src/assets/logo.svg` (logotipo horizontal com texto branco, para fundo escuro) e `src/assets/logo-light.svg` (mesmo logotipo com texto escuro, para fundo claro) — o componente escolhe qual usar de acordo com o tema ativo.
 
 ## Modelo de dados (Postgres)
 
@@ -73,9 +73,8 @@ Row Level Security: toda tabela filtra por `negocio_id` do usuário autenticado 
     Navbar.jsx          (barra do topo da landing, pública)
     AppNav.jsx          (navegação fixa pós-login: topo no desktop, barra inferior no mobile)
     ThemeToggle.jsx      (botão de alternar claro/escuro)
-    ProductMockup.jsx    (ilustração do produto usada no hero da landing)
+    ScreenshotPlaceholder.jsx  (espaço reservado para os prints reais das telas na landing)
     /icons
-      FeatureIcons.jsx   (ícones da seção de funcionalidades da landing)
       AppIcons.jsx       (ícones da navegação interna + sol/lua)
   /context
     ThemeContext.jsx     (estado de tema claro/escuro, persistido em localStorage)
@@ -91,7 +90,7 @@ Row Level Security: toda tabela filtra por `negocio_id` do usuário autenticado 
 ## Plano de fases
 
 ### Fase 0. Estrutura base do projeto — concluída
-- Projeto React + Vite com Tailwind configurado com tokens da identidade visual (`brand-dark` #2D2D2D, `brand-orange` #E8823C).
+- Projeto React + Vite com Tailwind configurado com tokens da identidade visual (`brand-dark` #0A192F, `brand-orange` #EE9448).
 - Cliente Supabase configurado em `src/lib/supabaseClient.js`, lendo `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (ver `.env.example`).
 - Tabelas do banco de dados e Row Level Security básica em `supabase/schema.sql`.
 - Estrutura de pastas e rotas para todas as telas futuras (com placeholders em Produtos, Pedidos, Cozinha e Relatórios).

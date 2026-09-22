@@ -11,6 +11,7 @@ const themes = {
     accent: '#EE9448',
     link: '#F2A46B',
     inputBorder: 'rgba(255,255,255,0.15)',
+    card: '#0B1A30',       
   },
   light: {
     gradientStart: '#EE9448',
@@ -22,6 +23,7 @@ const themes = {
     accent: '#EE9448',
     link: '#C96A28',
     inputBorder: 'rgba(0,0,0,0.12)',
+    card: '#FFFFFF',  
   },
 };
 

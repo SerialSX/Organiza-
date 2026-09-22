@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
-import logo from '../assets/logo.svg';
+import logoDark from '../assets/logo.svg';
+import logoLight from '../assets/logo-light.svg';
 import './Login.css';
 
 export default function Login() {
-  const { theme } = useTheme();
+  const { theme, mode } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState('');
@@ -26,7 +27,7 @@ export default function Login() {
     >
       <form className="login-form" onSubmit={handleLogin}>
         <img
-          src={logo}
+          src={mode === 'dark' ? logoDark : logoLight}
           alt="Organiza+"
           className="login-logo"
           onClick={() => navigate('/')}
@@ -38,7 +39,7 @@ export default function Login() {
           </p>
         )}
 
-        <p style={{ color: theme.textSecondary }}>Acesse sua conta</p>
+        <h1 style={{ color: theme.text, textAlign: 'center', marginBottom: 32, fontSize: 22 }}>Acesse sua conta</h1>
 
         <input
           type="email"

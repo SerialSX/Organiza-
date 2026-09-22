@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
-import logo from '../assets/logo.svg';
+import logoDark from '../assets/logo.svg';
+import logoLight from '../assets/logo-light.svg';
 import './Login.css';
 
 export default function Cadastro() {
-  const { theme } = useTheme();
+  const { theme, mode } = useTheme();
   const navigate = useNavigate();
   const [nome, setNome] = useState('');
   const [negocio, setNegocio] = useState('');
@@ -42,7 +43,7 @@ export default function Cadastro() {
       }}
     >
       <form className="login-form" onSubmit={handleCadastro}>
-        <img src={logo} alt="Organiza+" className="login-logo" />
+        <img src={mode === 'dark' ? logoDark : logoLight} alt="Organiza+" className="login-logo" />
 
         {sucesso ? (
           <div className="login-success">

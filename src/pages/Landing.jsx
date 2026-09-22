@@ -1,39 +1,70 @@
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-import ProductMockup from '../components/ProductMockup';
-import {
-  RealTimeIcon,
-  StockIcon,
-  QueueIcon,
-  ReportsIcon,
-} from '../components/icons/FeatureIcons';
+import ScreenshotPlaceholder from '../components/ScreenshotPlaceholder';
 
-const features = [
+const passos = [
   {
-    icon: RealTimeIcon,
-    title: 'Pedido em tempo real',
-    text: 'Quem atende manda o pedido, a cozinha recebe na hora, sem papel e sem gritar pedido de longe.',
-    accent: 'var(--color-accent-pedidos)',
+    numero: '01',
+    titulo: 'Comanda digital',
+    paragrafos: [
+      'O pedido é lançado diretamente no sistema. Assim, a venda já fica registrada enquanto o atendimento acontece, sem precisar fazer uma anotação separada para alimentar o relatório depois.',
+    ],
+    print: { label: 'Tela de lançamento de pedidos', fase: 'Fase 3' },
   },
   {
-    icon: StockIcon,
-    title: 'Estoque atualizado na hora',
-    text: 'Acabou um produto? A cozinha avisa em um clique, e ninguém vende o que não existe mais.',
-    accent: 'var(--color-accent-produtos)',
+    numero: '02',
+    titulo: 'Cozinha em tempo real',
+    paragrafos: [
+      'O pedido chega à tela da cozinha assim que é lançado. A equipe acompanha o que precisa ser preparado e o atendimento ganha mais clareza durante a operação.',
+    ],
+    print: { label: 'Tela da cozinha em tempo real', fase: 'Fase 4' },
   },
   {
-    icon: QueueIcon,
-    title: 'Fila organizada',
-    text: 'Veja qual pedido chegou primeiro e quais estão demorando demais.',
-    accent: 'var(--color-accent-cozinha)',
-  },
-  {
-    icon: ReportsIcon,
-    title: 'Relatórios automáticos',
-    text: 'Descubra o que mais vende e o que dá mais lucro, sem precisar calcular nada.',
-    accent: 'var(--color-accent-relatorios)',
+    numero: '03',
+    titulo: 'Relatório automático',
+    paragrafos: [
+      'É aqui que os dados viram informação para o negócio.',
+      'A partir dos pedidos registrados, o Organiza+ mostra o que está acontecendo nas suas vendas. Você consegue identificar o produto mais vendido, o produto mais lucrativo, acompanhar o faturamento por período e receber aviso de reposição de estoque.',
+      'Sem precisar parar o trabalho para fazer contas ou preencher planilhas.',
+    ],
+    print: { label: 'Tela de relatórios', fase: 'Fase 5' },
   },
 ];
+
+const relatorios = [
+  {
+    titulo: 'Mais vendido x mais lucrativo',
+    texto:
+      'Descubra qual produto sai mais e qual traz mais retorno. Vender mais nem sempre significa lucrar mais. O relatório coloca essas informações lado a lado.',
+    print: { label: 'Mais vendido x mais lucrativo', fase: 'Fase 5' },
+  },
+  {
+    titulo: 'Faturamento por período',
+    texto:
+      'Acompanhe o faturamento de acordo com o período consultado. Assim, você consegue olhar para o movimento do negócio com base no que realmente foi registrado.',
+    print: { label: 'Faturamento por período', fase: 'Fase 5' },
+  },
+  {
+    titulo: 'Aviso de reposição de estoque',
+    texto:
+      'Saiba quais itens precisam de atenção antes que faltem. O sistema ajuda você a acompanhar o estoque a partir da movimentação dos pedidos.',
+    print: { label: 'Aviso de reposição de estoque', fase: 'Fase 5' },
+  },
+];
+
+const reducaoRisco = [
+  {
+    titulo: 'Grátis',
+    texto: 'O Organiza+ é gratuito para você começar a usar.',
+  },
+  {
+    titulo: 'Sem instalação',
+    texto: 'Você consegue acessar pelo seu celular ou computador.',
+  },
+];
+
+const botaoPrimario =
+  'w-full sm:w-auto inline-flex items-center justify-center bg-brand-orange hover:brightness-110 text-white font-semibold px-7 py-3.5 rounded-lg transition shadow-lg shadow-brand-orange/20';
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -42,88 +73,167 @@ export default function Landing() {
     <div className="min-h-screen bg-[var(--surface)] text-[var(--text-primary)]">
       <Navbar />
 
-      {/* Hero */}
-      <section className="max-w-6xl mx-auto px-6 pt-16 pb-20 grid grid-cols-1 lg:grid-cols-2 gap-14 items-center">
-        <div className="text-center lg:text-left">
-          <span className="inline-block bg-brand-orange text-white text-xs font-bold px-4 py-1.5 rounded-full mb-6 shadow-lg shadow-brand-orange/30">
-            100% gratuito para pequenos negócios
-          </span>
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4">
-            Pedido <span className="text-brand-orange">sem bagunça.</span>
-          </h1>
-          <p className="text-[var(--text-secondary)] text-lg mb-4 max-w-md mx-auto lg:mx-0">
-            O sistema que organiza o fluxo do seu food truck, do pedido até a cozinha, em tempo real.
-          </p>
-          <p className="text-[var(--text-secondary)] text-xs mb-8 max-w-md mx-auto lg:mx-0">
-            Feito com base em pesquisa real com empreendedores de Fortaleza.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3">
-            <button
-              onClick={() => navigate('/cadastro')}
-              className="w-full sm:w-auto bg-brand-orange hover:brightness-110 text-white font-semibold px-7 py-3.5 rounded-lg transition shadow-lg shadow-brand-orange/20"
-            >
-              Criar minha conta grátis
-            </button>
-            <button
-              onClick={() => navigate('/login')}
-              className="w-full sm:w-auto border border-[var(--border-subtle)] hover:bg-[var(--surface-card-hover)] text-[var(--text-primary)] font-medium px-7 py-3.5 rounded-lg transition"
-            >
-              Já tenho conta
-            </button>
-          </div>
+      {/* 1. Hero */}
+      <section className="max-w-3xl mx-auto px-6 pt-16 sm:pt-20 pb-20 text-center">
+        <span className="inline-block text-brand-orange text-xs font-bold tracking-[0.25em] mb-6">
+          ORGANIZA+
+        </span>
+        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-[1.15] mb-6">
+          Pare de decidir no escuro. Veja o que realmente acontece no seu negócio.
+        </h1>
+        <p className="text-[var(--text-secondary)] text-base sm:text-lg leading-relaxed mb-8">
+          Lance os pedidos na comanda digital, acompanhe a cozinha em tempo real e deixe o
+          Organiza+ transformar essa operação em informação sobre o seu negócio, sem perder tempo.
+        </p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-6">
+          <button onClick={() => navigate('/cadastro')} className={botaoPrimario}>
+            Quero usar o Organiza+
+          </button>
+          <a
+            href="#como-funciona"
+            className="w-full sm:w-auto inline-flex items-center justify-center border border-[var(--border-subtle)] hover:bg-[var(--surface-card-hover)] text-[var(--text-primary)] font-medium px-7 py-3.5 rounded-lg transition"
+          >
+            Ver como funciona
+          </a>
         </div>
-
-        <ProductMockup />
-      </section>
-
-      {/* Bloco de dor */}
-      <section className="max-w-2xl mx-auto text-center px-6 py-14 border-t border-[var(--border-subtle)]">
-        <h2 className="text-2xl font-bold mb-3">Você já perdeu um pedido assim?</h2>
-        <p className="text-[var(--text-secondary)]">
-          Pedido anotado errado. Cliente esperando. Produto que acabou e ninguém avisou a tempo.
+        <p className="text-[var(--text-secondary)] text-sm">
+          Gratuito. Sem instalação. E perfeito para o seu negócio.
         </p>
       </section>
 
-      {/* Funcionalidades */}
-      <section className="max-w-6xl mx-auto px-6 py-16 border-t border-[var(--border-subtle)]">
-        <h2 className="text-2xl font-bold text-center mb-12">O que o Organiza+ resolve</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {features.map(({ icon: Icon, title, text, accent }) => (
-            <div
-              key={title}
-              className="bg-[var(--surface-card)] border border-[var(--border-subtle)] rounded-2xl p-6 flex flex-col items-start gap-4"
-            >
-              <span
-                className="inline-flex items-center justify-center w-16 h-16 rounded-2xl"
-                style={{ backgroundColor: accent }}
+      {/* 2. O problema */}
+      <section className="max-w-3xl mx-auto px-6 py-20 border-t border-[var(--border-subtle)]">
+        <h2 className="text-2xl sm:text-3xl font-bold leading-snug mb-8">
+          Trabalhar todos os dias não significa enxergar tudo o que acontece. Sem os dados certos,
+          cada decisão vira uma aposta.
+        </h2>
+        <div className="space-y-5 text-[var(--text-secondary)] leading-relaxed">
+          <p>
+            Você sabe o que vende, conhece seus clientes e acompanha o movimento do seu negócio.
+            Mas algumas respostas ficam difíceis de enxergar no meio da correria.
+          </p>
+          <p>
+            Qual produto vende mais? Qual realmente deixa mais dinheiro? Quanto entrou em
+            determinado período? O que está perto de acabar no estoque?
+          </p>
+          <p>
+            Essas informações já estão acontecendo na sua operação. O problema é que, sem um
+            registro organizado, elas ficam espalhadas entre pedidos, memória, papel e rotina.
+          </p>
+          <p className="text-[var(--text-primary)] font-medium">
+            O Organiza+ registra o que acontece durante o atendimento e transforma isso em
+            informação para você consultar.
+          </p>
+        </div>
+      </section>
+
+      {/* 3. Como funciona */}
+      <section
+        id="como-funciona"
+        className="max-w-6xl mx-auto px-6 py-20 border-t border-[var(--border-subtle)] scroll-mt-20"
+      >
+        <h2 className="text-2xl sm:text-3xl font-bold leading-snug mb-14 max-w-3xl">
+          Você registra o pedido. O Organiza+ ganha tempo na sua cozinha e mostra como o seu
+          negócio está indo.
+        </h2>
+        <div className="space-y-16">
+          {passos.map((passo, indice) => {
+            const inverte = indice % 2 === 1;
+            return (
+              <div
+                key={passo.numero}
+                className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center"
               >
-                <Icon className="w-8 h-8 text-white" />
-              </span>
-              <h3 className="font-semibold text-base">{title}</h3>
-              <p className="text-[var(--text-secondary)] text-sm leading-relaxed">{text}</p>
+                <div className={inverte ? 'lg:order-2' : undefined}>
+                  <span className="text-brand-orange text-sm font-bold tracking-widest">
+                    {passo.numero}
+                  </span>
+                  <h3 className="text-xl sm:text-2xl font-bold mt-2 mb-4">{passo.titulo}</h3>
+                  <div className="space-y-4 text-[var(--text-secondary)] leading-relaxed">
+                    {passo.paragrafos.map((paragrafo) => (
+                      <p key={paragrafo}>{paragrafo}</p>
+                    ))}
+                  </div>
+                </div>
+                <ScreenshotPlaceholder
+                  label={passo.print.label}
+                  fase={passo.print.fase}
+                  className={inverte ? 'lg:order-1' : undefined}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 4. O que os relatórios mostram */}
+      <section className="max-w-6xl mx-auto px-6 py-20 border-t border-[var(--border-subtle)]">
+        <h2 className="text-2xl sm:text-3xl font-bold text-center leading-snug mb-14 max-w-2xl mx-auto">
+          O que você precisa saber sobre o seu negócio, em números.
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {relatorios.map((item) => (
+            <article
+              key={item.titulo}
+              className="bg-[var(--surface-card)] border border-[var(--border-subtle)] rounded-2xl p-6 flex flex-col gap-4"
+            >
+              <ScreenshotPlaceholder label={item.print.label} fase={item.print.fase} />
+              <h3 className="font-semibold text-lg">{item.titulo}</h3>
+              <p className="text-[var(--text-secondary)] text-sm leading-relaxed">{item.texto}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* 5. Por que confiar */}
+      <section className="max-w-2xl mx-auto px-6 py-20 border-t border-[var(--border-subtle)] text-center space-y-5">
+        <p className="text-lg leading-relaxed">
+          O Organiza+ foi pensado para essa realidade, sem exigir uma rotina separada para fazer
+          gestão.
+        </p>
+        <p className="text-lg leading-relaxed">
+          Feito para aumentar o rendimento do seu negócio, entendendo exatamente a sua rotina.
+        </p>
+      </section>
+
+      {/* 6. Redução de risco */}
+      <section className="max-w-3xl mx-auto px-6 py-20 border-t border-[var(--border-subtle)]">
+        <h2 className="text-2xl sm:text-3xl font-bold text-center mb-10">
+          Experimente antes de decidir.
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          {reducaoRisco.map((item) => (
+            <div
+              key={item.titulo}
+              className="bg-[var(--surface-card)] border border-[var(--border-subtle)] rounded-2xl p-6 text-center"
+            >
+              <h3 className="font-semibold text-lg mb-2">{item.titulo}</h3>
+              <p className="text-[var(--text-secondary)] text-sm leading-relaxed">{item.texto}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* CTA final */}
-      <section className="max-w-2xl mx-auto text-center px-6 py-16 border-t border-[var(--border-subtle)]">
-        <h2 className="text-2xl sm:text-3xl font-bold mb-8">
-          Comece a organizar seu negócio hoje
+      {/* 7. CTA final */}
+      <section className="max-w-2xl mx-auto px-6 py-20 border-t border-[var(--border-subtle)] text-center">
+        <h2 className="text-2xl sm:text-3xl font-bold leading-snug mb-6">
+          Veja o que os números do seu próprio negócio estão dizendo.
         </h2>
-        <button
-          onClick={() => navigate('/cadastro')}
-          className="bg-brand-orange hover:brightness-110 text-white font-semibold px-8 py-3.5 rounded-lg transition shadow-lg shadow-brand-orange/20"
-        >
-          Criar conta grátis
+        <p className="text-[var(--text-secondary)] leading-relaxed mb-8">
+          Você não precisa trabalhar mais para ter mais informação sobre o seu negócio. Comece
+          usando a operação que já existe: registre os pedidos, acompanhe a cozinha e deixe o
+          Organiza+ organizar os dados para você consultar quando precisar.
+        </p>
+        <button onClick={() => navigate('/cadastro')} className={botaoPrimario}>
+          Quero conhecer o Organiza+
         </button>
       </section>
 
-      {/* Rodapé */}
-      <footer className="border-t border-[var(--border-subtle)] px-6 py-10 text-center">
-        <p className="font-bold mb-1">Organiza+</p>
-        <p className="text-[var(--text-secondary)] text-xs">
-          Projeto de extensão acadêmica. Gratuito e sem fins lucrativos.
+      {/* 8. Rodapé */}
+      <footer className="border-t border-[var(--border-subtle)] px-6 py-10">
+        <p className="text-[var(--text-secondary)] text-sm text-center max-w-2xl mx-auto leading-relaxed">
+          Organiza+ é um projeto de extensão sem fins lucrativos desenvolvido por alunos de Análise
+          e Desenvolvimento de Sistemas da Unifor.
         </p>
       </footer>
     </div>

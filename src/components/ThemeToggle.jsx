@@ -1,4 +1,4 @@
-import { useTheme } from '../context/ThemeContext';
+import { useTheme } from '../context/useTheme';
 import { SunIcon, MoonIcon } from './icons/AppIcons';
 
 export default function ThemeToggle({ className = '' }) {

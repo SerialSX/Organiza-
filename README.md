@@ -12,11 +12,20 @@ Pré-requisito: [Node.js](https://nodejs.org/) 18+.
 git clone https://github.com/SerialSX/Organiza-.git
 cd Organiza-
 npm install
-cp .env.example .env.local   # preencha com as chaves do seu projeto Supabase
 npm run dev
 ```
 
 Abra o link mostrado no terminal (geralmente `http://localhost:5173`).
+
+**Sem configurar nada, o sistema abre em modo demonstração**: os dados ficam salvos só no seu navegador e não há login real. Dá para testar o fluxo inteiro (cadastrar produtos, lançar pedidos, ver a cozinha e os relatórios). Abra Pedidos e Cozinha em duas abas para ver o pedido chegar na hora.
+
+Para usar o banco de verdade:
+
+```bash
+cp .env.example .env.local   # preencha com a URL e a anon key do projeto Supabase
+```
+
+No SQL Editor do Supabase, rode [`supabase/schema.sql`](./supabase/schema.sql) e depois os arquivos de [`supabase/migrations/`](./supabase/migrations/). O que ainda falta no back-end está em [`docs/backend/PENDENCIAS.md`](./docs/backend/PENDENCIAS.md).
 
 Outros comandos úteis:
 
@@ -24,9 +33,8 @@ Outros comandos úteis:
 npm run build     # build de produção
 npm run preview   # serve o build localmente
 npm run lint      # checagem de lint
+npm test          # testes automatizados (Vitest)
 ```
-
-O schema do banco de dados (tabelas + Row Level Security) está em [`supabase/schema.sql`](./supabase/schema.sql) — rode no SQL Editor do seu projeto Supabase.
 
 ## Stack
 
@@ -34,6 +42,7 @@ O schema do banco de dados (tabelas + Row Level Security) está em [`supabase/sc
 - **[React Router](https://reactrouter.com/)** — roteamento entre páginas
 - **[Tailwind CSS](https://tailwindcss.com/)** — estilo
 - **[Supabase](https://supabase.com/)** — banco de dados (Postgres), autenticação e tempo real
+- **[Vitest](https://vitest.dev/)** — testes automatizados
 
 Detalhes da arquitetura, modelo de dados e plano de fases em [`ARQUITETURA.md`](./ARQUITETURA.md).
 

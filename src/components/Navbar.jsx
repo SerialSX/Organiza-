@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useTheme } from '../context/ThemeContext';
+import { useTheme } from '../context/useTheme';
 import logoDark from '../assets/logo.svg';
 import logoLight from '../assets/logo-light.svg';
 import ThemeToggle from './ThemeToggle';

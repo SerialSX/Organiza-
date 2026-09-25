@@ -97,3 +97,29 @@
   font-size: 13px;
   cursor: pointer;
 }
+.login-error {
+  background: rgba(232, 92, 76, 0.12);
+  color: #E85C4C;
+  border: 1px solid rgba(232, 92, 76, 0.4);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.login-form p.login-error,
+.login-form p.login-info {
+  margin-bottom: 16px;
+}
+
+.login-info {
+  color: var(--textSecondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.login-form button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}

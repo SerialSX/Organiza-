@@ -66,3 +66,135 @@ export function MoonIcon(props) {
     </svg>
   );
 }
+
+export function PlusIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function MinusIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+export function PencilIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M4 20h4L19 9l-4-4L4 16v4z" />
+      <path d="M13.5 6.5l4 4" />
+    </svg>
+  );
+}
+
+export function TrashIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M4 7h16M10 11v6M14 11v6" />
+      <path d="M6 7l1 13h10l1-13M9 7V4h6v3" />
+    </svg>
+  );
+}
+
+export function CheckIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M5 12.5l4.5 4.5L19 7" />
+    </svg>
+  );
+}
+
+export function CloseIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
+export function ClockIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+export function AlertIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M12 3l10 18H2L12 3z" />
+      <path d="M12 10v5M12 18h.01" />
+    </svg>
+  );
+}
+
+export function LogoutIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
+      <path d="M10 8l-4 4 4 4M6 12h10" />
+    </svg>
+  );
+}
+
+export function SendIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M4 12l16-8-6 16-3-7-7-1z" />
+    </svg>
+  );
+}
+
+export function MoneyIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <rect x="2.5" y="6" width="19" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M6 9.5v5M18 9.5v5" />
+    </svg>
+  );
+}
+
+export function TrophyIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M8 4h8v5a4 4 0 0 1-8 0V4z" />
+      <path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4" />
+      <path d="M12 13v4M9 20h6M10 17h4" />
+    </svg>
+  );
+}
+
+export function TrendIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M3 17l6-6 4 4 8-8" />
+      <path d="M15 7h6v6" />
+    </svg>
+  );
+}
+
+export function BoxIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M3 7.5L12 3l9 4.5v9L12 21l-9-4.5v-9z" />
+      <path d="M3 7.5L12 12l9-4.5M12 12v9" />
+    </svg>
+  );
+}
+
+export function DownloadIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M12 4v11M7 10l5 5 5-5" />
+      <path d="M5 20h14" />
+    </svg>
+  );
+}

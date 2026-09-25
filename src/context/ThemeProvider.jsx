@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { ThemeContext } from './themeContext';
 
 const themes = {
   dark: {
@@ -27,7 +28,6 @@ const themes = {
   },
 };
 
-const ThemeContext = createContext(null);
 
 function getInitialMode() {
   try {
@@ -65,6 +65,3 @@ export function ThemeProvider({ children }) {
   );
 }
 
-export function useTheme() {
-  return useContext(ThemeContext);
-}

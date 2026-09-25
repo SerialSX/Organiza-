@@ -1,6 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-import ScreenshotPlaceholder from '../components/ScreenshotPlaceholder';
+import PrintDaTela from '../components/PrintDaTela';
+import printPedidos from '../assets/prints/pedidos.jpg';
+import printCozinha from '../assets/prints/cozinha.jpg';
+import printRelatorios from '../assets/prints/relatorios.jpg';
+import printDestaques from '../assets/prints/relatorio-destaques.jpg';
+import printFaturamento from '../assets/prints/relatorio-faturamento.jpg';
+import printReposicao from '../assets/prints/relatorio-reposicao.jpg';
 
 const passos = [
   {
@@ -9,7 +15,7 @@ const passos = [
     paragrafos: [
       'O pedido é lançado diretamente no sistema. Assim, a venda já fica registrada enquanto o atendimento acontece, sem precisar fazer uma anotação separada para alimentar o relatório depois.',
     ],
-    print: { label: 'Tela de lançamento de pedidos', fase: 'Fase 3' },
+    print: { label: 'Tela de lançamento de pedidos', fase: 'Fase 3', src: printPedidos },
   },
   {
     numero: '02',
@@ -17,7 +23,7 @@ const passos = [
     paragrafos: [
       'O pedido chega à tela da cozinha assim que é lançado. A equipe acompanha o que precisa ser preparado e o atendimento ganha mais clareza durante a operação.',
     ],
-    print: { label: 'Tela da cozinha em tempo real', fase: 'Fase 4' },
+    print: { label: 'Tela da cozinha em tempo real', fase: 'Fase 4', src: printCozinha },
   },
   {
     numero: '03',
@@ -27,7 +33,7 @@ const passos = [
       'A partir dos pedidos registrados, o Organiza+ mostra o que está acontecendo nas suas vendas. Você consegue identificar o produto mais vendido, o produto mais lucrativo, acompanhar o faturamento por período e receber aviso de reposição de estoque.',
       'Sem precisar parar o trabalho para fazer contas ou preencher planilhas.',
     ],
-    print: { label: 'Tela de relatórios', fase: 'Fase 5' },
+    print: { label: 'Tela de relatórios', fase: 'Fase 5', src: printRelatorios },
   },
 ];
 
@@ -36,19 +42,19 @@ const relatorios = [
     titulo: 'Mais vendido x mais lucrativo',
     texto:
       'Descubra qual produto sai mais e qual traz mais retorno. Vender mais nem sempre significa lucrar mais. O relatório coloca essas informações lado a lado.',
-    print: { label: 'Mais vendido x mais lucrativo', fase: 'Fase 5' },
+    print: { label: 'Mais vendido x mais lucrativo', fase: 'Fase 5', src: printDestaques },
   },
   {
     titulo: 'Faturamento por período',
     texto:
       'Acompanhe o faturamento de acordo com o período consultado. Assim, você consegue olhar para o movimento do negócio com base no que realmente foi registrado.',
-    print: { label: 'Faturamento por período', fase: 'Fase 5' },
+    print: { label: 'Faturamento por período', fase: 'Fase 5', src: printFaturamento },
   },
   {
     titulo: 'Aviso de reposição de estoque',
     texto:
       'Saiba quais itens precisam de atenção antes que faltem. O sistema ajuda você a acompanhar o estoque a partir da movimentação dos pedidos.',
-    print: { label: 'Aviso de reposição de estoque', fase: 'Fase 5' },
+    print: { label: 'Aviso de reposição de estoque', fase: 'Fase 5', src: printReposicao, encaixe: 'cover' },
   },
 ];
 
@@ -155,7 +161,8 @@ export default function Landing() {
                     ))}
                   </div>
                 </div>
-                <ScreenshotPlaceholder
+                <PrintDaTela
+                  src={passo.print.src}
                   label={passo.print.label}
                   fase={passo.print.fase}
                   className={inverte ? 'lg:order-1' : undefined}
@@ -177,7 +184,7 @@ export default function Landing() {
               key={item.titulo}
               className="bg-[var(--surface-card)] border border-[var(--border-subtle)] rounded-2xl p-6 flex flex-col gap-4"
             >
-              <ScreenshotPlaceholder label={item.print.label} fase={item.print.fase} />
+              <PrintDaTela src={item.print.src} label={item.print.label} fase={item.print.fase} encaixe={item.print.encaixe ?? 'contain'} />
               <h3 className="font-semibold text-lg">{item.titulo}</h3>
               <p className="text-[var(--text-secondary)] text-sm leading-relaxed">{item.texto}</p>
             </article>

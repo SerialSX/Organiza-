@@ -44,3 +44,15 @@ body {
 #root {
   min-height: 100svh;
 }
+
+:focus-visible {
+  outline: 3px solid var(--color-brand-orange);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

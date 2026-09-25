@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import AppNav from '../components/AppNav';
+import AppShell from '../components/ui/AppShell';
+import { useAuth } from '../context/useAuth';
+import { usePedidosAbertos } from '../hooks/usePedidosAbertos';
 import { ProductsIcon, OrdersIcon, KitchenIcon, ReportsIcon } from '../components/icons/AppIcons';
 
 const cards = [
@@ -26,7 +28,6 @@ const cards = [
     route: '/cozinha',
     icon: KitchenIcon,
     accent: 'var(--color-accent-cozinha)',
-    badge: '0 pendentes',
   },
   {
     key: 'relatorios',
@@ -40,21 +41,22 @@ const cards = [
 
 export default function Home() {
   const navigate = useNavigate();
+  const { perfil } = useAuth();
+  const { pedidos, carregando } = usePedidosAbertos();
+  const pendentes = pedidos.filter((p) => p.status !== 'pronto').length;
+  const badges = carregando ? {} : { cozinha: pendentes === 1 ? '1 pendente' : `${pendentes} pendentes` };
 
   return (
-    <div className="min-h-screen bg-[var(--surface)] pb-24 md:pb-0">
-      <AppNav />
+    <AppShell largura="max-w-4xl">
+      <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-1 break-words">
+        {perfil?.negocio_nome || 'Painel principal'}
+      </h1>
+      <p className="text-[var(--text-secondary)] text-sm mb-8">O que você quer fazer agora?</p>
 
-      <div className="max-w-4xl mx-auto px-6 py-10">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-1">
-          Painel principal
-        </h1>
-        <p className="text-[var(--text-secondary)] text-sm mb-8">
-          O que você quer fazer agora?
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {cards.map(({ key, label, description, route, icon: Icon, accent, badge }) => (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {cards.map(({ key, label, description, route, icon: Icon, accent }) => {
+          const badge = badges[key];
+          return (
             <button
               key={key}
               onClick={() => navigate(route)}
@@ -81,9 +83,9 @@ export default function Home() {
                 <span className="text-sm text-[var(--text-secondary)] mt-0.5">{description}</span>
               </span>
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
-    </div>
+    </AppShell>
   );
 }

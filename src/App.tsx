@@ -5,12 +5,17 @@ import ProductsScreen from './components/ProductsScreen'
 import OrderScreen from './components/OrderScreen'
 import KitchenScreen from './components/KitchenScreen'
 import ReportsScreen from './components/ReportsScreen'
+import PreviewApp from './PreviewApp'
 import { supabase } from './supabase'
 import type { Business, Product } from './types'
 
 type Screen = 'products' | 'order' | 'kitchen' | 'reports'
 
 export default function App() {
+  return import.meta.env.VITE_DEMO_MODE === 'true' ? <PreviewApp /> : <ConnectedApp />
+}
+
+function ConnectedApp() {
   const [session, setSession] = useState<Session | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [business, setBusiness] = useState<Business | null>(null)

@@ -9,6 +9,8 @@ MVP para gerir produtos, lançar comandas e acompanhar pedidos na cozinha em tem
 3. Rode `npm install` e `npm run dev`.
 4. Na tela de cadastro, informe o nome do negócio, e-mail e senha. Se a confirmação de e-mail estiver ativa no Supabase Auth, confirme o endereço antes de entrar.
 
+Para ver as telas sem configurar o Supabase, crie `.env.local` contendo apenas `VITE_DEMO_MODE=true` e rode `npm run dev`. Esse modo usa dados fictícios na memória e não grava pedidos reais.
+
 ## Testar o fluxo
 
 1. Cadastre produtos com preço e custo em **Produtos**.

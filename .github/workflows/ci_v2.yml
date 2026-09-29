@@ -1,0 +1,224 @@
+name: GitHub CI
+
+# Faz o merge automático de PRs aprovadas, de acordo com o nome da branch:
+#   feature/<nome> e bugfix/<nome> -> dev  (a branch é apagada depois do merge)
+#   release/X.Y.Z e hotfix/X.Y.Z   -> main (cria tag e release, sincroniza a dev e apaga a branch)
+#   qualquer outra branch          -> base da PR (a branch é apagada, exceto main e dev)
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  process-pr:
+    # Só aprovações de quem é dono ou colaborador do repositório disparam o merge.
+    # Como o repositório é público, qualquer conta do GitHub consegue aprovar uma PR.
+    if: >-
+      github.event.review.state == 'approved' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)
+    runs-on: ubuntu-latest
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      # O nome da branch é escolhido por quem a cria, por isso chega aos scripts
+      # como variável de ambiente, e não interpolado direto no código
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      BASE_REF: ${{ github.event.pull_request.base.ref }}
+
+    steps:
+      - name: Verificar tipo da branch
+        run: |
+          if [[ "$HEAD_REF" =~ ^feature/ ]]; then
+            TYPE=feature
+            EXPECTED_BASE=dev
+            echo "feature_name=${HEAD_REF#feature/}" >> "$GITHUB_ENV"
+          elif [[ "$HEAD_REF" =~ ^bugfix/ ]]; then
+            TYPE=bugfix
+            EXPECTED_BASE=dev
+            echo "bugfix_name=${HEAD_REF#bugfix/}" >> "$GITHUB_ENV"
+          elif [[ "$HEAD_REF" =~ ^release/ ]]; then
+            TYPE=release
+            EXPECTED_BASE=main
+            # Extrair a versão do nome da branch
+            VERSION="${HEAD_REF#release/}"
+            # Validar versão semântica
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Versão inválida: $VERSION. Use o formato X.Y.Z (ex: 1.0.0)"
+              exit 1
+            fi
+            echo "version=$VERSION" >> "$GITHUB_ENV"
+          elif [[ "$HEAD_REF" =~ ^hotfix/ ]]; then
+            TYPE=hotfix
+            EXPECTED_BASE=main
+            # Extrair a versão do nome da branch
+            VERSION="${HEAD_REF#hotfix/}"
+            # Validar versão semântica
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Versão inválida: $VERSION. Use o formato X.Y.Z (ex: 1.0.0)"
+              exit 1
+            fi
+            echo "version=$VERSION" >> "$GITHUB_ENV"
+          else
+            # Qualquer outra branch vai para a base escolhida na PR
+            TYPE=other
+            EXPECTED_BASE="$BASE_REF"
+          fi
+
+          # feature e bugfix entram na dev; release e hotfix entram na main
+          if [[ "$BASE_REF" != "$EXPECTED_BASE" ]]; then
+            echo "::error::PRs de $TYPE devem ter $EXPECTED_BASE como base, mas esta aponta para $BASE_REF."
+            exit 1
+          fi
+          echo "branch_type=$TYPE" >> "$GITHUB_ENV"
+
+      - name: Verificar se a PR pode ser mergeada
+        run: |
+          # O GitHub pode levar alguns segundos para calcular o estado da PR
+          for tentativa in 1 2 3 4 5 6; do
+            PR_INFO=$(gh pr view "$PR_NUMBER" --json state,mergeStateStatus --jq '.state + " " + .mergeStateStatus')
+            STATE="${PR_INFO% *}"
+            MERGE_STATE="${PR_INFO#* }"
+            if [[ "$STATE" != "OPEN" || "$MERGE_STATE" != "UNKNOWN" ]]; then
+              break
+            fi
+            sleep 5
+          done
+
+          if [[ "$STATE" != "OPEN" ]]; then
+            echo "::notice::A PR #$PR_NUMBER não está mais aberta (estado: $STATE). Nada a fazer."
+            exit 0
+          fi
+
+          case "$MERGE_STATE" in
+            CLEAN|HAS_HOOKS|UNSTABLE)
+              echo "Nenhum conflito encontrado."
+              echo "ready=true" >> "$GITHUB_ENV"
+              ;;
+            BLOCKED)
+              # Ex.: a main exige um número mínimo de aprovações antes do merge
+              echo "::notice::A PR ainda não cumpre as regras da branch $BASE_REF, como o número mínimo de aprovações. O merge sai na aprovação que completar as regras."
+              ;;
+            DIRTY)
+              echo "::error::Existem conflitos entre $HEAD_REF e $BASE_REF. Por favor, resolva-os antes de prosseguir."
+              exit 1
+              ;;
+            *)
+              echo "::error::A PR não pode ser mergeada agora (estado no GitHub: $MERGE_STATE)."
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout do repositório
+        if: env.ready == 'true'
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configurar Git
+        if: env.ready == 'true'
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+
+      - name: Processar feature
+        if: env.ready == 'true' && env.branch_type == 'feature'
+        run: |
+          echo "Processando feature: $feature_name"
+          # Fazer merge da PR para dev e apagar a branch
+          gh pr merge "$PR_NUMBER" \
+            --merge \
+            --delete-branch \
+            --subject "feat: merge $feature_name into dev" \
+            --body "Merge automático da feature $feature_name para dev"
+
+      - name: Processar bugfix
+        if: env.ready == 'true' && env.branch_type == 'bugfix'
+        run: |
+          echo "Processando bugfix: $bugfix_name"
+          # Fazer merge da PR para dev e apagar a branch
+          gh pr merge "$PR_NUMBER" \
+            --merge \
+            --delete-branch \
+            --subject "fix: merge $bugfix_name into dev" \
+            --body "Merge automático do bugfix $bugfix_name para dev"
+
+      - name: Processar outras branches
+        if: env.ready == 'true' && env.branch_type == 'other'
+        run: |
+          echo "Processando branch: $HEAD_REF"
+          if [[ "$HEAD_REF" == "main" || "$HEAD_REF" == "dev" ]]; then
+            # main e dev são permanentes: só faz o merge, sem apagar
+            gh pr merge "$PR_NUMBER" --merge
+          else
+            # Fazer merge da PR na base e apagar a branch
+            gh pr merge "$PR_NUMBER" --merge --delete-branch
+          fi
+
+      - name: Processar release
+        if: env.ready == 'true' && env.branch_type == 'release'
+        run: |
+          echo "Processando release: v$version"
+
+          # Fazer merge da PR para main
+          gh pr merge "$PR_NUMBER" \
+            --merge \
+            --subject "release: v$version" \
+            --body "Release v$version"
+
+          echo "Criando tag e release..."
+          # A tag aponta para o commit de merge que acabou de entrar na main
+          git fetch origin main dev
+          MERGE_SHA=$(gh pr view "$PR_NUMBER" --json mergeCommit --jq '.mergeCommit.oid')
+          git tag -a "v$version" "$MERGE_SHA" -m "Release v$version"
+          git push origin "v$version"
+
+          # Criar a release
+          gh release create "v$version" \
+            --title "Release v$version" \
+            --notes "Release v$version"
+
+          echo "Sincronizando main com dev..."
+          git checkout dev
+          git merge origin/main --no-ff -m "chore: sync main into dev after release v$version"
+          git push origin dev
+
+          echo "Limpando branch de release..."
+          git push origin --delete "$HEAD_REF"
+
+      - name: Processar hotfix
+        if: env.ready == 'true' && env.branch_type == 'hotfix'
+        run: |
+          echo "Processando hotfix: v$version"
+
+          # Fazer merge da PR para main
+          gh pr merge "$PR_NUMBER" \
+            --merge \
+            --subject "hotfix: v$version" \
+            --body "Hotfix v$version"
+
+          echo "Criando tag e release..."
+          # A tag aponta para o commit de merge que acabou de entrar na main
+          git fetch origin main dev
+          MERGE_SHA=$(gh pr view "$PR_NUMBER" --json mergeCommit --jq '.mergeCommit.oid')
+          git tag -a "v$version" "$MERGE_SHA" -m "Hotfix v$version"
+          git push origin "v$version"
+
+          # Criar a release
+          gh release create "v$version" \
+            --title "Hotfix v$version" \
+            --notes "Hotfix v$version"
+
+          echo "Sincronizando main com dev..."
+          git checkout dev
+          git merge origin/main --no-ff -m "chore: sync main into dev after hotfix v$version"
+          git push origin dev
+
+          echo "Limpando branch de hotfix..."
+          git push origin --delete "$HEAD_REF"

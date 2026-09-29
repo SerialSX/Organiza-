@@ -1,0 +1,32 @@
+ORGANIZA+ - STACK UTILIZADA
+
+Frontend
+- React 19: componentes e interfaces das telas.
+- JavaScript (JSX): linguagem do código da aplicação.
+- Vite 8: servidor de desenvolvimento e build de produção.
+- React Router 7: navegação entre as telas (SPA).
+- Tailwind CSS 4: estilos utilitários da interface, com tema claro e escuro.
+
+Backend e dados
+- Supabase: plataforma de backend do projeto.
+- PostgreSQL: banco relacional para negócios, usuários, produtos, pedidos e itens.
+- Supabase Auth: cadastro e login com e-mail e senha.
+- Supabase Realtime: atualização da cozinha quando pedidos e produtos mudam.
+- Row Level Security (RLS): isolamento dos dados de cada negócio.
+- SQL e PL/pgSQL: cadastro do negócio, criação de pedidos e mudanças de status.
+
+Integração e ferramentas
+- @supabase/supabase-js 2: comunicação do frontend com Auth, banco e Realtime.
+- Vitest: testes automatizados.
+- ESLint: padronização do código.
+- npm: instalação de dependências e execução dos scripts.
+- Git e GitHub: versionamento, gitflow e revisão pelo pull request.
+- GitHub Actions: merge automático das PRs aprovadas conforme o tipo de branch.
+- Vercel: hospedagem do frontend.
+
+Arquivos principais
+- package.json: dependências e scripts.
+- src/lib/supabaseClient.js: configuração do cliente Supabase.
+- src/services/: único ponto de acesso aos dados (Supabase ou modo demonstração).
+- src/services/demoStore.js: demonstração local com dados fictícios, sem backend.
+- supabase/schema.sql: tabelas, políticas RLS e funções do banco.

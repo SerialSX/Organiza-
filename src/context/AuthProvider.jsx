@@ -86,7 +86,7 @@ export function AuthProvider({ children }) {
   const cadastrar = useCallback(async ({ nome, negocio, email, senha }) => {
     if (!isSupabaseConfigured) return { erro: null, precisaConfirmar: false };
     // O negócio e o perfil admin são criados por um trigger no banco a partir
-    // destes metadados (ver supabase/migrations/).
+    // destes metadados (ver supabase/schema.sql).
     const { data, error } = await supabase.auth.signUp({
       email,
       password: senha,

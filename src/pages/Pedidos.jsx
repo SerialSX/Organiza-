@@ -138,11 +138,7 @@ export default function Pedidos() {
       const pedido = await criarPedido({
         negocioId: perfil.negocio_id,
         usuarioId: perfil.id,
-        itens: itens.map(({ produto, quantidade }) => ({
-          produto_id: produto.id,
-          quantidade,
-          preco_unitario: produto.preco,
-        })),
+        itens: itens.map(({ produto, quantidade }) => ({ produto_id: produto.id, quantidade })),
       });
       setCarrinho({});
       setEnviado(pedido);

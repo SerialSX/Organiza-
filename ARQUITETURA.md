@@ -37,6 +37,7 @@ produtos
 - preco (numeric)
 - custo (numeric, opcional, usado para calcular margem)
 - disponivel (boolean, default true)   <- controla o "esgotado" em tempo real
+- arquivado (boolean, default false)   <- "excluir" arquiva, preservando o histórico
 - criado_em (timestamp)
 
 pedidos
@@ -52,9 +53,10 @@ itens_pedido
 - produto_id (uuid, fk -> produtos.id)
 - quantidade (int)
 - preco_unitario (numeric)   <- copiado do produto no momento do pedido
+- custo_unitario (numeric, opcional)   <- idem, para o lucro de dias antigos não mudar
 ```
 
-Row Level Security: toda tabela filtra por `negocio_id` do usuário autenticado (via a função `negocio_do_usuario_atual()`), garantindo que um negócio nunca veja dados de outro. Script completo em `supabase/schema.sql`.
+Row Level Security: toda tabela filtra por `negocio_id` do usuário autenticado (via a função `negocio_do_usuario_atual()`), garantindo que um negócio nunca veja dados de outro. Pedidos e itens não aceitam escrita direta do cliente: são gravados pelas funções `criar_pedido` (transação única, preço e custo lidos do banco, recusa produto esgotado) e `atualizar_status_pedido` (só permite avançar o status). Script completo em `supabase/schema.sql`.
 
 ## Estrutura de pastas (React + Vite)
 
@@ -97,8 +99,7 @@ Row Level Security: toda tabela filtra por `negocio_id` do usuário autenticado 
   main.jsx
   index.css             (entrada do Tailwind + tokens de marca e de tema)
 /supabase
-  schema.sql            (tabelas + Row Level Security)
-  /migrations           (mudanças propostas, revisar antes de rodar)
+  schema.sql            (tabelas, Row Level Security, funções, trigger de cadastro e Realtime)
 /docs
   CONTEXTO-COMPLETO.md  (histórico e decisões)
   /backend/PENDENCIAS.md
@@ -119,7 +120,7 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, `isSupabaseConfigured` é fals
 
 ### Fase 1. Autenticação e cadastro do negócio — front-end pronto, falta o back-end
 - `Login.jsx` e `Cadastro.jsx` conectados ao Supabase Auth via `AuthProvider` (login real, cadastro com negócio + admin, sessão persistida, erros em português, com e sem confirmação de e-mail).
-- Criação do negócio + perfil admin no cadastro: proposta via trigger em `auth.users` (em vez de policies de INSERT abertas ao cliente), em `supabase/migrations/`.
+- Criação do negócio + perfil admin no cadastro: via trigger em `auth.users` (em vez de policies de INSERT abertas ao cliente), em `supabase/schema.sql`.
 - Após login, redirecionar para a área autenticada; rotas internas protegidas por `ProtectedRoute`.
 
 ### Fase 2. Cadastro de produtos — front-end pronto
@@ -131,7 +132,7 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, `isSupabaseConfigured` é fals
 - O pedido é salvo com status "pendente".
 - Produtos marcados como indisponíveis não podem ser selecionados.
 
-### Fase 4. Tela da cozinha em tempo real — front-end pronto (Realtime depende da migration)
+### Fase 4. Tela da cozinha em tempo real — front-end pronto
 - Lista de pedidos em tempo real (usando Supabase Realtime) em `Cozinha.jsx`, ordenada do mais antigo para o mais novo.
 - Indicação visual de pedidos "atrasados" (tempo desde a criação acima de um limite configurável, por exemplo 15 minutos).
 - Botão para avançar o status do pedido (pendente → em preparo → pronto).

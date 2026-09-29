@@ -3,7 +3,12 @@ import { STATUS_ABERTOS } from '../lib/pedidoStatus';
 import { lerDemo, salvarDemo, assinarDemo, novoId } from './demoStore';
 
 const CAMPOS =
-  'id, status, criado_em, itens_pedido ( id, produto_id, quantidade, preco_unitario, produtos ( nome ) )';
+  'id, status, criado_em, itens_pedido ( id, produto_id, quantidade, preco_unitario, custo_unitario, produtos ( nome ) )';
+
+// Erros lançados pelas funções do banco (código P0001) já vêm escritos para o usuário.
+function mensagemDoBanco(error, padrao) {
+  return error.code === 'P0001' ? error.message : padrao;
+}
 
 function normalizarSupabase(p) {
   return {
@@ -16,6 +21,7 @@ function normalizarSupabase(p) {
       nome: i.produtos?.nome ?? 'Produto removido',
       quantidade: i.quantidade,
       preco_unitario: Number(i.preco_unitario),
+      custo_unitario: i.custo_unitario === null ? null : Number(i.custo_unitario),
     })),
   };
 }
@@ -35,14 +41,15 @@ function montarDemo(db, filtro) {
     }));
 }
 
-// itens: [{ produto_id, quantidade, preco_unitario }]
+// itens: [{ produto_id, quantidade }]. Preço e custo vêm do cadastro do
+// produto, nunca de quem lança o pedido.
 export async function criarPedido({ negocioId, usuarioId, itens }) {
   if (!itens.length) throw new Error('Adicione pelo menos um produto ao pedido.');
 
   if (!isSupabaseConfigured) {
     const db = lerDemo();
-    const indisponivel = itens.find((i) => !db.produtos.find((p) => p.id === i.produto_id)?.disponivel);
-    if (indisponivel) throw new Error('Um dos produtos esgotou. Revise o pedido.');
+    const produtos = itens.map((i) => db.produtos.find((p) => p.id === i.produto_id));
+    if (produtos.some((p) => !p?.disponivel || p.arquivado)) throw new Error('Um dos produtos esgotou. Revise o pedido.');
 
     const pedido = {
       id: novoId(),
@@ -51,28 +58,23 @@ export async function criarPedido({ negocioId, usuarioId, itens }) {
       criado_em: new Date().toISOString(),
       criado_por: usuarioId,
     };
-    const novosItens = itens.map((i) => ({ ...i, id: novoId(), pedido_id: pedido.id }));
+    const novosItens = itens.map((i, n) => ({
+      id: novoId(),
+      pedido_id: pedido.id,
+      produto_id: i.produto_id,
+      quantidade: i.quantidade,
+      preco_unitario: produtos[n].preco,
+      custo_unitario: produtos[n].custo ?? null,
+    }));
     salvarDemo({ ...db, pedidos: [...db.pedidos, pedido], itens_pedido: [...db.itens_pedido, ...novosItens] });
     return pedido;
   }
 
-  // TODO(backend): trocar por uma função RPC para gravar pedido e itens numa
-  // transação só. Ver docs/backend/PENDENCIAS.md.
-  const { data: pedido, error } = await supabase
-    .from('pedidos')
-    .insert({ negocio_id: negocioId, criado_por: usuarioId })
-    .select('id, status, criado_em')
-    .single();
-  if (error) throw new Error('Não foi possível enviar o pedido.');
-
-  const { error: erroItens } = await supabase
-    .from('itens_pedido')
-    .insert(itens.map((i) => ({ ...i, pedido_id: pedido.id })));
-  if (erroItens) {
-    await supabase.from('pedidos').delete().eq('id', pedido.id);
-    throw new Error('Não foi possível enviar o pedido.');
-  }
-  return pedido;
+  const { data, error } = await supabase.rpc('criar_pedido', {
+    p_itens: itens.map(({ produto_id, quantidade }) => ({ produto_id, quantidade })),
+  });
+  if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível enviar o pedido.'));
+  return data;
 }
 
 export async function listarPedidosAbertos() {
@@ -112,8 +114,8 @@ export async function atualizarStatusPedido(id, status) {
     return;
   }
 
-  const { error } = await supabase.from('pedidos').update({ status }).eq('id', id);
-  if (error) throw new Error('Não foi possível atualizar o pedido.');
+  const { error } = await supabase.rpc('atualizar_status_pedido', { p_pedido_id: id, p_status: status });
+  if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível atualizar o pedido.'));
 }
 
 export function assinarPedidos(negocioId, callback) {

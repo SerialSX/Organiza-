@@ -25,7 +25,7 @@ Para usar o banco de verdade:
 cp .env.example .env.local   # preencha com a URL e a anon key do projeto Supabase
 ```
 
-No SQL Editor do Supabase, rode [`supabase/schema.sql`](./supabase/schema.sql) e depois os arquivos de [`supabase/migrations/`](./supabase/migrations/). O que ainda falta no back-end está em [`docs/backend/PENDENCIAS.md`](./docs/backend/PENDENCIAS.md).
+No SQL Editor do Supabase, rode o arquivo [`supabase/schema.sql`](./supabase/schema.sql) inteiro. O que ainda falta no back-end está em [`docs/backend/PENDENCIAS.md`](./docs/backend/PENDENCIAS.md).
 
 Outros comandos úteis:
 

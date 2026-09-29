@@ -16,9 +16,9 @@ function porNome(a, b) {
 }
 
 export async function listarProdutos() {
-  if (!isSupabaseConfigured) return lerDemo().produtos.map(normalizar).sort(porNome);
+  if (!isSupabaseConfigured) return lerDemo().produtos.filter((p) => !p.arquivado).map(normalizar).sort(porNome);
 
-  const { data, error } = await supabase.from('produtos').select(CAMPOS).order('nome');
+  const { data, error } = await supabase.from('produtos').select(CAMPOS).eq('arquivado', false).order('nome');
   if (error) throw new Error('Não foi possível carregar os produtos.');
   return data.map(normalizar);
 }
@@ -53,20 +53,16 @@ export async function atualizarProduto(id, alteracoes) {
   if (error) throw new Error('Não foi possível atualizar o produto.');
 }
 
-const MSG_EM_USO =
-  'Este produto já aparece em pedidos e não pode ser excluído. Marque como esgotado para tirar do cardápio.';
-
+// Arquiva em vez de apagar: o produto sai do cardápio, mas os pedidos antigos
+// e os relatórios continuam mostrando o nome dele.
 export async function excluirProduto(id) {
   if (!isSupabaseConfigured) {
     const db = lerDemo();
-    if (db.itens_pedido.some((i) => i.produto_id === id)) throw new Error(MSG_EM_USO);
-    salvarDemo({ ...db, produtos: db.produtos.filter((p) => p.id !== id) });
+    salvarDemo({ ...db, produtos: db.produtos.map((p) => (p.id === id ? { ...p, arquivado: true } : p)) });
     return;
   }
 
-  const { error } = await supabase.from('produtos').delete().eq('id', id);
-  // 23503 = violação de chave estrangeira (produto referenciado em itens_pedido)
-  if (error?.code === '23503') throw new Error(MSG_EM_USO);
+  const { error } = await supabase.from('produtos').update({ arquivado: true }).eq('id', id);
   if (error) throw new Error('Não foi possível excluir o produto.');
 }
 

@@ -8,7 +8,9 @@ export function calcularRelatorio(pedidos, produtos) {
   for (const pedido of pedidos) {
     for (const item of pedido.itens) {
       const receita = item.quantidade * item.preco_unitario;
-      const custo = custos[item.produto_id];
+      // custo_unitario é o custo gravado no pedido. Itens sem ele (dados antigos
+      // do modo demonstração) usam o custo atual do produto.
+      const custo = item.custo_unitario !== undefined ? item.custo_unitario : custos[item.produto_id];
       const lucro = custo === null || custo === undefined ? null : item.quantidade * (item.preco_unitario - custo);
 
       faturamento += receita;

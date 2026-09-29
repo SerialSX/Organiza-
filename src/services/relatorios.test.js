@@ -59,6 +59,17 @@ describe('calcularRelatorio', () => {
     expect(r.lucroEstimado).toBe(1);
   });
 
+  it('usa o custo gravado no pedido, não o custo atual do produto', () => {
+    const comCusto = pedido('2026-09-24T12:00:00', [['x', 1, 18.5]]);
+    comCusto.itens[0].custo_unitario = 5;
+    const semCusto = pedido('2026-09-24T13:00:00', [['b', 1, 15]]);
+    semCusto.itens[0].custo_unitario = null;
+
+    const r = calcularRelatorio([comCusto, semCusto], produtos);
+    expect(r.lucroEstimado).toBe(13.5);
+    expect(r.produtosSemCusto).toBe(1);
+  });
+
   it('retorna zeros sem pedidos', () => {
     const r = calcularRelatorio([], produtos);
     expect(r).toMatchObject({ faturamento: 0, totalPedidos: 0, ticketMedio: 0, maisVendido: null, maisLucrativo: null });

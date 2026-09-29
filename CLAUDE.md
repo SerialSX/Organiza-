@@ -14,7 +14,7 @@ Sistema web responsivo (TCC/projeto de extensão, ADS Unifor) que organiza o flu
 - Escopo do TCC: **somente o fluxo pedido → cozinha** (produtos, pedidos, cozinha em tempo real, relatórios). A antiga visão de "4 pilares" (gestão, saúde, educação, marketing) está fora.
 - Web responsivo, sem app nativo e sem APK. Gratuito.
 - Prazo curto: o sistema precisa ir ao ar com usuários reais e gerar dados de uso para o relatório final. Construir em fases pequenas e testáveis.
-- Estado (24/09): o **front-end das Fases 1 a 5 está pronto** e roda em modo demonstração. Falta o back-end real (Supabase criado, `schema.sql` + migration proposta rodados, variáveis na Vercel). Ver `docs/backend/PENDENCIAS.md`.
+- Estado (24/09): o **front-end das Fases 1 a 5 está pronto** e roda em modo demonstração. O back-end está completo em `supabase/schema.sql` (unifica o front da `dev` com a lógica de banco do MVP da `main`); falta criar o projeto Supabase, rodar o schema e configurar as variáveis na Vercel. Ver `docs/backend/PENDENCIAS.md`.
 - Implementar apenas o que foi pedido. Quando o usuário passar uma copy, usar o texto exato, sem resumir nem "melhorar"; se não couber, avisar.
 - O usuário é responsável por front-end e arquitetura; back-end (Lauan) e DevOps (Antonio) são de outros integrantes. No back-end, propor e documentar em vez de mudar direto.
 
@@ -48,4 +48,4 @@ React 19 + Vite 8 + React Router 7 (SPA, JavaScript/JSX), Tailwind CSS 4 (`@tail
 - Código limpo, comentário só onde o motivo não for óbvio. Nomes em português, como no resto do projeto.
 - Validar com `npm run build`, `npm run lint` (sem erros desde 24/09) e `npm test`.
 - Dev server: `npm run dev` (normalmente em `http://localhost:5174`). Sem `.env.local` ele abre em modo demonstração.
-- Variáveis: `.env.local` com `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (modelo em `.env.example`). Schema em `supabase/schema.sql`; mudanças propostas em `supabase/migrations/`.
+- Variáveis: `.env.local` com `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (modelo em `.env.example`). Schema completo em `supabase/schema.sql`. Pedidos só são gravados pelas funções `criar_pedido` e `atualizar_status_pedido`; "excluir" produto arquiva (`arquivado`).

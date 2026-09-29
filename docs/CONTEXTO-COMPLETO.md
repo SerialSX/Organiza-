@@ -107,7 +107,7 @@ src/
   assets/       logo.svg, logo-light.svg
   App.jsx  main.jsx  index.css
 supabase/schema.sql
-supabase/migrations/   SQL proposto, ainda não rodado
+supabase/schema.sql    schema completo (ainda não rodado em banco)
 docs/backend/PENDENCIAS.md
 public/icon.png
 vercel.json
@@ -173,10 +173,10 @@ O público é de empreendedores com pouca familiaridade com tecnologia e pouca p
 Conferir antes de agir; o estado pode ter mudado depois da última conversa.
 
 1. **Commits da sessão de 24/09**: tudo está sem commit na branch `feature/frontend-telas-do-fluxo`. O usuário revisa e commita (sugestão de commits em partes no fim da sessão).
-2. **Supabase (Lauan/Antonio)**: criar o projeto, rodar `schema.sql`, revisar e rodar a migration proposta, configurar as variáveis no `.env.local` e na Vercel e ajustar a Site URL do Auth. Passo a passo em `docs/backend/PENDENCIAS.md`.
+2. **Supabase (Lauan/Antonio)**: criar o projeto, rodar `schema.sql`, configurar as variáveis no `.env.local` e na Vercel e ajustar a Site URL do Auth. Passo a passo em `docs/backend/PENDENCIAS.md`.
 3. **Deploy na Vercel**: ainda sem confirmação de que foi feito.
 4. **Testar com Supabase real**: o caminho Supabase dos services foi escrito contra o `schema.sql`, mas só o modo demonstração foi testado de ponta a ponta.
-5. **Trocar `criarPedido` pela RPC `criar_pedido`** quando ela existir no banco (marcado com `TODO(backend)`).
+5. ~~Trocar `criarPedido` pela RPC `criar_pedido`~~ feito no merge da `main` na `dev` (29/09).
 6. **Prints da landing**: os 6 placeholders viraram prints reais das telas (`src/assets/prints/`, via `PrintDaTela`), tirados com Playwright no modo demonstração com um cardápio de exemplo. Quando houver um negócio real usando, vale refazer com dados dele (com autorização). Sem `src`, `PrintDaTela` volta a mostrar o placeholder.
 7. **Fase 6 (opcional)**: já tem manifest PWA (sem service worker, então não funciona offline) e exportação CSV. Falta: service worker/offline, PDF, polimento.
 8. **Campos que o front mostraria fácil se o banco tivesse**: número sequencial do pedido por dia, cliente/mesa, observação, `pronto_em` (tempo de preparo para as métricas do TCC).

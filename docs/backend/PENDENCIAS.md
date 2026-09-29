@@ -6,24 +6,31 @@ Toda a comunicação com o banco está em `src/services/` e `src/context/AuthPro
 
 ## Para colocar no ar (obrigatório)
 
-1. **Criar o projeto Supabase** (plano free) e rodar `supabase/schema.sql` no SQL Editor.
-2. **Revisar e rodar** `supabase/migrations/20260924_proposta_fase1_cadastro_realtime_pedido.sql`. Ele faz três coisas:
-   - cria um trigger que monta o negócio e o perfil admin a partir do cadastro (`nome`, `nome_negocio` em `raw_user_meta_data`). Sem ele, quem se cadastra fica logado, mas cai na mensagem "Sua conta ainda não está ligada a um negócio";
-   - publica `produtos`, `pedidos` e `itens_pedido` no Realtime. Sem isso a Cozinha só atualiza ao recarregar a página;
-   - cria a função `criar_pedido` (ver item 5) e índices.
+1. **Criar o projeto Supabase** (plano free) e rodar `supabase/schema.sql` inteiro no SQL Editor. Ele já traz:
+   - tabelas, Row Level Security e permissões (pedidos e itens não aceitam escrita direta do cliente);
+   - o trigger que monta o negócio e o perfil admin a partir do cadastro (`nome`, `nome_negocio` em `raw_user_meta_data`). Sem ele, quem se cadastra cai na mensagem "Sua conta ainda não está ligada a um negócio";
+   - as funções `criar_pedido` e `atualizar_status_pedido`;
+   - a publicação de `produtos`, `pedidos` e `itens_pedido` no Realtime. Sem isso a Cozinha só atualiza ao recarregar a página.
+2. Não rodar `docs/backend/referencia-mvp-main.sql`: é o schema do MVP antigo da `main`, guardado só como referência.
 3. **Variáveis de ambiente**: `.env.local` (cada dev) e Environment Variables na Vercel, com a URL e a anon key (Project Settings → API).
 4. **Auth → URL Configuration**: colocar o domínio da Vercel em Site URL e Redirect URLs, senão o link de confirmação de e-mail aponta para `localhost`.
 5. **Confirmação de e-mail**: o front funciona com ela ligada ou desligada. Ligada, o cadastro mostra "Falta só confirmar"; desligada, entra direto no painel. Decidir com a equipe. Para os testes com os empreendedores, desligar reduz atrito.
 6. **Vercel**: o `vercel.json` na raiz já redireciona todas as rotas para `index.html`, para abrir `/cozinha` direto funcionar. Build: `npm run build`, saída `dist`.
 
+## Já resolvido (merge da `main` na `dev`, 29/09)
+
+A lógica de banco do MVP da `main` foi portada para o schema da `dev`:
+
+- **Pedido atômico**: `criar_pedido` grava pedido e itens numa transação, lê preço e custo do banco e recusa produto esgotado ou arquivado. O front só manda `produto_id` e `quantidade`.
+- **Status validado**: `atualizar_status_pedido` só deixa avançar (pendente → em_preparo → pronto → entregue).
+- **Excluir produto**: arquiva (`arquivado = true`) em vez de apagar, então pedidos antigos continuam com o nome do produto.
+- **Custo histórico**: `itens_pedido.custo_unitario` guarda o custo da hora do pedido, e o relatório usa esse valor.
+
 ## Melhorias recomendadas
 
 Por ordem de impacto:
 
-- **Pedido atômico (`criar_pedido`)**: hoje `criarPedido` em `src/services/pedidos.js` faz dois inserts (pedido, depois itens) e manda o `preco_unitario` do cliente. Se o segundo falhar, o front apaga o pedido, mas não é transação. A função SQL proposta resolve e ainda pega o preço do banco. Para usar, trocar o bloco marcado com `TODO(backend)` por `supabase.rpc('criar_pedido', { itens })`.
 - **Identificar o pedido**: hoje a equipe chama o pedido pelo código curto `#A3F9` (4 primeiros caracteres do uuid). Seria melhor ter um número sequencial por dia (`numero int`) e um campo opcional `cliente text` (nome ou mesa). Também falta `observacao text` ("sem cebola"). O front mostra isso fácil quando a coluna existir.
-- **Excluir produto já vendido**: a FK de `itens_pedido.produto_id` impede a exclusão (o front mostra "marque como esgotado"). Se a equipe quiser remover do cardápio de vez, criar `ativo boolean default true` e filtrar por ele, sem apagar a linha.
-- **Custo histórico**: o relatório calcula o lucro com o custo **atual** do produto. Se o custo mudar, o lucro de dias antigos muda junto. Para congelar, adicionar `custo_unitario` em `itens_pedido`, gravado na hora do pedido, igual ao preço.
 - **Papéis (`atendente`, `cozinha`)**: o schema prevê, mas ainda não há como convidar funcionários nem policies por papel (por exemplo, atendente não edita produtos). Hoje todo mundo é `admin` do próprio negócio.
 - **Relatórios no banco**: hoje o cálculo é feito no navegador (`src/services/relatorios.js`), o que basta para o volume de um pequeno negócio. Se ficar pesado, virar uma view ou função SQL.
 

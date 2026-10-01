@@ -17,6 +17,7 @@ import { useProdutos } from '../hooks/useProdutos';
 import { listarPedidosDoPeriodo } from '../services/pedidos';
 import { calcularRelatorio, faturamentoPorDia, intervaloDoPeriodo, rankingParaCsv } from '../services/relatorios';
 import { formatarMoeda } from '../lib/formatadores';
+import { rotuloDoMotivo } from '../lib/pedidoStatus';
 
 const ACCENT = 'var(--color-accent-relatorios)';
 
@@ -212,7 +213,7 @@ export default function Relatorios() {
 
       {carregando ? (
         <Carregando texto="Calculando..." />
-      ) : relatorio.totalPedidos === 0 ? (
+      ) : relatorio.totalPedidos + relatorio.totalCancelados === 0 ? (
         <EstadoVazio
           icon={ReportsIcon}
           accent={ACCENT}
@@ -228,6 +229,13 @@ export default function Relatorios() {
               cor="var(--color-accent-pedidos)"
               rotulo="Pedidos"
               valor={relatorio.totalPedidos}
+              detalhe={
+                relatorio.totalCancelados
+                  ? `Fora da conta: ${relatorio.totalCancelados} cancelado(s). ${Object.entries(relatorio.canceladosPorMotivo)
+                      .map(([motivo, n]) => `${rotuloDoMotivo(motivo)}: ${n}`)
+                      .join(', ')}`
+                  : null
+              }
             />
             <Indicador
               icon={TrendIcon}
@@ -254,7 +262,7 @@ export default function Relatorios() {
               cor="var(--color-brand-orange)"
               titulo="Mais vendido"
               produto={relatorio.maisVendido}
-              valor={relatorio.maisVendido && `${relatorio.maisVendido.quantidade} unidades`}
+              valor={relatorio.maisVendido && `${relatorio.maisVendido.quantidade} ${relatorio.maisVendido.quantidade === 1 ? 'unidade' : 'unidades'}`}
             />
             <Destaque
               icon={MoneyIcon}

@@ -39,6 +39,7 @@ export function AuthProvider({ children }) {
   const [sessao, setSessao] = useState(null);
   const [perfil, setPerfil] = useState(isSupabaseConfigured ? null : PERFIL_DEMO);
   const [carregando, setCarregando] = useState(isSupabaseConfigured);
+  const [semConexao, setSemConexao] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return undefined;
@@ -60,6 +61,7 @@ export function AuthProvider({ children }) {
       // Numa falha momentânea (ex.: renovação do token com internet ruim),
       // mantém o perfil que já estava carregado.
       if (!falhou) setPerfil(novoPerfil);
+      setSemConexao(falhou);
       setCarregando(false);
     }
 
@@ -103,13 +105,14 @@ export function AuthProvider({ children }) {
     () => ({
       modoDemo: !isSupabaseConfigured,
       carregando,
+      semConexao,
       autenticado: isSupabaseConfigured ? Boolean(sessao) : true,
       perfil,
       entrar,
       cadastrar,
       sair,
     }),
-    [carregando, sessao, perfil, entrar, cadastrar, sair],
+    [carregando, semConexao, sessao, perfil, entrar, cadastrar, sair],
   );
 
   return <AuthContext.Provider value={valor}>{children}</AuthContext.Provider>;

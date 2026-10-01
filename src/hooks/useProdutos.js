@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/useAuth';
+import { useRecarregarAoVoltar } from './useRecarregarAoVoltar';
 import { listarProdutos, assinarProdutos } from '../services/produtos';
 
 export function useProdutos() {
@@ -26,6 +27,8 @@ export function useProdutos() {
     recarregar();
     return assinarProdutos(negocioId, recarregar);
   }, [negocioId, recarregar]);
+
+  useRecarregarAoVoltar(recarregar);
 
   return { produtos, carregando, erro, recarregar };
 }

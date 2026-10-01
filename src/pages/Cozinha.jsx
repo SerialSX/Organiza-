@@ -4,17 +4,19 @@ import PageHeader from '../components/ui/PageHeader';
 import Aviso from '../components/ui/Aviso';
 import Carregando from '../components/ui/Carregando';
 import EstadoVazio from '../components/ui/EstadoVazio';
-import { KitchenIcon, ClockIcon, AlertIcon, BoxIcon } from '../components/icons/AppIcons';
+import { KitchenIcon, ClockIcon, AlertIcon, BoxIcon, CheckIcon, CloseIcon } from '../components/icons/AppIcons';
 import { usePedidosAbertos } from '../hooks/usePedidosAbertos';
 import { useProdutos } from '../hooks/useProdutos';
 import { useAgora } from '../hooks/useAgora';
 import { useTelaAcesa } from '../hooks/useTelaAcesa';
-import { atualizarStatusPedido } from '../services/pedidos';
+import { atualizarStatusPedido, marcarItemFaltou } from '../services/pedidos';
 import { atualizarProduto } from '../services/produtos';
-import { codigoPedido, formatarEspera, formatarHora, minutosDesde } from '../lib/formatadores';
-import { STATUS, LIMITE_ATRASO_MINUTOS } from '../lib/pedidoStatus';
+import { formatarEspera, formatarHora, minutosDesde, numeroDoPedido } from '../lib/formatadores';
+import { DESFAZER_PRONTO_SEGUNDOS, LIMITE_ATRASO_MINUTOS, rotuloDoMotivo } from '../lib/pedidoStatus';
+import { separarPedidos } from '../lib/fila';
 
 const ACCENT = 'var(--color-accent-cozinha)';
+const VERDE = 'var(--color-accent-relatorios)';
 
 function tocarAviso() {
   try {
@@ -33,32 +35,68 @@ function tocarAviso() {
   }
 }
 
-function CartaoPedido({ pedido, agora, onAvancar }) {
-  const [salvando, setSalvando] = useState(false);
-  const info = STATUS[pedido.status];
-  const minutos = minutosDesde(pedido.criado_em, agora);
-  const atrasado = pedido.status !== 'pronto' && minutos >= LIMITE_ATRASO_MINUTOS;
-  const corBorda = atrasado ? ACCENT : info.cor;
+function ItemDaFila({ item, onFaltou }) {
+  return (
+    <li className="flex items-start gap-3 text-lg">
+      <span
+        className="font-extrabold min-w-10 text-[var(--text-primary)]"
+        style={{ textDecoration: item.faltou ? 'line-through' : 'none' }}
+      >
+        {item.quantidade}×
+      </span>
+      <span className="flex-1 min-w-0">
+        <span
+          className="block font-medium text-[var(--text-primary)] break-words"
+          style={{ textDecoration: item.faltou ? 'line-through' : 'none' }}
+        >
+          {item.nome}
+        </span>
+        {item.observacao && (
+          <span className="mt-1 inline-block rounded-r-lg border-l-4 border-[var(--color-brand-orange)] px-2.5 py-1 text-base font-bold break-words bg-[color-mix(in_srgb,var(--color-brand-orange)_18%,transparent)] text-[var(--text-primary)]">
+            {item.observacao}
+          </span>
+        )}
+      </span>
+      <button
+        type="button"
+        onClick={() => onFaltou(item)}
+        aria-pressed={item.faltou}
+        className="shrink-0 min-h-10 rounded-lg px-3 py-2 text-sm font-bold border"
+        style={
+          item.faltou
+            ? { backgroundColor: ACCENT, borderColor: ACCENT, color: '#FFFFFF' }
+            : { borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }
+        }
+        title={item.faltou ? 'Toque para desfazer o aviso' : 'Avisar o atendente que não tem como fazer'}
+      >
+        Faltou
+      </button>
+    </li>
+  );
+}
 
-  async function avancar() {
+function CartaoFila({ pedido, agora, onPronto, onFaltou }) {
+  const [salvando, setSalvando] = useState(false);
+  const minutos = minutosDesde(pedido.criado_em, agora);
+  const atrasado = minutos >= LIMITE_ATRASO_MINUTOS;
+  const alterado = Boolean(pedido.alterado_em);
+  const borda = atrasado ? ACCENT : alterado ? 'var(--color-brand-orange)' : 'var(--color-accent-pedidos)';
+
+  async function marcarPronto() {
     setSalvando(true);
-    await onAvancar(pedido);
-    setSalvando(false);
+    const deuCerto = await onPronto(pedido);
+    if (!deuCerto) setSalvando(false);
   }
 
   return (
-    <li
-      className="rounded-2xl border-2 bg-[var(--surface-card)] p-4 sm:p-5 flex flex-col gap-4"
-      style={{ borderColor: corBorda }}
-    >
-      <div className="flex items-center gap-3">
-        <span className="text-2xl font-extrabold text-[var(--text-primary)]">{codigoPedido(pedido.id)}</span>
-        <span
-          className="text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-full text-white"
-          style={{ backgroundColor: info.cor }}
-        >
-          {info.rotulo}
-        </span>
+    <li className="rounded-2xl border-2 bg-[var(--surface-card)] p-4 sm:p-5 flex flex-col gap-4" style={{ borderColor: borda }}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="text-3xl font-extrabold tracking-wide text-[var(--text-primary)]">{numeroDoPedido(pedido)}</span>
+        {alterado && (
+          <span className="text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-full text-white bg-[var(--color-brand-orange)]">
+            Alterado às {formatarHora(pedido.alterado_em)}
+          </span>
+        )}
         <span
           className="ml-auto inline-flex items-center gap-1.5 font-bold"
           style={{ color: atrasado ? ACCENT : 'var(--text-secondary)' }}
@@ -75,85 +113,82 @@ function CartaoPedido({ pedido, agora, onAvancar }) {
         </p>
       )}
 
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-3">
         {pedido.itens.map((item) => (
-          <li key={item.id} className="flex items-baseline gap-3 text-lg">
-            <span className="font-extrabold min-w-10 text-[var(--text-primary)]">{item.quantidade}×</span>
-            <span className="font-medium text-[var(--text-primary)] break-words">{item.nome}</span>
-          </li>
+          <ItemDaFila key={item.id} item={item} onFaltou={onFaltou} />
         ))}
       </ul>
 
-      {info.proximo && (
-        <button
-          type="button"
-          onClick={avancar}
-          disabled={salvando}
-          className="mt-auto w-full rounded-xl py-3.5 text-base font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
-          style={{ backgroundColor: info.corAcao }}
-        >
-          {salvando ? 'Salvando...' : info.acao}
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={marcarPronto}
+        disabled={salvando}
+        className="mt-auto w-full inline-flex items-center justify-center gap-2 rounded-xl py-4 text-lg font-bold text-white transition hover:brightness-110 disabled:opacity-60"
+        style={{ backgroundColor: VERDE }}
+      >
+        <CheckIcon className="w-6 h-6" />
+        {salvando ? 'Salvando...' : 'Pronto'}
+      </button>
     </li>
   );
 }
 
-function ListaPedidos({ pedidos, agora, onAvancar }) {
-  const aPreparar = pedidos.filter((p) => p.status !== 'pronto');
-  const prontos = pedidos.filter((p) => p.status === 'pronto');
-  const atrasados = aPreparar.filter((p) => minutosDesde(p.criado_em, agora) >= LIMITE_ATRASO_MINUTOS).length;
+function CartaoCancelado({ pedido, onOk }) {
+  return (
+    <li
+      className="rounded-2xl border-2 p-4 sm:p-5 flex flex-col gap-3 bg-[color-mix(in_srgb,var(--color-accent-cozinha)_12%,var(--surface-card))]"
+      style={{ borderColor: ACCENT }}
+      role="alert"
+    >
+      <div className="flex items-center gap-3">
+        <span className="text-3xl font-extrabold tracking-wide text-[var(--text-primary)] line-through">
+          {numeroDoPedido(pedido)}
+        </span>
+        <span className="text-sm font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-full text-white" style={{ backgroundColor: ACCENT }}>
+          Cancelado
+        </span>
+      </div>
+      <p className="text-lg font-bold" style={{ color: ACCENT }}>
+        Não preparar. {rotuloDoMotivo(pedido.motivo_cancelamento)}.
+      </p>
+      <p className="text-sm text-[var(--text-secondary)] line-through break-words">
+        {pedido.itens.map((i) => `${i.quantidade}× ${i.nome}`).join(', ')}
+      </p>
+      <button
+        type="button"
+        onClick={onOk}
+        className="self-start inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold border border-[var(--border-subtle)] text-[var(--text-primary)]"
+      >
+        <CloseIcon className="w-4 h-4" />
+        Ok, entendi
+      </button>
+    </li>
+  );
+}
 
-  const contadores = [
-    { rotulo: 'Novos', valor: pedidos.filter((p) => p.status === 'pendente').length, cor: STATUS.pendente.cor },
-    { rotulo: 'Preparando', valor: pedidos.filter((p) => p.status === 'em_preparo').length, cor: STATUS.em_preparo.cor },
-    { rotulo: 'Atrasados', valor: atrasados, cor: ACCENT },
-  ];
+function BarraDesfazer({ pedido, onDesfazer }) {
+  const [desfazendo, setDesfazendo] = useState(false);
 
   return (
-    <>
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {contadores.map(({ rotulo, valor, cor }) => (
-          <div
-            key={rotulo}
-            className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-3 sm:p-4 text-center"
-          >
-            <p className="text-3xl font-extrabold" style={{ color: valor ? cor : 'var(--text-secondary)' }}>
-              {valor}
-            </p>
-            <p className="text-xs sm:text-sm font-medium text-[var(--text-secondary)]">{rotulo}</p>
-          </div>
-        ))}
+    <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] md:bottom-4 z-30 px-4">
+      <div className="max-w-md mx-auto flex items-center gap-3 rounded-2xl bg-[var(--surface-alt)] border border-[var(--border-subtle)] shadow-lg p-3">
+        <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl text-white shrink-0" style={{ backgroundColor: VERDE }}>
+          <CheckIcon className="w-5 h-5" />
+        </span>
+        <p className="flex-1 font-semibold text-[var(--text-primary)]">Pedido {numeroDoPedido(pedido)} pronto</p>
+        <button
+          type="button"
+          disabled={desfazendo}
+          onClick={async () => {
+            setDesfazendo(true);
+            await onDesfazer(pedido);
+          }}
+          className="rounded-xl px-4 py-2.5 text-sm font-bold border border-[var(--border-subtle)] text-[var(--text-primary)] disabled:opacity-60"
+        >
+          Desfazer
+        </button>
       </div>
-
-      {aPreparar.length === 0 ? (
-        <EstadoVazio
-          icon={KitchenIcon}
-          accent={ACCENT}
-          titulo="Nenhum pedido para preparar"
-          texto="Quando um pedido for lançado, ele aparece aqui na hora."
-        />
-      ) : (
-        <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {aPreparar.map((p) => (
-            <CartaoPedido key={p.id} pedido={p} agora={agora} onAvancar={onAvancar} />
-          ))}
-        </ul>
-      )}
-
-      {prontos.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">
-            Prontos, esperando entrega ({prontos.length})
-          </h2>
-          <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {prontos.map((p) => (
-              <CartaoPedido key={p.id} pedido={p} agora={agora} onAvancar={onAvancar} />
-            ))}
-          </ul>
-        </section>
-      )}
-    </>
+    </div>
   );
 }
 
@@ -192,7 +227,7 @@ function ListaEsgotados({ onErro }) {
               <span className="flex-1 min-w-0 font-semibold text-[var(--text-primary)] break-words">{p.nome}</span>
               <span
                 className="shrink-0 rounded-xl px-3 py-2 text-sm font-bold text-white"
-                style={{ backgroundColor: p.disponivel ? 'var(--color-accent-relatorios)' : ACCENT }}
+                style={{ backgroundColor: p.disponivel ? VERDE : ACCENT }}
               >
                 {p.disponivel ? 'Tem' : 'Esgotado'}
               </span>
@@ -209,34 +244,76 @@ const ABAS = [
   { id: 'esgotados', rotulo: 'Esgotados', Icone: BoxIcon },
 ];
 
+// Muda quando chega pedido, quando um pedido da fila é alterado ou quando um
+// é cancelado: os três merecem o bipe.
+function assinaturaParaAviso(fila, cancelados) {
+  return [...fila.map((p) => `${p.id}:${p.alterado_em ?? ''}`), ...cancelados.map((p) => `x${p.id}`)];
+}
+
 export default function Cozinha() {
   const { pedidos, carregando, erro: erroCarga } = usePedidosAbertos();
   const agora = useAgora();
   useTelaAcesa();
   const [aba, setAba] = useState('pedidos');
   const [erro, setErro] = useState('');
-  const pendentesAntes = useRef(null);
+  const [ciente, setCiente] = useState(() => new Set());
+  const [ultimoPronto, setUltimoPronto] = useState(null);
+  const avisosAntes = useRef(null);
 
-  const pendentes = pedidos.filter((p) => p.status === 'pendente').length;
+  const { fila, cancelados } = separarPedidos(pedidos, new Date(agora));
+  const canceladosParaVer = cancelados.filter((p) => !ciente.has(p.id));
+  const atrasados = fila.filter((p) => minutosDesde(p.criado_em, agora) >= LIMITE_ATRASO_MINUTOS).length;
 
+  const assinatura = assinaturaParaAviso(fila, cancelados);
+  const chaveAviso = assinatura.join('|');
   useEffect(() => {
     if (carregando) return;
-    if (pendentesAntes.current !== null && pendentes > pendentesAntes.current) tocarAviso();
-    pendentesAntes.current = pendentes;
-  }, [pendentes, carregando]);
+    const antes = avisosAntes.current;
+    const atual = chaveAviso ? chaveAviso.split('|') : [];
+    if (antes && atual.some((a) => !antes.has(a))) tocarAviso();
+    avisosAntes.current = new Set(atual);
+  }, [chaveAviso, carregando]);
 
   useEffect(() => {
     const original = document.title;
-    document.title = pendentes ? `(${pendentes}) Cozinha · Organiza+` : 'Cozinha · Organiza+';
+    document.title = fila.length ? `(${fila.length}) Cozinha · Organiza+` : 'Cozinha · Organiza+';
     return () => {
       document.title = original;
     };
-  }, [pendentes]);
+  }, [fila.length]);
 
-  async function avancar(pedido) {
+  useEffect(() => {
+    if (!ultimoPronto) return undefined;
+    const id = setTimeout(() => setUltimoPronto(null), DESFAZER_PRONTO_SEGUNDOS * 1000);
+    return () => clearTimeout(id);
+  }, [ultimoPronto]);
+
+  async function marcarPronto(pedido) {
     setErro('');
     try {
-      await atualizarStatusPedido(pedido.id, STATUS[pedido.status].proximo);
+      await atualizarStatusPedido(pedido.id, 'pronto');
+      setUltimoPronto(pedido);
+      return true;
+    } catch (e) {
+      setErro(e.message);
+      return false;
+    }
+  }
+
+  async function desfazer(pedido) {
+    setErro('');
+    try {
+      await atualizarStatusPedido(pedido.id, 'pendente');
+    } catch (e) {
+      setErro(e.message);
+    }
+    setUltimoPronto(null);
+  }
+
+  async function alternarFaltou(item) {
+    setErro('');
+    try {
+      await marcarItemFaltou(item.id, !item.faltou);
     } catch (e) {
       setErro(e.message);
     }
@@ -244,12 +321,7 @@ export default function Cozinha() {
 
   return (
     <AppShell largura="max-w-6xl">
-      <PageHeader
-        icon={KitchenIcon}
-        accent={ACCENT}
-        title="Cozinha"
-        subtitle="Pedidos chegam aqui sozinhos, do mais antigo para o mais novo"
-      />
+      <PageHeader icon={KitchenIcon} accent={ACCENT} title="Cozinha" subtitle="Do mais antigo para o mais novo" />
 
       <div role="tablist" className="inline-flex rounded-xl border border-[var(--border-subtle)] p-1 mb-6 bg-[var(--surface-card)]">
         {ABAS.map(({ id, rotulo, Icone }) => {
@@ -276,14 +348,56 @@ export default function Cozinha() {
 
       {(erro || erroCarga) && <Aviso className="mb-4">{erro || erroCarga}</Aviso>}
 
-      {aba === 'pedidos' ? (
-        carregando ? (
-          <Carregando texto="Carregando pedidos..." />
-        ) : (
-          <ListaPedidos pedidos={pedidos} agora={agora} onAvancar={avancar} />
-        )
-      ) : (
+      {aba === 'esgotados' ? (
         <ListaEsgotados onErro={setErro} />
+      ) : carregando ? (
+        <Carregando texto="Carregando pedidos..." />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {[
+              { rotulo: 'Na fila', valor: fila.length, cor: 'var(--color-accent-pedidos)' },
+              { rotulo: 'Atrasados', valor: atrasados, cor: ACCENT },
+            ].map(({ rotulo, valor, cor }) => (
+              <div key={rotulo} className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-3 sm:p-4 text-center">
+                <p className="text-3xl font-extrabold" style={{ color: valor ? cor : 'var(--text-secondary)' }}>
+                  {valor}
+                </p>
+                <p className="text-sm font-medium text-[var(--text-secondary)]">{rotulo}</p>
+              </div>
+            ))}
+          </div>
+
+          {canceladosParaVer.length > 0 && (
+            <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
+              {canceladosParaVer.map((p) => (
+                <CartaoCancelado key={p.id} pedido={p} onOk={() => setCiente((s) => new Set(s).add(p.id))} />
+              ))}
+            </ul>
+          )}
+
+          {fila.length === 0 ? (
+            <EstadoVazio
+              icon={KitchenIcon}
+              accent={ACCENT}
+              titulo="Nenhum pedido para preparar"
+              texto="Quando um pedido for lançado, ele aparece aqui na hora."
+            />
+          ) : (
+            <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {fila.map((p) => (
+                <CartaoFila key={p.id} pedido={p} agora={agora} onPronto={marcarPronto} onFaltou={alternarFaltou} />
+              ))}
+            </ul>
+          )}
+
+          {ultimoPronto && (
+            <>
+              <div className="h-20" aria-hidden="true" />
+              <BarraDesfazer key={ultimoPronto.id} pedido={ultimoPronto} onDesfazer={desfazer} />
+            </>
+          )}
+        </>
       )}
     </AppShell>
   );

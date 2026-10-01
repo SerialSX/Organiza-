@@ -70,6 +70,16 @@ describe('calcularRelatorio', () => {
     expect(r.produtosSemCusto).toBe(1);
   });
 
+  it('cancelados ficam fora do faturamento e do ranking, contados por motivo', () => {
+    const cancelado = { ...pedido('2026-09-24T14:00:00', [['x', 5, 18.5]]), status: 'cancelado', motivo_cancelamento: 'cliente_desistiu' };
+    const r = calcularRelatorio([...pedidos, cancelado], produtos);
+    expect(r.faturamento).toBe(37 + 15 + 45 + 32);
+    expect(r.totalPedidos).toBe(2);
+    expect(r.ranking.find((p) => p.nome === 'X-Burguer').quantidade).toBe(2);
+    expect(r.totalCancelados).toBe(1);
+    expect(r.canceladosPorMotivo).toEqual({ cliente_desistiu: 1 });
+  });
+
   it('retorna zeros sem pedidos', () => {
     const r = calcularRelatorio([], produtos);
     expect(r).toMatchObject({ faturamento: 0, totalPedidos: 0, ticketMedio: 0, maisVendido: null, maisLucrativo: null });

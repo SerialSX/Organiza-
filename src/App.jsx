@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeProvider';
 import { AuthProvider } from './context/AuthProvider';
 import ProtectedRoute from './components/ProtectedRoute';
+import ExigeConfiguracao from './components/ExigeConfiguracao';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Cadastro from './pages/Cadastro';
@@ -10,6 +11,8 @@ import Produtos from './pages/Produtos';
 import Pedidos from './pages/Pedidos';
 import Cozinha from './pages/Cozinha';
 import Relatorios from './pages/Relatorios';
+import PaginaDoCliente from './pages/PaginaDoCliente';
+import Acompanhar from './pages/Acompanhar';
 
 function App() {
   return (
@@ -18,14 +21,19 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Landing />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/cadastro" element={<Cadastro />} />
-            <Route element={<ProtectedRoute />}>
-              <Route path="/home" element={<Home />} />
-              <Route path="/produtos" element={<Produtos />} />
-              <Route path="/pedidos" element={<Pedidos />} />
-              <Route path="/cozinha" element={<Cozinha />} />
-              <Route path="/relatorios" element={<Relatorios />} />
+            <Route element={<ExigeConfiguracao />}>
+              <Route path="/login" element={<Login />} />
+              <Route path="/cadastro" element={<Cadastro />} />
+              {/* Página pública do QR code: sem login */}
+              <Route path="/p/:codigo" element={<Acompanhar />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/home" element={<Home />} />
+                <Route path="/produtos" element={<Produtos />} />
+                <Route path="/pedidos" element={<Pedidos />} />
+                <Route path="/cozinha" element={<Cozinha />} />
+                <Route path="/relatorios" element={<Relatorios />} />
+                <Route path="/pagina-do-cliente" element={<PaginaDoCliente />} />
+              </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

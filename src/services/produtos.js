@@ -78,9 +78,8 @@ export function assinarProdutos(negocioId, callback) {
       { event: '*', schema: 'public', table: 'produtos', filter: `negocio_id=eq.${negocioId}` },
       callback,
     )
-    // O Realtime não aplica filtro em DELETE. O evento traz só o id e serve
-    // apenas de gatilho: a recarga passa pelo RLS e só vê o próprio negócio.
-    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'produtos' }, callback)
-    .subscribe();
+    // Ao conectar e a cada reconexão: eventos de quando a internet caiu não
+    // são reenviados, então recarrega a lista.
+    .subscribe((status) => status === 'SUBSCRIBED' && callback());
   return () => supabase.removeChannel(canal);
 }

@@ -1,8 +1,17 @@
 // Cálculo feito no cliente a partir dos pedidos do período. Para o volume de
 // um pequeno negócio isso basta; se crescer, dá para mover para uma view SQL.
-export function calcularRelatorio(pedidos, produtos) {
+// Cancelados não entram em faturamento, ticket, lucro nem ranking: são contados
+// à parte, por motivo.
+export function calcularRelatorio(todosOsPedidos, produtos) {
   const custos = Object.fromEntries(produtos.map((p) => [p.id, p.custo]));
   const porProduto = new Map();
+  const pedidos = todosOsPedidos.filter((p) => p.status !== 'cancelado');
+  const cancelados = todosOsPedidos.filter((p) => p.status === 'cancelado');
+  const canceladosPorMotivo = {};
+  for (const p of cancelados) {
+    const motivo = p.motivo_cancelamento ?? 'outro';
+    canceladosPorMotivo[motivo] = (canceladosPorMotivo[motivo] ?? 0) + 1;
+  }
   let faturamento = 0;
 
   for (const pedido of pedidos) {
@@ -41,6 +50,8 @@ export function calcularRelatorio(pedidos, produtos) {
     maisVendido: ranking[0] ?? null,
     maisLucrativo,
     ranking,
+    totalCancelados: cancelados.length,
+    canceladosPorMotivo,
   };
 }
 

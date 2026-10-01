@@ -56,3 +56,59 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Cartaz do QR code (Página do cliente): só existe na impressão */
+.cartaz {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .cartaz,
+  .cartaz * {
+    visibility: visible;
+  }
+
+  .cartaz {
+    display: flex;
+    position: absolute;
+    inset: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8mm;
+    background: #ffffff;
+    color: #111111;
+    text-align: center;
+  }
+
+  .cartaz-nome {
+    font-size: 30pt;
+    font-weight: 800;
+  }
+
+  .cartaz-titulo {
+    font-size: 22pt;
+    font-weight: 700;
+  }
+
+  .cartaz-qr {
+    width: 110mm;
+    height: 110mm;
+  }
+
+  .cartaz-passos {
+    font-size: 15pt;
+    text-align: left;
+    list-style: decimal;
+    padding-left: 8mm;
+  }
+}

@@ -40,3 +40,18 @@ export function formatarHora(data) {
 export function codigoPedido(id) {
   return `#${String(id).replace(/-/g, '').slice(0, 4).toUpperCase()}`;
 }
+
+// Número que o cliente ouve e digita no QR. Pedidos antigos do modo
+// demonstração, de antes do número existir, caem no código curto do id.
+export function numeroDoPedido(pedido) {
+  return pedido.numero ? String(pedido.numero) : codigoPedido(pedido.id);
+}
+
+const diaEmFortaleza = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Fortaleza' });
+
+// Mesmo "dia" que o banco grava em pedidos.dia (AAAA-MM-DD, fuso de Fortaleza),
+// para separar a fila de hoje das pendências mesmo com o relógio do aparelho
+// em outro fuso.
+export function hojeNoNegocio(agora = new Date()) {
+  return diaEmFortaleza.format(agora);
+}

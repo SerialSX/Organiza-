@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/useAuth';
+import { useRecarregarAoVoltar } from './useRecarregarAoVoltar';
 import { listarPedidosAbertos, assinarPedidos } from '../services/pedidos';
 
 export function usePedidosAbertos() {
@@ -35,6 +36,8 @@ export function usePedidosAbertos() {
       cancelar();
     };
   }, [negocioId, recarregar]);
+
+  useRecarregarAoVoltar(recarregar);
 
   return { pedidos, carregando, erro, recarregar };
 }

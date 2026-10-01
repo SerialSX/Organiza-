@@ -26,3 +26,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Documentação interna do projeto: nunca vai para o GitHub
+docs/
+CLAUDE.md

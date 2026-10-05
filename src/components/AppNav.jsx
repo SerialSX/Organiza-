@@ -4,7 +4,7 @@ import { useAuth } from '../context/useAuth';
 import logoDark from '../assets/logo.svg';
 import logoLight from '../assets/logo-light.svg';
 import ThemeToggle from './ThemeToggle';
-import { ProductsIcon, OrdersIcon, KitchenIcon, ReportsIcon, LogoutIcon } from './icons/AppIcons';
+import { ProductsIcon, OrdersIcon, KitchenIcon, ReportsIcon, LogoutIcon, UserIcon } from './icons/AppIcons';
 
 const items = [
   { key: 'produtos', label: 'Produtos', route: '/produtos', icon: ProductsIcon, accent: 'var(--color-accent-produtos)' },
@@ -36,6 +36,15 @@ export default function AppNav() {
   const acoes = (
     <div className="ml-auto flex items-center gap-2">
       <ThemeToggle />
+      <button
+        type="button"
+        onClick={() => navigate('/minha-conta')}
+        aria-label="Minha conta"
+        title="Minha conta"
+        className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--surface-card-hover)] transition"
+      >
+        <UserIcon className="w-5 h-5" />
+      </button>
       <button
         type="button"
         onClick={handleSair}

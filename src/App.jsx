@@ -13,6 +13,10 @@ import Cozinha from './pages/Cozinha';
 import Relatorios from './pages/Relatorios';
 import PaginaDoCliente from './pages/PaginaDoCliente';
 import Acompanhar from './pages/Acompanhar';
+import EsqueciSenha from './pages/EsqueciSenha';
+import MinhaConta from './pages/MinhaConta';
+import ExcluirConta from './pages/ExcluirConta';
+
 
 function App() {
   return (
@@ -24,7 +28,9 @@ function App() {
             <Route element={<ExigeConfiguracao />}>
               <Route path="/login" element={<Login />} />
               <Route path="/cadastro" element={<Cadastro />} />
-              {/* Página pública do QR code: sem login */}
+              <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+              <Route path="/minha-conta" element={<MinhaConta />} />
+              <Route path="/minha-conta/excluir" element={<ExcluirConta />} />
               <Route path="/p/:codigo" element={<Acompanhar />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/home" element={<Home />} />

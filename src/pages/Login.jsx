@@ -92,6 +92,10 @@ export default function Login() {
           style={inputStyle}
         />
 
+        <p className="login-link" style={{ color: theme.link, marginTop: 0 }} onClick={() => navigate('/esqueci-senha')}>
+          Esqueci minha senha
+        </p>
+
         <button type="submit" disabled={enviando} style={{ backgroundColor: theme.accent }}>
           {enviando ? 'Entrando...' : 'Entrar'}
         </button>

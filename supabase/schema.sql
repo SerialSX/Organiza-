@@ -725,6 +725,45 @@ grant execute on function public.configurar_pagina_publica(text, boolean) to aut
 grant execute on function public.trocar_codigo_publico() to authenticated;
 
 -- ---------------------------------------------------------------------------
+-- Excluir conta (LGPD)
+-- ---------------------------------------------------------------------------
+-- Apagar só o usuário no Auth deixaria negócio, produtos e pedidos sem dono.
+-- O dono (admin) apaga o negócio inteiro e as contas ligadas a ele; os
+-- cascades levam usuarios, produtos, pedidos e itens. Um funcionário apaga
+-- só a própria conta.
+create or replace function public.excluir_minha_conta()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_usuario_id uuid := (select auth.uid());
+  v_negocio_id uuid;
+  v_papel text;
+begin
+  if v_usuario_id is null then
+    raise exception 'Entre na sua conta para excluí-la.';
+  end if;
+
+  select negocio_id, papel into v_negocio_id, v_papel
+  from public.usuarios
+  where id = v_usuario_id;
+
+  if v_papel = 'admin' then
+    delete from auth.users
+    where id in (select id from public.usuarios where negocio_id = v_negocio_id);
+    delete from public.negocios where id = v_negocio_id;
+  end if;
+
+  delete from auth.users where id = v_usuario_id;
+end;
+$$;
+
+revoke all on function public.excluir_minha_conta() from public, anon;
+grant execute on function public.excluir_minha_conta() to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Tempo real
 -- ---------------------------------------------------------------------------
 -- Publica as tabelas que a Cozinha e os Pedidos escutam. O Realtime respeita

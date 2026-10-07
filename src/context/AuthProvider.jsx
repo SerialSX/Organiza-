@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { AuthContext } from './authContext';
+import { limparDemo } from '../services/demoStore';
 
 const PERFIL_DEMO = {
   id: 'demo-usuario',
@@ -101,6 +102,20 @@ export function AuthProvider({ children }) {
     if (isSupabaseConfigured) await supabase.auth.signOut();
   }, []);
 
+  const excluirConta = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      limparDemo();
+      return { erro: null };
+    }
+    const { error } = await supabase.rpc('excluir_minha_conta');
+    if (error) {
+      return { erro: error.code === 'P0001' ? error.message : 'Não foi possível excluir a conta. Tente de novo.' };
+    }
+    // O usuário já não existe no Auth: só limpa a sessão guardada neste aparelho.
+    await supabase.auth.signOut({ scope: 'local' });
+    return { erro: null };
+  }, []);
+
   const valor = useMemo(
     () => ({
       modoDemo: !isSupabaseConfigured,
@@ -111,8 +126,9 @@ export function AuthProvider({ children }) {
       entrar,
       cadastrar,
       sair,
+      excluirConta,
     }),
-    [carregando, semConexao, sessao, perfil, entrar, cadastrar, sair],
+    [carregando, semConexao, sessao, perfil, entrar, cadastrar, sair, excluirConta],
   );
 
   return <AuthContext.Provider value={valor}>{children}</AuthContext.Provider>;

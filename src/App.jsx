@@ -29,8 +29,6 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/cadastro" element={<Cadastro />} />
               <Route path="/esqueci-senha" element={<EsqueciSenha />} />
-              <Route path="/minha-conta" element={<MinhaConta />} />
-              <Route path="/minha-conta/excluir" element={<ExcluirConta />} />
               <Route path="/p/:codigo" element={<Acompanhar />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/home" element={<Home />} />
@@ -39,6 +37,8 @@ function App() {
                 <Route path="/cozinha" element={<Cozinha />} />
                 <Route path="/relatorios" element={<Relatorios />} />
                 <Route path="/pagina-do-cliente" element={<PaginaDoCliente />} />
+                <Route path="/minha-conta" element={<MinhaConta />} />
+                <Route path="/minha-conta/excluir" element={<ExcluirConta />} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

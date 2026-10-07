@@ -29,6 +29,10 @@ export function salvarDemo(db) {
   window.dispatchEvent(new Event(EVENTO));
 }
 
+export function limparDemo() {
+  salvarDemo(vazio());
+}
+
 // Avisa mudanças feitas nesta aba e em outras abas do mesmo navegador,
 // o que permite testar Pedidos e Cozinha lado a lado.
 export function assinarDemo(callback) {

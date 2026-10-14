@@ -14,6 +14,7 @@ import Relatorios from './pages/Relatorios';
 import PaginaDoCliente from './pages/PaginaDoCliente';
 import Acompanhar from './pages/Acompanhar';
 import EsqueciSenha from './pages/EsqueciSenha';
+import RedefinirSenha from './pages/RedefinirSenha';
 import MinhaConta from './pages/MinhaConta';
 import ExcluirConta from './pages/ExcluirConta';
 
@@ -29,6 +30,7 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/cadastro" element={<Cadastro />} />
               <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+              <Route path="/redefinir-senha" element={<RedefinirSenha />} />
               <Route path="/p/:codigo" element={<Acompanhar />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/home" element={<Home />} />

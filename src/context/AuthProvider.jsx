@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { AuthContext } from './authContext';
 import { limparDemo } from '../services/demoStore';
+import { traduzirErroRecuperacao } from '../lib/recuperacaoSenha';
 
 const PERFIL_DEMO = {
   id: 'demo-usuario',
@@ -102,6 +103,28 @@ export function AuthProvider({ children }) {
     if (isSupabaseConfigured) await supabase.auth.signOut();
   }, []);
 
+  // Recuperação de senha por código: o Supabase manda o e-mail com o código
+  // (modelo "Reset Password" usando {{ .Token }}) e responde igual para
+  // e-mail com ou sem conta.
+  const pedirCodigoSenha = useCallback(async (email) => {
+    if (!isSupabaseConfigured) return { erro: null };
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    return { erro: traduzirErroRecuperacao(error) };
+  }, []);
+
+  // Aceitar o código já abre a sessão da conta; a senha nova vem em seguida.
+  const confirmarCodigoSenha = useCallback(async (email, codigo) => {
+    if (!isSupabaseConfigured) return { erro: null };
+    const { error } = await supabase.auth.verifyOtp({ email, token: codigo, type: 'recovery' });
+    return { erro: traduzirErroRecuperacao(error) };
+  }, []);
+
+  const trocarSenha = useCallback(async (senha) => {
+    if (!isSupabaseConfigured) return { erro: null };
+    const { error } = await supabase.auth.updateUser({ password: senha });
+    return { erro: traduzirErroRecuperacao(error) };
+  }, []);
+
   const excluirConta = useCallback(async () => {
     if (!isSupabaseConfigured) {
       limparDemo();
@@ -127,8 +150,23 @@ export function AuthProvider({ children }) {
       cadastrar,
       sair,
       excluirConta,
+      pedirCodigoSenha,
+      confirmarCodigoSenha,
+      trocarSenha,
     }),
-    [carregando, semConexao, sessao, perfil, entrar, cadastrar, sair, excluirConta],
+    [
+      carregando,
+      semConexao,
+      sessao,
+      perfil,
+      entrar,
+      cadastrar,
+      sair,
+      excluirConta,
+      pedirCodigoSenha,
+      confirmarCodigoSenha,
+      trocarSenha,
+    ],
   );
 
   return <AuthContext.Provider value={valor}>{children}</AuthContext.Provider>;

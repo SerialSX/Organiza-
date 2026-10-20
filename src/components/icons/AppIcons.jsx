@@ -5,6 +5,9 @@ const common = {
   strokeWidth: 1.8,
   strokeLinecap: 'round',
   strokeLinejoin: 'round',
+  // Ícones acompanham texto ou aria-label do botão: o leitor de tela pula.
+  'aria-hidden': true,
+  focusable: 'false',
 };
 
 export function ProductsIcon(props) {
@@ -229,11 +232,58 @@ export function CopyIcon(props) {
   );
 }
 
+export function InfoIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5M12 8h.01" />
+    </svg>
+  );
+}
+
 export function UserIcon(props) {
   return (
     <svg {...common} {...props}>
       <circle cx="12" cy="8" r="4" />
-      <path d="M4 20a8 8 0 0 1 16 0" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+    </svg>
+  );
+}
+
+export function EyeIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+export function EyeOffIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M3 3l18 18" />
+      <path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.9 9.9 0 0 0 5.4-1.6" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </svg>
+  );
+}
+
+export function SearchIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-4-4" />
+    </svg>
+  );
+}
+
+export function WifiOffIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M3 3l18 18" />
+      <path d="M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.2-2.8M19 13a10 10 0 0 0-2.3-1.7M2 9.5a15 15 0 0 1 4.6-2.8M22 9.5A15 15 0 0 0 12 5.5c-.8 0-1.6.1-2.4.2" />
+      <path d="M12 20h.01" />
     </svg>
   );
 }

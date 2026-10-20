@@ -1,37 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ThemeContext } from './themeContext';
 
-const themes = {
-  dark: {
-    gradientStart: '#071322',
-    gradientEnd: '#0A192F',
-    background: '#0A192F',
-    backgroundElement: 'rgba(255,255,255,0.06)',
-    text: '#FFFFFF',
-    textSecondary: '#B8B8B8',
-    accent: '#EE9448',
-    link: '#F2A46B',
-    inputBorder: 'rgba(255,255,255,0.15)',
-    card: '#0B1A30',       
-  },
-  light: {
-    gradientStart: '#EE9448',
-    gradientEnd: '#F2A46B',
-    background: '#F7F7F8',
-    backgroundElement: 'rgba(0,0,0,0.04)',
-    text: '#1A1A1A',
-    textSecondary: '#6B6B6B',
-    accent: '#EE9448',
-    link: '#C96A28',
-    inputBorder: 'rgba(0,0,0,0.12)',
-    card: '#FFFFFF',  
-  },
-};
-
+const CHAVE = 'organiza-theme';
+// Mesma cor de --surface-alt / --surface em index.css: a barra do navegador no
+// celular acompanha o tema.
+const COR_DA_BARRA = { dark: '#071322', light: '#F7F5F2' };
 
 function getInitialMode() {
   try {
-    return localStorage.getItem('organiza-theme') === 'light' ? 'light' : 'dark';
+    return localStorage.getItem(CHAVE) === 'light' ? 'light' : 'dark';
   } catch {
     return 'dark';
   }
@@ -39,29 +16,21 @@ function getInitialMode() {
 
 export function ThemeProvider({ children }) {
   const [mode, setMode] = useState(getInitialMode);
-  const theme = themes[mode];
 
   useEffect(() => {
-    const root = document.documentElement;
-    Object.entries(theme).forEach(([key, value]) => {
-      root.style.setProperty(`--${key}`, value);
-    });
-    root.dataset.theme = mode;
+    document.documentElement.dataset.theme = mode;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', COR_DA_BARRA[mode]);
     try {
-      localStorage.setItem('organiza-theme', mode);
+      localStorage.setItem(CHAVE, mode);
     } catch {
       // localStorage indisponível (modo privado etc.) — segue só em memória
     }
-  }, [theme, mode]);
+  }, [mode]);
 
-  function toggleTheme() {
-    setMode((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  }
-
-  return (
-    <ThemeContext.Provider value={{ mode, theme, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
+  const valor = useMemo(
+    () => ({ mode, toggleTheme: () => setMode((prev) => (prev === 'dark' ? 'light' : 'dark')) }),
+    [mode],
   );
-}
 
+  return <ThemeContext.Provider value={valor}>{children}</ThemeContext.Provider>;
+}

@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useTheme } from '../context/useTheme';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
+import TelaDeAcesso from '../components/TelaDeAcesso';
+import Campo, { classeCampo } from '../components/ui/Campo';
+import CampoSenha from '../components/ui/CampoSenha';
+import Botao from '../components/ui/Botao';
+import Aviso from '../components/ui/Aviso';
 import { CheckIcon } from '../components/icons/AppIcons';
-import { limparCodigo, validarRedefinicao } from '../lib/recuperacaoSenha';
-import logoDark from '../assets/logo.svg';
-import logoLight from '../assets/logo-light.svg';
-import './Login.css';
+import { TAMANHO_CODIGO, limparCodigo, validarRedefinicao } from '../lib/recuperacaoSenha';
+
+const linkTexto = 'font-semibold text-[var(--texto-laranja)] underline-offset-4 hover:underline';
 
 export default function RedefinirSenha() {
-  const { theme, mode } = useTheme();
   const { confirmarCodigoSenha, trocarSenha } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -61,113 +63,98 @@ export default function RedefinirSenha() {
     setPronto(true);
   }
 
-  const inputStyle = {
-    backgroundColor: theme.backgroundElement,
-    color: theme.text,
-    borderColor: theme.inputBorder,
-  };
+  if (pronto) {
+    return (
+      <TelaDeAcesso titulo="Senha redefinida">
+        <div className="flex flex-col items-center gap-3 text-center" role="status">
+          <span className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[color-mix(in_srgb,var(--color-accent-relatorios)_18%,transparent)] text-[var(--texto-relatorios)]">
+            <CheckIcon className="w-7 h-7" />
+          </span>
+          <p className="text-[var(--text-primary)]">Pronto. Você já está dentro da sua conta com a senha nova.</p>
+        </div>
+        <Botao tamanho="grande" larguraTotal onClick={() => navigate('/home', { replace: true })}>
+          Ir para o painel
+        </Botao>
+      </TelaDeAcesso>
+    );
+  }
 
   return (
-    <div className="login-container" style={{ background: `linear-gradient(135deg, ${theme.gradientStart}, ${theme.gradientEnd})` }}>
-      <form className="login-form" onSubmit={handleSalvar} noValidate>
-        <img
-          src={mode === 'dark' ? logoDark : logoLight}
-          alt="Organiza+"
-          className="login-logo"
-          onClick={() => navigate('/')}
-        />
+    <TelaDeAcesso
+      titulo="Criar nova senha"
+      subtitulo={
+        codigoAceito
+          ? 'Código confirmado. Agora escolha a nova senha.'
+          : 'Digite o código de 6 dígitos que enviamos para o seu e-mail e escolha a nova senha.'
+      }
+      rodape={
+        <Link to="/login" className={linkTexto}>
+          Voltar para o login
+        </Link>
+      }
+    >
+      {erro && <Aviso>{erro}</Aviso>}
 
-        {pronto ? (
-          <div className="login-success" role="status">
-            <span className="login-success-icon">
-              <CheckIcon width={28} height={28} />
-            </span>
-            <h1 style={{ color: theme.text }}>Senha redefinida</h1>
-            <p style={{ color: theme.textSecondary }}>Pronto. Você já está dentro da sua conta com a senha nova.</p>
-            <button
-              type="button"
-              onClick={() => navigate('/home', { replace: true })}
-              style={{ backgroundColor: theme.accent, width: '100%' }}
-            >
-              Ir para o painel
-            </button>
-          </div>
-        ) : (
+      <form onSubmit={handleSalvar} noValidate className="flex flex-col gap-4">
+        {!codigoAceito && (
           <>
-            <h1 style={{ color: theme.text }}>Criar nova senha</h1>
-            <p style={{ color: theme.textSecondary }}>
-              {codigoAceito
-                ? 'Código confirmado. Agora escolha a nova senha.'
-                : 'Digite o código de 6 dígitos que enviamos para o seu e-mail e escolha a nova senha.'}
-            </p>
-
-            {erro && <p className="login-error" role="alert">{erro}</p>}
-
-            {!codigoAceito && (
-              <>
-                <input
-                  type="email"
-                  placeholder="E-mail"
-                  autoComplete="email"
-                  value={email}
-                  onChange={alterar(setEmail)}
-                  style={inputStyle}
-                />
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  placeholder="000000"
-                  aria-label="Código de 6 dígitos"
-                  value={codigo}
-                  onChange={(e) => {
-                    setCodigo(limparCodigo(e.target.value));
-                    setErro('');
-                  }}
-                  style={{ ...inputStyle, textAlign: 'center', fontSize: 22, letterSpacing: 8, fontWeight: 600 }}
-                />
-              </>
-            )}
-
-            <input
-              type="password"
-              placeholder="Nova senha"
-              autoComplete="new-password"
-              value={senha}
-              onChange={alterar(setSenha)}
-              style={inputStyle}
+            <Campo
+              rotulo="E-mail"
+              name="email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              value={email}
+              onChange={alterar(setEmail)}
             />
-            <input
-              type="password"
-              placeholder="Confirmar nova senha"
-              autoComplete="new-password"
-              value={confirmarSenha}
-              onChange={alterar(setConfirmarSenha)}
-              style={inputStyle}
-            />
-
-            <button type="submit" disabled={enviando} style={{ backgroundColor: theme.accent }}>
-              {enviando ? 'Salvando...' : 'Salvar nova senha'}
-            </button>
-
-            {!codigoAceito && (
-              <p
-                className="login-link"
-                style={{ color: theme.link }}
-                onClick={() => navigate('/esqueci-senha', { state: { email: email.trim() } })}
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="codigo" className="text-sm font-medium text-[var(--text-secondary)]">
+                Código de 6 dígitos
+              </label>
+              <input
+                id="codigo"
+                name="codigo"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]*"
+                spellCheck={false}
+                translate="no"
+                maxLength={TAMANHO_CODIGO}
+                placeholder="000000"
+                value={codigo}
+                onChange={(e) => {
+                  setCodigo(limparCodigo(e.target.value));
+                  setErro('');
+                }}
+                className={`${classeCampo} text-center text-2xl font-bold tracking-[0.4em] tabular-nums`}
+              />
+              <Link
+                to="/esqueci-senha"
+                state={{ email: email.trim() }}
+                className={`self-end text-sm ${linkTexto}`}
               >
                 O código venceu? Pedir outro
-              </p>
-            )}
+              </Link>
+            </div>
           </>
         )}
 
-        {!pronto && (
-          <p className="login-link" style={{ color: theme.link, marginTop: codigoAceito ? 20 : 8 }} onClick={() => navigate('/login')}>
-            Voltar para o login
-          </p>
-        )}
+        <CampoSenha rotulo="Nova senha" name="senha" autoComplete="new-password" value={senha} onChange={alterar(setSenha)} />
+        <CampoSenha
+          rotulo="Confirmar nova senha"
+          name="confirmar"
+          autoComplete="new-password"
+          value={confirmarSenha}
+          onChange={alterar(setConfirmarSenha)}
+        />
+
+        <Botao type="submit" tamanho="grande" larguraTotal disabled={enviando}>
+          {enviando ? 'Salvando…' : 'Salvar nova senha'}
+        </Botao>
       </form>
-    </div>
+    </TelaDeAcesso>
   );
 }

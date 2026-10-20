@@ -18,4 +18,9 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // Configurações e testes de tela rodam no Node, não no navegador
+    files: ['*.config.js', 'e2e/**/*.js'],
+    languageOptions: { globals: globals.node },
+  },
 ])

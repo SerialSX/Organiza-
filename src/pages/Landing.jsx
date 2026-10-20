@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import PrintDaTela from '../components/PrintDaTela';
 import printPedidos from '../assets/prints/pedidos.jpg';
@@ -70,18 +70,18 @@ const reducaoRisco = [
 ];
 
 const botaoPrimario =
-  'w-full sm:w-auto inline-flex items-center justify-center bg-brand-orange hover:brightness-110 text-white font-semibold px-7 py-3.5 rounded-lg transition shadow-lg shadow-brand-orange/20';
+  'w-full sm:w-auto inline-flex items-center justify-center bg-brand-orange hover:brightness-110 text-[var(--sobre-destaque)] font-semibold px-7 py-3.5 rounded-lg transition shadow-lg shadow-brand-orange/20';
 
 export default function Landing() {
-  const navigate = useNavigate();
-
   return (
     <div className="min-h-screen bg-[var(--surface)] text-[var(--text-primary)]">
       <Navbar />
 
+      <main>
+
       {/* 1. Hero */}
       <section className="max-w-3xl mx-auto px-6 pt-16 sm:pt-20 pb-20 text-center">
-        <span className="inline-block text-brand-orange text-xs font-bold tracking-[0.25em] mb-6">
+        <span className="inline-block text-[var(--texto-laranja)] text-xs font-bold tracking-[0.25em] mb-6">
           ORGANIZA+
         </span>
         <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-[1.15] mb-6">
@@ -92,9 +92,9 @@ export default function Landing() {
           Organiza+ transformar essa operação em informação sobre o seu negócio, sem perder tempo.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-6">
-          <button onClick={() => navigate('/cadastro')} className={botaoPrimario}>
+          <Link to="/cadastro" className={botaoPrimario}>
             Quero usar o Organiza+
-          </button>
+          </Link>
           <a
             href="#como-funciona"
             className="w-full sm:w-auto inline-flex items-center justify-center border border-[var(--border-subtle)] hover:bg-[var(--surface-card-hover)] text-[var(--text-primary)] font-medium px-7 py-3.5 rounded-lg transition"
@@ -151,7 +151,7 @@ export default function Landing() {
                 className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center"
               >
                 <div className={inverte ? 'lg:order-2' : undefined}>
-                  <span className="text-brand-orange text-sm font-bold tracking-widest">
+                  <span className="text-[var(--texto-laranja)] text-sm font-bold tracking-widest">
                     {passo.numero}
                   </span>
                   <h3 className="text-xl sm:text-2xl font-bold mt-2 mb-4">{passo.titulo}</h3>
@@ -231,16 +231,23 @@ export default function Landing() {
           usando a operação que já existe: registre os pedidos, acompanhe a cozinha e deixe o
           Organiza+ organizar os dados para você consultar quando precisar.
         </p>
-        <button onClick={() => navigate('/cadastro')} className={botaoPrimario}>
+        <Link to="/cadastro" className={botaoPrimario}>
           Quero conhecer o Organiza+
-        </button>
+        </Link>
       </section>
+
+      </main>
 
       {/* 8. Rodapé */}
       <footer className="border-t border-[var(--border-subtle)] px-6 py-10">
         <p className="text-[var(--text-secondary)] text-sm text-center max-w-2xl mx-auto leading-relaxed">
           Organiza+ é um projeto de extensão sem fins lucrativos desenvolvido por alunos de Análise
           e Desenvolvimento de Sistemas da Unifor.
+        </p>
+        <p className="text-center text-sm mt-3">
+          <Link to="/privacidade" className="text-[var(--text-secondary)] underline underline-offset-4 hover:text-[var(--text-primary)]">
+            Privacidade
+          </Link>
         </p>
       </footer>
     </div>

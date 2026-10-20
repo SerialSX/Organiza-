@@ -25,7 +25,7 @@ export default function CancelarPedido({ pedidoId, onErro, onCancelado }) {
       <button
         type="button"
         onClick={() => setEscolhendo(true)}
-        className="rounded-xl px-4 py-2.5 text-sm font-semibold border border-[var(--border-subtle)] text-[var(--color-accent-cozinha)] hover:bg-[var(--surface-card-hover)]"
+        className="rounded-xl px-4 py-2.5 text-sm font-semibold border border-[var(--border-subtle)] text-[var(--texto-cozinha)] hover:bg-[var(--surface-card-hover)]"
       >
         Cancelar
       </button>
@@ -42,7 +42,7 @@ export default function CancelarPedido({ pedidoId, onErro, onCancelado }) {
             type="button"
             disabled={salvando}
             onClick={() => cancelar(m.id)}
-            className="rounded-xl px-3 py-3 text-sm font-semibold text-white bg-[var(--color-accent-cozinha)] disabled:opacity-60"
+            className="rounded-xl px-3 py-3 text-sm font-semibold text-[var(--sobre-destaque)] bg-[var(--color-accent-cozinha)] disabled:opacity-60"
           >
             {m.rotulo}
           </button>

@@ -121,4 +121,11 @@ describe('faturamentoPorDia', () => {
     const dias = faturamentoPorDia(pedidos, new Date(2026, 8, 22), new Date(2026, 8, 25));
     expect(dias.map((d) => d.valor)).toEqual([0, 18.5, 0]);
   });
+
+  it('não soma pedido cancelado', () => {
+    const vendido = pedido(new Date(2026, 8, 23, 10).toISOString(), [['x', 1, 18.5]]);
+    const cancelado = { ...pedido(new Date(2026, 8, 23, 11).toISOString(), [['x', 2, 18.5]]), status: 'cancelado' };
+    const dias = faturamentoPorDia([vendido, cancelado], new Date(2026, 8, 23), new Date(2026, 8, 24));
+    expect(dias.map((d) => d.valor)).toEqual([18.5]);
+  });
 });

@@ -41,10 +41,16 @@ export function codigoPedido(id) {
   return `#${String(id).replace(/-/g, '').slice(0, 4).toUpperCase()}`;
 }
 
-// Número que o cliente ouve e digita no QR. Pedidos antigos do modo
-// demonstração, de antes do número existir, caem no código curto do id.
+// Senha de 1 a 999 que o cliente ouve e digita no QR, sempre com 3 dígitos
+// ("007"), como senha de balcão.
+export function formatarSenha(numero) {
+  return String(numero).padStart(3, '0');
+}
+
+// Pedidos antigos do modo demonstração, de antes da senha existir, caem no
+// código curto do id.
 export function numeroDoPedido(pedido) {
-  return pedido.numero ? String(pedido.numero) : codigoPedido(pedido.id);
+  return pedido.numero ? formatarSenha(pedido.numero) : codigoPedido(pedido.id);
 }
 
 const diaEmFortaleza = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Fortaleza' });

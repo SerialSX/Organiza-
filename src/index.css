@@ -18,6 +18,17 @@
   --text-secondary: rgba(255, 255, 255, 0.65);
   --border-subtle: rgba(255, 255, 255, 0.1);
 
+  /* Cor de destaque usada como texto. No escuro é a própria cor; no claro,
+     um tom mais escuro para manter contraste de pelo menos 4,5:1. */
+  --texto-laranja: #EE9448;
+  --texto-produtos: #EE9448;
+  --texto-pedidos: #4C8DFF;
+  --texto-cozinha: #F2766A;
+  --texto-relatorios: #3CA66E;
+  /* Texto e ícone sobre fundo colorido: o azul-marinho da marca passa de 5:1
+     em todas as cores de destaque (o branco fica entre 2,3 e 3,5). */
+  --sobre-destaque: #0A192F;
+
   color-scheme: dark;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -31,23 +42,79 @@
   --surface-card: #FFFFFF;
   --surface-card-hover: #FBFAF8;
   --text-primary: #1A1A1A;
-  --text-secondary: rgba(26, 26, 26, 0.6);
+  --text-secondary: rgba(26, 26, 26, 0.68);
   --border-subtle: rgba(0, 0, 0, 0.08);
+
+  --texto-laranja: #A84F0C;
+  --texto-produtos: #A84F0C;
+  --texto-pedidos: #1F5FD6;
+  --texto-cozinha: #B83426;
+  --texto-relatorios: #1B7046;
 
   color-scheme: light;
 }
 
+/* Fundo também no "puxar" da tela (overscroll) e na barra do navegador */
+html {
+  background: var(--surface);
+}
+
 body {
   margin: 0;
+  background: var(--surface);
+  color: var(--text-primary);
+  -webkit-tap-highlight-color: transparent;
 }
 
 #root {
   min-height: 100svh;
 }
 
+/* Toque responde na hora (sem a espera do toque duplo para zoom) */
+button,
+a,
+input,
+select,
+textarea,
+[role='switch'] {
+  touch-action: manipulation;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* Preços, horários, contadores e números de pedido não "pulam" ao mudar */
+.tabular-nums,
+input[inputmode='numeric'],
+input[inputmode='decimal'] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Foco visível em tudo, inclusive campos de texto */
 :focus-visible {
   outline: 3px solid var(--color-brand-orange);
   outline-offset: 2px;
+}
+
+input:focus-visible,
+textarea:focus-visible {
+  outline-offset: 0;
+}
+
+.sr-only-focusable:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {

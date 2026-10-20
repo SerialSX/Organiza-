@@ -11,7 +11,7 @@ function TelaDeAviso({ texto, acao, onAcao }) {
         <button
           type="button"
           onClick={onAcao}
-          className="self-center text-sm font-semibold text-[var(--color-brand-orange)]"
+          className="self-center text-sm font-semibold text-[var(--texto-laranja)]"
         >
           {acao}
         </button>

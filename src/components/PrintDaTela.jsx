@@ -9,6 +9,9 @@ export default function PrintDaTela({ src, label, fase, encaixe = 'cover', class
       className={`w-full aspect-[16/10] rounded-2xl overflow-hidden border border-[var(--border-subtle)] bg-[#0A192F] shadow-lg ${className}`}
     >
       <img
+        width="1600"
+        height="1000"
+        decoding="async"
         src={src}
         alt={label}
         loading="lazy"

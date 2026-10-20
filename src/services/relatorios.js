@@ -81,6 +81,8 @@ function chaveDoDia(data) {
 export function faturamentoPorDia(pedidos, inicio, fim) {
   const totais = new Map();
   for (const pedido of pedidos) {
+    // Cancelado não é venda: fica fora, como nos totais.
+    if (pedido.status === 'cancelado') continue;
     const chave = chaveDoDia(pedido.criado_em);
     const valor = pedido.itens.reduce((s, i) => s + i.quantidade * i.preco_unitario, 0);
     totais.set(chave, (totais.get(chave) ?? 0) + valor);

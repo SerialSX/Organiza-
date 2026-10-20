@@ -1,0 +1,50 @@
+name: Verificação
+
+# Roda em todo PR para dev ou main: lint, testes do front, testes do banco
+# (schema.sql num Postgres local), build e testes de tela. Se algo quebrar, o PR mostra em
+# vermelho antes de alguém aprovar.
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Preparar o Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes do front
+        run: npm test
+
+      - name: Testes do banco
+        run: npm run test:banco
+
+      - name: Build
+        run: npm run build
+
+      - name: Preparar o navegador dos testes de tela
+        run: npx playwright install --with-deps chromium
+
+      - name: Testes de tela (fluxo e acessibilidade)
+        run: npm run test:e2e

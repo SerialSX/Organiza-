@@ -1,9 +1,11 @@
+import { corDeTexto } from '../../lib/cores';
+
 export default function EstadoVazio({ icon: Icon, accent, titulo, texto, children }) {
   return (
     <div className="flex flex-col items-center text-center gap-3 py-14 px-6 rounded-2xl border-2 border-dashed border-[var(--border-subtle)]">
       <span
         className="inline-flex items-center justify-center w-16 h-16 rounded-2xl"
-        style={{ backgroundColor: `color-mix(in srgb, ${accent} 18%, transparent)`, color: accent }}
+        style={{ backgroundColor: `color-mix(in srgb, ${accent} 18%, transparent)`, color: corDeTexto(accent) }}
       >
         <Icon className="w-8 h-8" />
       </span>

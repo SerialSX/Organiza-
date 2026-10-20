@@ -5,7 +5,7 @@ export default function PageHeader({ icon: Icon, accent, title, subtitle, childr
         className="inline-flex items-center justify-center w-14 h-14 rounded-2xl shrink-0"
         style={{ backgroundColor: accent }}
       >
-        <Icon className="w-7 h-7 text-white" />
+        <Icon className="w-7 h-7 text-[var(--sobre-destaque)]" />
       </span>
       <div className="flex-1 min-w-0">
         <h1 className="text-2xl font-bold text-[var(--text-primary)]">{title}</h1>

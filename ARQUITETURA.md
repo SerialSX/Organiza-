@@ -1,155 +1,145 @@
 # Organiza+ — Arquitetura do Sistema e Plano de Fases
 
-Este documento define a arquitetura técnica do projeto e o plano de desenvolvimento em fases. Leia junto com o PROJETO_BRIEFING.md antes de continuar a implementação.
+Este documento define a arquitetura técnica do projeto e o plano de desenvolvimento em fases.
 
-> **Nota:** este documento substitui uma versão anterior que previa Next.js. A branch `dev` já tinha um projeto React + Vite em andamento (Login, Cadastro e Home funcionais), então a arquitetura foi adaptada para essa stack em vez de recomeçar do zero. O escopo também foi confirmado como o fluxo de pedidos → cozinha descrito no PROJETO_BRIEFING.md (a visão mais ampla de "4 pilares" que aparecia no README antigo não é o escopo deste TCC).
+> **Nota:** a primeira versão deste documento previa Next.js. A branch `dev` já tinha um projeto React + Vite em andamento, então a arquitetura foi adaptada para essa stack em vez de recomeçar do zero. O escopo do TCC é o fluxo de pedidos → cozinha.
 
 ## Stack escolhida
 
-- **Front-end:** React + Vite, com React Router para navegação entre telas, e Tailwind CSS para estilo.
-  Justificativa: já era a base existente na branch `dev` (Login, Cadastro e Home já implementados), então a arquitetura foi ajustada para aproveitar esse trabalho em vez de descartá-lo. Tailwind CSS foi adicionado para agilizar responsividade e manter consistência visual.
+- **Front-end:** React + Vite, React Router e Tailwind CSS. Cada tela é carregada sob demanda (`React.lazy`): quem abre a landing ou a página do QR code não baixa o painel inteiro.
 
-- **Back-end, banco de dados e tempo real:** Supabase (Postgres + Realtime + Auth + Row Level Security).
-  Justificativa: o projeto precisa de relatórios com agregações (produto mais vendido, margem, sugestão de reposição), e isso é natural em SQL. O Supabase já entrega, de graça: banco Postgres, autenticação pronta, canais de tempo real (essencial para a tela da cozinha atualizar sozinha) e Row Level Security, que é a peça central para isolar os dados de cada negócio uns dos outros (ponto importante para a LGPD).
+- **Back-end, banco de dados e tempo real:** Supabase (Postgres + Realtime + Auth + Row Level Security). Os relatórios precisam de agregações, naturais em SQL; o Supabase entrega de graça banco, autenticação, tempo real (a cozinha atualiza sozinha) e RLS, que isola os dados de cada negócio (LGPD).
 
-- **Hospedagem:** front-end na Vercel (grátis, como SPA estática gerada pelo `vite build`), banco e back-end no Supabase (grátis, dentro do limite do plano free, suficiente para o escopo do TCC).
+- **Hospedagem:** front-end na Vercel (SPA estática do `vite build`, `vercel.json` com rewrite) e banco no Supabase (plano free).
 
-- **Estilo visual:** Tailwind configurado com tokens de marca (`brand-dark` = `#0A192F`, `brand-orange` = `#EE9448`) e tokens de superfície (`--surface`, `--surface-alt`, `--surface-card`, `--text-primary`, `--text-secondary`, `--border-subtle`) que trocam de valor conforme `[data-theme]`, permitindo um alternador claro/escuro real (botão de sol/lua no `Navbar` e no `AppNav`, estado em `ThemeProvider.jsx`, persistido em `localStorage`). Cada seção autenticada tem uma cor de destaque própria (`--color-accent-produtos`, `-pedidos`, `-cozinha`, `-relatorios`) para diferenciação visual rápida. Assets oficiais da equipe: `public/icon.png` (favicon, mark isolado), `src/assets/logo.svg` (logotipo horizontal com texto branco, para fundo escuro) e `src/assets/logo-light.svg` (mesmo logotipo com texto escuro, para fundo claro) — o componente escolhe qual usar de acordo com o tema ativo.
+- **Estilo visual:** tokens de marca (`brand-dark` = `#0A192F`, `brand-orange` = `#EE9448`) e de superfície (`--surface`, `--surface-alt`, `--surface-card`, `--text-primary`, `--text-secondary`, `--border-subtle`) que trocam conforme `[data-theme]` (tema claro/escuro em `ThemeProvider.jsx`, salvo em `localStorage`). Cada seção tem uma cor de destaque (`--color-accent-produtos`, `-pedidos`, `-cozinha`, `-relatorios`).
+  - Sobre fundo colorido, texto e ícone usam `--sobre-destaque` (o azul-marinho da marca, contraste acima de 5:1 em todas as cores de destaque).
+  - Cor de destaque usada como texto passa por `--texto-*` (ou `corDeTexto()` em `src/lib/cores.js`): no tema claro é um tom mais escuro, para manter 4,5:1.
+  - As telas passam pela auditoria axe-core (WCAG 2.1 AA) nos dois temas, no celular e no desktop.
 
 ## Modelo de dados (Postgres)
 
 ```
 negocios
-- id (uuid, pk)
-- nome (text)
-- criado_em (timestamp)
+- id, nome, criado_em
+- codigo_publico (text, único, 32 caracteres aleatórios)  <- endereço da página do QR code
+- nome_publico (text, opcional)                            <- nome mostrado ao cliente
+- pagina_ativa (boolean)
 
-usuarios  (gerenciado pelo Supabase Auth; tabela de perfil complementar)
-- id (uuid, pk, = auth.users.id)
-- negocio_id (uuid, fk -> negocios.id)
-- nome (text)
-- papel (text: "admin" | "atendente" | "cozinha")
+usuarios  (perfil complementar ao Supabase Auth)
+- id (= auth.users.id), negocio_id, nome
+- papel ("admin" | "atendente" | "cozinha")
 
 produtos
-- id (uuid, pk)
-- negocio_id (uuid, fk -> negocios.id)
-- nome (text)
-- preco (numeric)
-- custo (numeric, opcional, usado para calcular margem)
-- disponivel (boolean, default true)   <- controla o "esgotado" em tempo real
-- arquivado (boolean, default false)   <- "excluir" arquiva, preservando o histórico
-- criado_em (timestamp)
+- id, negocio_id, nome, preco, custo (opcional), criado_em
+- disponivel (boolean)   <- "esgotado" em tempo real
+- arquivado (boolean)    <- "excluir" arquiva e pode ser desfeito; os pedidos antigos continuam com o nome
 
 pedidos
-- id (uuid, pk)
-- negocio_id (uuid, fk -> negocios.id)
-- status (text: "pendente" | "em_preparo" | "pronto" | "entregue")
-- criado_em (timestamp)     <- usado para calcular tempo de espera
-- criado_por (uuid, fk -> usuarios.id)
+- id, negocio_id, criado_em, criado_por
+- status ("pendente" | "em_preparo" | "pronto" | "entregue" | "cancelado")
+- numero (senha de 1 a 999, em ordem)           <- o que o cliente ouve e digita no QR; mostrada como "007"
+- dia (date, fuso de Fortaleza)                  <- separa a fila de hoje das pendências
+- chave_envio (uuid, único)                      <- reenviar o mesmo pedido não duplica
+- alterado_em, pronto_em, entregue_em, cancelado_em, motivo_cancelamento
 
 itens_pedido
-- id (uuid, pk)
-- pedido_id (uuid, fk -> pedidos.id)
-- produto_id (uuid, fk -> produtos.id)
-- quantidade (int)
-- preco_unitario (numeric)   <- copiado do produto no momento do pedido
-- custo_unitario (numeric, opcional)   <- idem, para o lucro de dias antigos não mudar
+- id, pedido_id, produto_id, quantidade
+- preco_unitario, custo_unitario   <- copiados do produto na hora do pedido
+- observacao (até 140 caracteres)  <- "sem salada", mostrado na cozinha
+- faltou (boolean)                 <- a cozinha avisa que não tem como fazer
+
+contador_pedidos
+- negocio_id, dia, ultimo         <- última senha dada no dia; só o criar_pedido mexe, travando a linha
+
+limite_consultas   <- consultas da página pública por aparelho (hash do IP, nunca o IP)
 ```
 
-Row Level Security: toda tabela filtra por `negocio_id` do usuário autenticado (via a função `negocio_do_usuario_atual()`), garantindo que um negócio nunca veja dados de outro. Pedidos e itens não aceitam escrita direta do cliente: são gravados pelas funções `criar_pedido` (transação única, preço e custo lidos do banco, recusa produto esgotado) e `atualizar_status_pedido` (só permite avançar o status). Script completo em `supabase/schema.sql`.
+### Segurança
 
-## Estrutura de pastas (React + Vite)
+- **Isolamento:** toda tabela tem RLS filtrando pelo negócio do usuário (`negocio_do_usuario_atual()`).
+- **Sem escrita direta:** o cliente não escreve em `pedidos` nem `itens_pedido`. Tudo passa por funções que conferem negócio, status e produtos:
+  - `criar_pedido`: transação única, preço lido do banco, sem duplicar;
+  - `editar_pedido`: recusa a edição se outra pessoa salvou antes (versão por `alterado_em`);
+  - `cancelar_pedido`, `atualizar_status_pedido` (inclui desfazer um "Pronto" em até 2 minutos) e `marcar_item_faltou`.
+- **Página pública (QR code):** quem não tem conta não lê nenhuma tabela. Só chama `pagina_publica` e `acompanhar_pedido`, que devolvem o mínimo (nome do negócio; posição, status e tempo médio de um pedido) e limitam as consultas por aparelho.
+- **Conta:** `atualizar_meus_dados` (só o dono renomeia o negócio) e `excluir_minha_conta` (apaga a conta e tudo do negócio, em cascata).
+- **Testes do banco:** `npm run test:banco` roda o `schema.sql` num Postgres local (PGlite) e testa essas regras, inclusive tentativas de acesso indevido.
+
+## Estrutura de pastas
 
 ```
 /src
   /pages
-    Landing.jsx        (landing page pública, rota "/")
-    Login.jsx           (rota "/login")
-    Cadastro.jsx        (rota "/cadastro", cria negócio + admin)
-    Home.jsx           (painel pós-login, rota "/home")
-    Produtos.jsx        (CRUD de produtos + disponível/esgotado)
-    Pedidos.jsx         (lançamento de pedidos, atendente/balcão)
-    Cozinha.jsx         (fila em tempo real da cozinha + esgotados)
-    Relatorios.jsx      (dashboard de relatórios)
+    Landing, Privacidade                     (públicas)
+    Login, Cadastro, EsqueciSenha, RedefinirSenha
+    Acompanhar                               (página do cliente via QR, sem login: /p/:codigo)
+    Home, Produtos, Pedidos, Cozinha, Relatorios, PaginaDoCliente, MinhaConta
   /components
-    Navbar.jsx          (barra do topo da landing, pública)
-    AppNav.jsx          (navegação fixa pós-login: topo no desktop, topo + barra inferior no mobile)
-    ProtectedRoute.jsx  (bloqueia rotas internas sem login)
-    ThemeToggle.jsx      (botão de alternar claro/escuro)
-    PrintDaTela.jsx      (print real de uma tela na landing; sem imagem, usa o placeholder)
-    ScreenshotPlaceholder.jsx  (espaço reservado para print)
-    /ui                 (AppShell, PageHeader, Aviso, Carregando, EstadoVazio)
-    /icons
-      AppIcons.jsx       (ícones SVG próprios)
-  /context
-    ThemeProvider.jsx, themeContext.js, useTheme.js  (tema claro/escuro, persistido em localStorage)
-    AuthProvider.jsx, authContext.js, useAuth.js     (sessão Supabase Auth + perfil do usuário)
+    Navbar, AppNav, TelaDeAcesso, ThemeToggle
+    ProtectedRoute, ExigeConfiguracao       (login e "fora do ar" sem Supabase em produção)
+    CancelarPedido, PrintDaTela, ScreenshotPlaceholder
+    /ui        (AppShell, PageHeader, Botao, Campo, CampoSenha, Abas, Etiqueta, Aviso, Carregando, EstadoVazio)
+    /pedidos   (GradeDeProdutos, LinhaDoPedido, PedidosDeHoje, PedidoEnviado)
+    /cozinha   (CartaoFila, CartaoCancelado, BarraDesfazer, ListaEsgotados)
+    /icons     (AppIcons: ícones SVG próprios)
+  /context     (ThemeProvider, AuthProvider e seus hooks)
   /hooks
-    useProdutos.js, usePedidosAbertos.js  (carregam dados e assinam o tempo real)
-    useAgora.js                           (relógio para tempo de espera)
-  /services             (único lugar que fala com o banco)
-    produtos.js, pedidos.js
-    relatorios.js       (cálculos do relatório, com testes)
-    demoStore.js        (banco local do modo demonstração)
-  /lib
-    supabaseClient.js   (cliente Supabase; null sem variáveis de ambiente)
-    formatadores.js     (moeda, tempo de espera, código do pedido, com testes)
-    pedidoStatus.js     (status do pedido, cores e limite de atraso)
-  App.jsx               (rotas)
-  main.jsx
-  index.css             (entrada do Tailwind + tokens de marca e de tema)
+    useProdutos, usePedidosAbertos      (dados + tempo real, recarregam ao reconectar)
+    useRascunhoDoPedido                 (pedido em montagem guardado no aparelho)
+    useAbaNoEndereco, useOnline, useAgora, useTelaAcesa, useRecarregarAoVoltar
+  /services    (único lugar que fala com o banco; cada função tem o caminho Supabase e o do modo demonstração)
+    produtos, pedidos, paginaPublica, relatorios, demoStore
+  /lib         (formatadores, pedidoStatus, fila, cores, supabaseClient)
 /supabase
-  schema.sql            (tabelas, Row Level Security, funções, trigger de cadastro e Realtime)
-/docs
-  CONTEXTO-COMPLETO.md  (histórico e decisões)
-  /backend/PENDENCIAS.md
-vercel.json             (rewrite de SPA)
+  schema.sql   (tabelas, RLS, funções, trigger de cadastro e Realtime)
+  /testes      (testes do schema com PGlite)
+/.github/workflows
+  verificacao.yml   (lint, testes e build em todo PR)
+  ci_v2.yml         (merge automático das PRs aprovadas)
 ```
 
 ### Modo demonstração
 
-Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, `isSupabaseConfigured` é falso e os services usam `demoStore.js`: os dados ficam no `localStorage` e as mudanças aparecem em outras abas do mesmo navegador (dá para abrir Pedidos e Cozinha lado a lado). Não há login real nesse modo e nenhuma senha é guardada. Uma faixa laranja nas telas internas avisa que é demonstração. Com as variáveis definidas, o mesmo código usa Supabase e Realtime.
+Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js`: os dados ficam no `localStorage` e as mudanças aparecem em outras abas do mesmo navegador. As regras são as mesmas das funções do banco, com testes nos dois lados (`src/services/*.test.js` e `supabase/testes`). Em produção o modo só liga com `VITE_MODO_DEMO=true`; sem isso, a falta das variáveis mostra "fora do ar".
 
 ## Plano de fases
 
-### Fase 0. Estrutura base do projeto — concluída
-- Projeto React + Vite com Tailwind configurado com tokens da identidade visual (`brand-dark` #0A192F, `brand-orange` #EE9448).
-- Cliente Supabase configurado em `src/lib/supabaseClient.js`, lendo `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (ver `.env.example`).
-- Tabelas do banco de dados e Row Level Security básica em `supabase/schema.sql`.
-- Estrutura de pastas e rotas para todas as telas futuras (com placeholders em Produtos, Pedidos, Cozinha e Relatórios).
+### Fase 0. Estrutura base — concluída
 
-### Fase 1. Autenticação e cadastro do negócio — front-end pronto, falta o back-end
-- `Login.jsx` e `Cadastro.jsx` conectados ao Supabase Auth via `AuthProvider` (login real, cadastro com negócio + admin, sessão persistida, erros em português, com e sem confirmação de e-mail).
-- Criação do negócio + perfil admin no cadastro: via trigger em `auth.users` (em vez de policies de INSERT abertas ao cliente), em `supabase/schema.sql`.
-- Após login, redirecionar para a área autenticada; rotas internas protegidas por `ProtectedRoute`.
+### Fase 1. Autenticação e cadastro do negócio — front-end pronto, falta o Supabase no ar
+- Login, cadastro (negócio + admin criados por trigger), sessão persistida, rotas protegidas.
+- "Esqueci minha senha" com código de 6 dígitos enviado pelo Supabase Auth.
 
-### Fase 2. Cadastro de produtos — front-end pronto
-- Tela para o admin cadastrar, editar e excluir produtos (nome, preço, custo opcional) em `Produtos.jsx`.
-- Botão para marcar/desmarcar um produto como disponível (esse campo será usado na Fase 4 para o "esgotou").
+### Fase 2. Produtos — pronta
+- Cadastrar, editar, marcar esgotado, excluir (arquivar) e devolver ao cardápio.
 
-### Fase 3. Lançamento de pedidos — front-end pronto
-- Tela onde o atendente/balcão seleciona produtos disponíveis e quantidades, e envia o pedido, em `Pedidos.jsx`.
-- O pedido é salvo com status "pendente".
-- Produtos marcados como indisponíveis não podem ser selecionados.
+### Fase 3. Pedidos — pronta
+- Toque para adicionar, observação por item, busca quando o cardápio passa de 12 itens.
+- Senha de 3 dígitos para o cliente (001, 002…; volta a 001 depois de 999 e a cada dia), envio sem duplicar, rascunho guardado no aparelho.
+- Editar (com aviso se outra pessoa alterou) e cancelar com motivo.
 
-### Fase 4. Tela da cozinha em tempo real — front-end pronto
-- Lista de pedidos em tempo real (usando Supabase Realtime) em `Cozinha.jsx`, ordenada do mais antigo para o mais novo.
-- Indicação visual de pedidos "atrasados" (tempo desde a criação acima de um limite configurável, por exemplo 15 minutos).
-- Botão para avançar o status do pedido (pendente → em preparo → pronto).
-- Botão para marcar um produto como esgotado diretamente da tela da cozinha, atualizando a disponibilidade em tempo real na tela de pedidos.
+### Fase 4. Cozinha em tempo real — pronta
+- Fila única do que falta fazer, do mais antigo para o mais novo; atraso a partir de 15 minutos.
+- "Pronto" em um toque com "Desfazer"; "Faltou" por item avisa o atendente.
+- Aviso de pedido alterado ou cancelado (destaque, bipe e leitor de tela); tela sempre acesa; aba de esgotados.
 
-### Fase 5. Relatórios — front-end pronto
-- Filtro por período (dia, semana, mês) em `Relatorios.jsx`.
-- Produto mais vendido (quantidade).
-- Faturamento total do período.
-- Margem de lucro (soma de (preço - custo) × quantidade, para produtos com custo cadastrado).
-- Sugestão simples de reposição: ranking dos produtos por quantidade vendida no período, para o dono decidir o que comprar mais.
+### Fase 5. Relatórios — pronta
+- Hoje, 7 e 30 dias; faturamento, pedidos, ticket médio, lucro, mais vendido × mais lucrativo, gráfico por dia, aviso de reposição e planilha CSV.
+- Cancelados ficam fora das contas e aparecem à parte, por motivo.
 
-### Fase 6. Ajustes finais (opcional, se sobrar tempo) — em andamento (manifest PWA e CSV prontos)
-- Transformar o site em PWA instalável (ícone na tela inicial do celular, ainda sem ser um app nativo).
-- Exportação simples do relatório (PDF ou CSV).
-- Polimento visual e de responsividade.
+### Fase 6. Página do cliente via QR code — pronta
+- O dono escolhe o nome mostrado, imprime o cartaz, desliga a página ou troca o endereço.
+- O cliente digita a senha do pedido e acompanha posição na fila, tempo médio e o aviso de pronto, sem cadastro.
+
+### Fase 7. Conta e LGPD — pronta
+- Minha conta: nome, nome do negócio, senha, sair de todos os aparelhos e excluir conta.
+- Política de privacidade (`/privacidade`).
+
+### Próximos passos
+- Supabase e Vercel no ar e teste do fluxo completo com dados reais.
+- Decisões em aberto: registro de pagamento, contas de equipe por papel, adicionais pagos.
 
 ## Regra geral para todas as fases
 
-Cada fase deve ser implementada de forma independente e funcional antes de avançar para a próxima. Não pular etapas nem misturar funcionalidades de fases diferentes na mesma sessão de trabalho.
+Cada fase deve ser implementada de forma independente e funcional antes de avançar para a próxima.

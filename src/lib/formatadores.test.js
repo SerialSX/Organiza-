@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { codigoPedido, formatarEspera, lerValor, minutosDesde, valorParaCampo } from './formatadores';
+import { codigoPedido, formatarEspera, formatarSenha, lerValor, minutosDesde, valorParaCampo } from './formatadores';
 
 describe('lerValor', () => {
   it.each([
@@ -38,6 +38,14 @@ describe('tempo de espera', () => {
     expect(formatarEspera(14)).toBe('14 min');
     expect(formatarEspera(60)).toBe('1h');
     expect(formatarEspera(75)).toBe('1h 15min');
+  });
+});
+
+describe('formatarSenha', () => {
+  it('mostra a senha sempre com 3 dígitos', () => {
+    expect(formatarSenha(7)).toBe('007');
+    expect(formatarSenha(42)).toBe('042');
+    expect(formatarSenha(999)).toBe('999');
   });
 });
 

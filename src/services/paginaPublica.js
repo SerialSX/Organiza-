@@ -3,7 +3,11 @@ import { hojeNoNegocio } from '../lib/formatadores';
 import { lerDemo, salvarDemo } from './demoStore';
 
 const CODIGO_DEMO = 'demonstracao';
-const NOME_DEMO = 'Meu negócio (demonstração)';
+const NOME_PADRAO_DEMO = 'Meu negócio (demonstração)';
+
+function nomeDemo() {
+  return lerDemo().perfil?.negocio_nome || NOME_PADRAO_DEMO;
+}
 
 export class ErroPaginaPublica extends Error {
   // tipo: 'conexao' (sem internet) ou 'limite' (muitas consultas)
@@ -15,7 +19,7 @@ export class ErroPaginaPublica extends Error {
 
 function erroDaConsulta(error) {
   if (error.code === 'P0001') return new ErroPaginaPublica('limite', error.message);
-  return new ErroPaginaPublica('conexao', 'Sem conexão. Tentando de novo...');
+  return new ErroPaginaPublica('conexao', 'Sem conexão. Tentando de novo…');
 }
 
 export function enderecoDaPagina(codigo) {
@@ -33,7 +37,7 @@ function configDemo() {
 export async function buscarPaginaPublica(codigo) {
   if (!isSupabaseConfigured) {
     const pagina = configDemo();
-    return codigo === pagina.codigo && pagina.ativa ? { nome: pagina.nome_publico || NOME_DEMO } : null;
+    return codigo === pagina.codigo && pagina.ativa ? { nome: pagina.nome_publico || nomeDemo() } : null;
   }
 
   const { data, error } = await supabase.rpc('pagina_publica', { p_codigo: codigo });
@@ -48,7 +52,15 @@ export async function acompanharPedido(codigo, numero) {
     const db = lerDemo();
     const hoje = hojeNoNegocio();
     const doDia = (p) => (p.dia ?? hojeNoNegocio(new Date(p.criado_em))) === hoje;
-    const pedido = codigo === pagina.codigo && pagina.ativa && db.pedidos.find((p) => doDia(p) && p.numero === numero);
+    // Senha repetida no dia (depois do 999): vale o pedido mais recente.
+    const pedido =
+      codigo === pagina.codigo &&
+      pagina.ativa &&
+      numero >= 1 &&
+      numero <= 999 &&
+      db.pedidos
+        .filter((p) => doDia(p) && p.numero === numero)
+        .sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em))[0];
     if (!pedido) return { encontrado: false };
 
     const naFila = (p) => ['pendente', 'em_preparo'].includes(p.status);
@@ -80,7 +92,7 @@ export async function acompanharPedido(codigo, numero) {
 export async function buscarConfiguracaoPagina() {
   if (!isSupabaseConfigured) {
     const { codigo, nome_publico, ativa } = configDemo();
-    return { codigo, nomeCadastro: NOME_DEMO, nomePublico: nome_publico ?? '', ativa };
+    return { codigo, nomeCadastro: nomeDemo(), nomePublico: nome_publico ?? '', ativa };
   }
 
   const { data, error } = await supabase

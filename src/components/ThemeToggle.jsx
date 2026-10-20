@@ -9,7 +9,7 @@ export default function ThemeToggle({ className = '' }) {
       type="button"
       onClick={toggleTheme}
       aria-label={mode === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
-      className={`inline-flex items-center justify-center w-10 h-10 rounded-full border border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--surface-card-hover)] transition ${className}`}
+      className={`inline-flex items-center justify-center w-11 h-11 rounded-full border border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--surface-card-hover)] transition-colors ${className}`}
     >
       {mode === 'dark' ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
     </button>

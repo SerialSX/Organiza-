@@ -3,19 +3,26 @@ import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/ui/AppShell';
 import PageHeader from '../components/ui/PageHeader';
 import Aviso from '../components/ui/Aviso';
+import Botao from '../components/ui/Botao';
+import Campo from '../components/ui/Campo';
 import { TrashIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
 
+const CONFIRMACAO = 'EXCLUIR';
+
 export default function ExcluirConta() {
   const navigate = useNavigate();
-  const { excluirConta } = useAuth();
+  const { excluirConta, perfil } = useAuth();
   const [texto, setTexto] = useState('');
   const [excluindo, setExcluindo] = useState(false);
   const [erro, setErro] = useState('');
+  const dono = perfil.papel === 'admin';
+  // Maiúscula ou minúscula tanto faz: o que importa é a pessoa ter digitado.
+  const confirmado = texto.trim().toUpperCase() === CONFIRMACAO;
 
   async function handleExcluir(e) {
     e.preventDefault();
-    if (texto !== 'EXCLUIR' || excluindo) return;
+    if (!confirmado || excluindo) return;
     setErro('');
     setExcluindo(true);
     const { erro: falha } = await excluirConta();
@@ -31,26 +38,32 @@ export default function ExcluirConta() {
     <AppShell largura="max-w-2xl">
       <PageHeader icon={TrashIcon} accent="var(--color-accent-cozinha)" title="Excluir conta" subtitle="Não dá para desfazer." />
 
-      <form onSubmit={handleExcluir} className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-6 flex flex-col gap-4">
-        <p className="text-[var(--text-primary)]">Seu negócio, produtos e pedidos serão apagados para sempre.</p>
-        <input
-          placeholder="Digite EXCLUIR para confirmar"
+      <form
+        onSubmit={handleExcluir}
+        className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-6 flex flex-col gap-4"
+      >
+        <p className="text-[var(--text-primary)]">
+          {dono
+            ? 'Seu negócio, produtos, pedidos e as contas da sua equipe serão apagados para sempre.'
+            : 'Sua conta será apagada. Os dados do negócio continuam com o dono.'}
+        </p>
+        <Campo
+          rotulo={`Para confirmar, digite ${CONFIRMACAO}`}
+          name="confirmacao"
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
-          className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-3 text-[var(--text-primary)]"
         />
         {erro && <Aviso>{erro}</Aviso>}
-        <div className="flex gap-3">
-          <button
-            type="submit"
-            disabled={texto !== 'EXCLUIR' || excluindo}
-            className="rounded-xl px-5 py-3 font-semibold text-white disabled:opacity-50 bg-[var(--color-accent-cozinha)]"
-          >
-            {excluindo ? 'Excluindo...' : 'Excluir minha conta'}
-          </button>
-          <button type="button" onClick={() => navigate('/minha-conta')} className="rounded-xl px-5 py-3 font-semibold border border-[var(--border-subtle)] text-[var(--text-primary)]">
+        <div className="flex flex-wrap gap-3">
+          <Botao type="submit" variante="perigo" disabled={!confirmado || excluindo}>
+            {excluindo ? 'Excluindo…' : 'Excluir minha conta'}
+          </Botao>
+          <Botao para="/minha-conta" variante="secundaria">
             Cancelar
-          </button>
+          </Botao>
         </div>
       </form>
     </AppShell>

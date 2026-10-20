@@ -4,6 +4,7 @@ import AppShell from '../components/ui/AppShell';
 import PageHeader from '../components/ui/PageHeader';
 import Aviso from '../components/ui/Aviso';
 import Carregando from '../components/ui/Carregando';
+import { classeCampo } from '../components/ui/Campo';
 import { QrIcon, PrinterIcon, CopyIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
 import {
@@ -17,7 +18,7 @@ const ACCENT = 'var(--color-brand-orange)';
 
 const caixa = 'rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-5 sm:p-6 flex flex-col gap-4';
 const botaoSecundario =
-  'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold border border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--surface-card-hover)]';
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold border border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--surface-card-hover)]';
 
 // Folha impressa: só aparece na impressão (ver .cartaz em index.css).
 function Cartaz({ nome, qr }) {
@@ -28,7 +29,7 @@ function Cartaz({ nome, qr }) {
       {qr && <img src={qr} alt="" className="cartaz-qr" />}
       <ol className="cartaz-passos">
         <li>Aponte a câmera do celular para o código.</li>
-        <li>Digite o número do seu pedido.</li>
+        <li>Digite a senha do seu pedido.</li>
         <li>A tela avisa quando ficar pronto.</li>
       </ol>
     </div>
@@ -130,9 +131,9 @@ export default function PaginaDoCliente() {
           {erro && <Aviso>{erro}</Aviso>}
           {mensagem && <Aviso tipo="sucesso">{mensagem}</Aviso>}
           {modoDemo && (
-            <Aviso>No modo demonstração a página só funciona neste navegador.</Aviso>
+            <Aviso tipo="info">No modo demonstração a página só funciona neste navegador.</Aviso>
           )}
-          {!config.ativa && <Aviso>A página está desligada. Quem ler o QR vê "Página não encontrada".</Aviso>}
+          {!config.ativa && <Aviso tipo="info">A página está desligada. Quem ler o QR vê "Página não encontrada".</Aviso>}
 
           <section className={caixa}>
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">Nome que aparece para o cliente</h2>
@@ -142,17 +143,17 @@ export default function PaginaDoCliente() {
               maxLength={60}
               placeholder={config.nomeCadastro}
               aria-label="Nome que aparece para o cliente"
-              className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-primary)] px-4 py-3 text-base outline-none focus:border-[var(--color-brand-orange)]"
+              className={classeCampo}
             />
             <p className="text-xs text-[var(--text-secondary)] -mt-2">Deixe em branco para usar o nome do cadastro.</p>
             <button
               type="button"
               onClick={() => salvar({})}
               disabled={salvando || nome.trim() === config.nomePublico}
-              className="self-start rounded-xl px-5 py-3 font-semibold text-white disabled:opacity-50"
+              className="self-start rounded-xl px-5 py-3 font-semibold text-[var(--sobre-destaque)] disabled:opacity-50"
               style={{ backgroundColor: ACCENT }}
             >
-              {salvando ? 'Salvando...' : 'Salvar nome'}
+              {salvando ? 'Salvando…' : 'Salvar nome'}
             </button>
           </section>
 
@@ -208,7 +209,7 @@ export default function PaginaDoCliente() {
                   <button
                     type="button"
                     onClick={trocarEndereco}
-                    className="rounded-xl px-4 py-3 text-sm font-semibold text-white bg-[var(--color-accent-cozinha)]"
+                    className="rounded-xl px-4 py-3 text-sm font-semibold text-[var(--sobre-destaque)] bg-[var(--color-accent-cozinha)]"
                   >
                     Trocar mesmo assim
                   </button>

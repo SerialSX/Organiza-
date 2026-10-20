@@ -30,3 +30,7 @@ dist-ssr
 # Documentação interna do projeto: nunca vai para o GitHub
 docs/
 CLAUDE.md
+
+# Resultados dos testes de tela
+test-results/
+playwright-report/

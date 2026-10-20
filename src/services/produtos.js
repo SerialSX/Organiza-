@@ -83,3 +83,16 @@ export function assinarProdutos(negocioId, callback) {
     .subscribe((status) => status === 'SUBSCRIBED' && callback());
   return () => supabase.removeChannel(canal);
 }
+
+// Produtos "excluídos" (arquivados): o dono pode devolver ao cardápio.
+export async function listarProdutosArquivados() {
+  if (!isSupabaseConfigured) return lerDemo().produtos.filter((p) => p.arquivado).map(normalizar).sort(porNome);
+
+  const { data, error } = await supabase.from('produtos').select(CAMPOS).eq('arquivado', true).order('nome');
+  if (error) throw new Error('Não foi possível carregar os produtos excluídos.');
+  return data.map(normalizar);
+}
+
+export async function devolverAoCardapio(id) {
+  await atualizarProduto(id, { arquivado: false });
+}

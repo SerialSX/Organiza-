@@ -55,9 +55,10 @@ create table if not exists public.pedidos (
   negocio_id uuid not null references public.negocios (id) on delete cascade,
   status text not null default 'pendente'
     check (status in ('pendente', 'em_preparo', 'pronto', 'entregue', 'cancelado')),
-  -- Número que o cliente ouve e digita na página do QR. Aleatório para não
-  -- dar para adivinhar o pedido dos outros em sequência; único no dia.
-  numero smallint not null check (numero between 1000 and 9999),
+  -- Senha que o cliente ouve e digita na página do QR: de 1 a 999, em
+  -- sequência por negócio (contador_pedidos). Recomeça a cada dia e volta
+  -- para 1 depois do 999.
+  numero smallint not null check (numero between 1 and 999),
   dia date not null default public.hoje_no_negocio(),
   criado_em timestamptz not null default now(),
   criado_por uuid references public.usuarios (id) on delete set null,
@@ -71,7 +72,6 @@ create table if not exists public.pedidos (
   cancelado_em timestamptz,
   motivo_cancelamento text
     check (motivo_cancelamento in ('cliente_desistiu', 'erro_lancamento', 'faltou_ingrediente', 'outro')),
-  unique (negocio_id, dia, numero),
   unique (negocio_id, chave_envio)
 );
 
@@ -92,9 +92,20 @@ create table if not exists public.itens_pedido (
   faltou boolean not null default false
 );
 
+-- Última senha entregue por negócio. A linha fica travada durante o
+-- criar_pedido, então dois pedidos ao mesmo tempo nunca pegam a mesma senha.
+create table if not exists public.contador_pedidos (
+  negocio_id uuid primary key references public.negocios (id) on delete cascade,
+  dia date not null,
+  ultimo smallint not null check (ultimo between 1 and 999)
+);
+
 create index if not exists usuarios_negocio_idx on public.usuarios (negocio_id);
 create index if not exists produtos_negocio_idx on public.produtos (negocio_id);
 create index if not exists pedidos_negocio_criado_em_idx on public.pedidos (negocio_id, criado_em);
+-- Busca pela senha na página do QR. Não é único: passando de 999 pedidos no
+-- dia, a senha se repete e vale o pedido mais recente.
+create index if not exists pedidos_negocio_dia_numero_idx on public.pedidos (negocio_id, dia, numero);
 create index if not exists pedidos_abertos_idx on public.pedidos (negocio_id, dia)
   where status in ('pendente', 'em_preparo', 'pronto');
 create index if not exists itens_pedido_pedido_idx on public.itens_pedido (pedido_id);
@@ -120,6 +131,9 @@ alter table public.usuarios enable row level security;
 alter table public.produtos enable row level security;
 alter table public.pedidos enable row level security;
 alter table public.itens_pedido enable row level security;
+-- Só as funções do banco mexem no contador de senhas: RLS ligado e nenhuma policy.
+alter table public.contador_pedidos enable row level security;
+revoke all on public.contador_pedidos from anon, authenticated;
 
 -- Não depende dos grants padrão do Supabase. Pedidos e itens só são gravados
 -- pelas funções criar_pedido e atualizar_status_pedido.
@@ -295,7 +309,8 @@ as $$
 declare
   v_negocio_id uuid := public.negocio_do_usuario_atual();
   v_pedido public.pedidos;
-  v_tentativas int := 0;
+  v_hoje date := public.hoje_no_negocio();
+  v_numero smallint;
 begin
   if v_negocio_id is null then
     raise exception 'Sua conta ainda não está ligada a um negócio.';
@@ -310,26 +325,26 @@ begin
     return v_pedido;
   end if;
 
-  loop
-    v_tentativas := v_tentativas + 1;
-    if v_tentativas > 50 then
-      raise exception 'Não foi possível gerar o número do pedido. Tente de novo.';
-    end if;
-    begin
-      insert into public.pedidos (negocio_id, criado_por, chave_envio, numero)
-      values (v_negocio_id, (select auth.uid()), p_chave_envio, 1000 + floor(random() * 9000)::int)
-      returning * into v_pedido;
-      exit;
-    exception when unique_violation then
-      -- O mesmo envio chegou duas vezes ao mesmo tempo: devolve o primeiro.
-      select * into v_pedido from public.pedidos
-      where negocio_id = v_negocio_id and chave_envio = p_chave_envio;
-      if found then
-        return v_pedido;
-      end if;
-      -- Senão o número sorteado já existe hoje: sorteia outro.
-    end;
-  end loop;
+  begin
+    -- Próxima senha: 1 no primeiro pedido do dia, depois soma 1 e volta
+    -- para 1 depois do 999.
+    insert into public.contador_pedidos as c (negocio_id, dia, ultimo)
+    values (v_negocio_id, v_hoje, 1)
+    on conflict (negocio_id) do update
+      set ultimo = case when c.dia = excluded.dia then c.ultimo % 999 + 1 else 1 end,
+          dia = excluded.dia
+    returning ultimo into v_numero;
+
+    insert into public.pedidos (negocio_id, criado_por, chave_envio, numero)
+    values (v_negocio_id, (select auth.uid()), p_chave_envio, v_numero)
+    returning * into v_pedido;
+  exception when unique_violation then
+    -- O mesmo envio chegou duas vezes ao mesmo tempo: devolve o primeiro. A
+    -- senha usada nesta tentativa volta junto com o resto (rollback do bloco).
+    select * into v_pedido from public.pedidos
+    where negocio_id = v_negocio_id and chave_envio = p_chave_envio;
+    return v_pedido;
+  end;
 
   perform public.gravar_itens_pedido(v_pedido.id, v_negocio_id, p_itens);
   return v_pedido;
@@ -338,7 +353,11 @@ $$;
 
 -- Troca os itens de um pedido que ainda não ficou pronto. A posição na fila
 -- (criado_em) não muda; alterado_em faz a cozinha destacar o cartão.
-create or replace function public.editar_pedido(p_pedido_id uuid, p_itens jsonb)
+-- p_versao é o alterado_em que a tela carregou: se outra pessoa editou nesse
+-- meio-tempo, a edição é recusada em vez de apagar a dela sem aviso.
+-- A versão antiga, sem p_versao, não pode continuar disponível no banco.
+drop function if exists public.editar_pedido(uuid, jsonb);
+create or replace function public.editar_pedido(p_pedido_id uuid, p_itens jsonb, p_versao timestamptz)
 returns public.pedidos
 language plpgsql
 security definer
@@ -356,6 +375,9 @@ begin
   end if;
   if v_pedido.status not in ('pendente', 'em_preparo') then
     raise exception 'Este pedido já ficou pronto ou foi encerrado. Lance um pedido novo.';
+  end if;
+  if v_pedido.alterado_em is distinct from p_versao then
+    raise exception 'Outra pessoa alterou este pedido agora há pouco. Abra o pedido de novo para ver como ficou.';
   end if;
 
   select coalesce(
@@ -477,13 +499,13 @@ revoke all on function public.negocio_do_usuario_atual() from public, anon;
 revoke all on function public.criar_negocio_do_novo_usuario() from public, anon, authenticated;
 revoke all on function public.gravar_itens_pedido(uuid, uuid, jsonb, jsonb) from public, anon, authenticated;
 revoke all on function public.criar_pedido(jsonb, uuid) from public, anon;
-revoke all on function public.editar_pedido(uuid, jsonb) from public, anon;
+revoke all on function public.editar_pedido(uuid, jsonb, timestamptz) from public, anon;
 revoke all on function public.cancelar_pedido(uuid, text) from public, anon;
 revoke all on function public.atualizar_status_pedido(uuid, text) from public, anon;
 revoke all on function public.marcar_item_faltou(uuid, boolean) from public, anon;
 grant execute on function public.negocio_do_usuario_atual() to authenticated;
 grant execute on function public.criar_pedido(jsonb, uuid) to authenticated;
-grant execute on function public.editar_pedido(uuid, jsonb) to authenticated;
+grant execute on function public.editar_pedido(uuid, jsonb, timestamptz) to authenticated;
 grant execute on function public.cancelar_pedido(uuid, text) to authenticated;
 grant execute on function public.atualizar_status_pedido(uuid, text) to authenticated;
 grant execute on function public.marcar_item_faltou(uuid, boolean) to authenticated;
@@ -610,10 +632,12 @@ begin
   from public.negocios
   where codigo_publico = p_codigo and pagina_ativa;
 
-  if v_negocio_id is not null and p_numero between 1000 and 9999 then
+  if v_negocio_id is not null and p_numero between 1 and 999 then
     select * into v_pedido
     from public.pedidos
-    where negocio_id = v_negocio_id and dia = v_hoje and numero = p_numero;
+    where negocio_id = v_negocio_id and dia = v_hoje and numero = p_numero
+    order by criado_em desc
+    limit 1;
   end if;
 
   perform public.registrar_consulta(v_pedido.id is null);
@@ -762,6 +786,48 @@ $$;
 
 revoke all on function public.excluir_minha_conta() from public, anon;
 grant execute on function public.excluir_minha_conta() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Minha conta
+-- ---------------------------------------------------------------------------
+
+-- Nome da pessoa e, para o dono, nome do negócio. Uma função só para a tela
+-- "Minha conta" salvar tudo de uma vez.
+create or replace function public.atualizar_meus_dados(p_nome text, p_nome_negocio text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_usuario public.usuarios;
+  v_nome text := trim(p_nome);
+  v_nome_negocio text := trim(p_nome_negocio);
+begin
+  select * into v_usuario from public.usuarios where id = (select auth.uid());
+  if not found then
+    raise exception 'Sua conta ainda não está ligada a um negócio.';
+  end if;
+  if coalesce(length(v_nome), 0) not between 1 and 120 then
+    raise exception 'Digite seu nome (até 120 letras).';
+  end if;
+
+  update public.usuarios set nome = v_nome where id = v_usuario.id;
+
+  if v_nome_negocio is not null then
+    if v_usuario.papel <> 'admin' then
+      raise exception 'Só o dono pode mudar o nome do negócio.';
+    end if;
+    if length(v_nome_negocio) not between 1 and 120 then
+      raise exception 'Digite o nome do negócio (até 120 letras).';
+    end if;
+    update public.negocios set nome = v_nome_negocio where id = v_usuario.negocio_id;
+  end if;
+end;
+$$;
+
+revoke all on function public.atualizar_meus_dados(text, text) from public, anon;
+grant execute on function public.atualizar_meus_dados(text, text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Tempo real

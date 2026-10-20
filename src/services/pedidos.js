@@ -152,11 +152,12 @@ export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio }) {
     const repetido = db.pedidos.find((p) => p.chave_envio === chaveEnvio);
     if (repetido) return normalizarPedido(repetido, []);
 
+    // Mesma regra do contador_pedidos do banco: 1 no primeiro pedido do dia,
+    // depois soma 1 e volta para 1 depois do 999.
     const dia = hojeNoNegocio();
-    const usados = new Set(db.pedidos.filter((p) => p.dia === dia).map((p) => p.numero));
-    let numero;
-    do numero = 1000 + Math.floor(Math.random() * 9000);
-    while (usados.has(numero));
+    const anterior = db.contador?.dia === dia ? db.contador.ultimo : 0;
+    const numero = (anterior % 999) + 1;
+    db.contador = { dia, ultimo: numero };
 
     const pedido = {
       id: novoId(),
@@ -181,7 +182,9 @@ export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio }) {
   return normalizarPedido(data, []);
 }
 
-export async function editarPedido(id, itens) {
+// versao: o alterado_em do pedido quando a edição começou. Se outra pessoa
+// salvou no meio-tempo, a edição é recusada para não apagar a dela.
+export async function editarPedido(id, itens, versao) {
   if (!itens.length) throw new Error('O pedido precisa ter pelo menos um item. Para desistir, cancele o pedido.');
 
   if (!isSupabaseConfigured) {
@@ -189,6 +192,9 @@ export async function editarPedido(id, itens) {
     const pedido = pedidoDemo(db, id);
     if (!STATUS_NA_FILA.includes(pedido.status)) {
       falhaDemo('Este pedido já ficou pronto ou foi encerrado. Lance um pedido novo.');
+    }
+    if ((pedido.alterado_em ?? null) !== (versao ?? null)) {
+      falhaDemo('Outra pessoa alterou este pedido agora há pouco. Abra o pedido de novo para ver como ficou.');
     }
     const anteriores = {};
     for (const i of db.itens_pedido.filter((item) => item.pedido_id === id)) {
@@ -200,7 +206,11 @@ export async function editarPedido(id, itens) {
     return;
   }
 
-  const { error } = await supabase.rpc('editar_pedido', { p_pedido_id: id, p_itens: itensParaEnvio(itens) });
+  const { error } = await supabase.rpc('editar_pedido', {
+    p_pedido_id: id,
+    p_itens: itensParaEnvio(itens),
+    p_versao: versao ?? null,
+  });
   if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível salvar as alterações.'));
 }
 

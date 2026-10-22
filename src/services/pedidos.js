@@ -6,9 +6,11 @@ import { lerDemo, salvarDemo, assinarDemo, novoId } from './demoStore';
 const CAMPOS_PEDIDO = 'id, numero, dia, status, criado_em, alterado_em, pronto_em, cancelado_em, motivo_cancelamento';
 
 // Pedidos abertos aparecem na Cozinha: só o que é preciso para preparar,
-// sem preço nem custo.
-const CAMPOS_ABERTOS = `${CAMPOS_PEDIDO}, itens_pedido ( id, produto_id, quantidade, observacao, faltou, produtos ( nome ) )`;
-const CAMPOS_COM_VALORES = `${CAMPOS_PEDIDO}, itens_pedido ( id, produto_id, quantidade, observacao, faltou, preco_unitario, custo_unitario, produtos ( nome ) )`;
+// sem preço nem custo. Os ingredientes do produto são as opções do "Faltou".
+const CAMPOS_ITEM = 'id, produto_id, quantidade, observacao, faltou, faltou_ingredientes';
+const PRODUTO_DO_ITEM = 'produtos ( nome, produto_ingredientes ( ingrediente_id, ingredientes ( nome ) ) )';
+const CAMPOS_ABERTOS = `${CAMPOS_PEDIDO}, itens_pedido ( ${CAMPOS_ITEM}, ${PRODUTO_DO_ITEM} )`;
+const CAMPOS_COM_VALORES = `${CAMPOS_PEDIDO}, itens_pedido ( ${CAMPOS_ITEM}, preco_unitario, custo_unitario, ${PRODUTO_DO_ITEM} )`;
 
 // O Supabase devolve no máximo 1000 linhas por consulta.
 const TAMANHO_PAGINA = 1000;
@@ -28,7 +30,12 @@ function limparObservacao(texto) {
   return limpo ? limpo.slice(0, LIMITE_OBSERVACAO) : null;
 }
 
-function normalizarItem(i, nome) {
+function porNome(a, b) {
+  return a.nome.localeCompare(b.nome, 'pt-BR');
+}
+
+// ingredientes: [{ id, nome }] do produto, hoje
+function normalizarItem(i, nome, ingredientes = []) {
   return {
     id: i.id,
     produto_id: i.produto_id,
@@ -36,6 +43,8 @@ function normalizarItem(i, nome) {
     quantidade: i.quantidade,
     observacao: i.observacao ?? null,
     faltou: Boolean(i.faltou),
+    faltou_ingredientes: i.faltou_ingredientes ?? [],
+    ingredientes: [...ingredientes].sort(porNome),
     preco_unitario: numeroOuNull(i.preco_unitario),
     // undefined = item antigo do modo demonstração, sem custo gravado; o
     // relatório usa o custo do cadastro nesse caso
@@ -62,7 +71,13 @@ function normalizarPedido(p, itens) {
 function normalizarSupabase(p) {
   return normalizarPedido(
     p,
-    (p.itens_pedido ?? []).map((i) => normalizarItem(i, i.produtos?.nome ?? 'Produto removido')),
+    (p.itens_pedido ?? []).map((i) =>
+      normalizarItem(
+        i,
+        i.produtos?.nome ?? 'Produto removido',
+        (i.produtos?.produto_ingredientes ?? []).map((pi) => ({ id: pi.ingrediente_id, nome: pi.ingredientes?.nome ?? '' })),
+      ),
+    ),
   );
 }
 
@@ -76,6 +91,11 @@ function canceladoRecente(p, agora) {
 
 function montarDemo(db, filtro, { comValores }) {
   const nomes = Object.fromEntries(db.produtos.map((p) => [p.id, p.nome]));
+  const nomesIngredientes = Object.fromEntries((db.ingredientes ?? []).map((i) => [i.id, i.nome]));
+  const ingredientesDo = (produtoId) =>
+    (db.produto_ingredientes ?? [])
+      .filter((pi) => pi.produto_id === produtoId)
+      .map((pi) => ({ id: pi.ingrediente_id, nome: nomesIngredientes[pi.ingrediente_id] ?? '' }));
   return db.pedidos
     .filter(filtro)
     .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em))
@@ -85,7 +105,7 @@ function montarDemo(db, filtro, { comValores }) {
         db.itens_pedido
           .filter((i) => i.pedido_id === p.id)
           .map((i) => {
-            const item = normalizarItem(i, nomes[i.produto_id] ?? 'Produto removido');
+            const item = normalizarItem(i, nomes[i.produto_id] ?? 'Produto removido', ingredientesDo(i.produto_id));
             return comValores ? item : { ...item, preco_unitario: null, custo_unitario: null };
           }),
       ),
@@ -112,6 +132,7 @@ function itensDemo(db, pedidoId, itens, anteriores = {}) {
       quantidade: i.quantidade,
       observacao: limparObservacao(i.observacao),
       faltou: false,
+      faltou_ingredientes: [],
       preco_unitario: jaEstava ? anteriores[produto.id].preco : produto.preco,
       custo_unitario: jaEstava ? anteriores[produto.id].custo : (produto.custo ?? null),
     };
@@ -281,6 +302,37 @@ export async function marcarItemFaltou(itemId, faltou) {
   }
 
   const { error } = await supabase.rpc('marcar_item_faltou', { p_item_id: itemId, p_faltou: faltou });
+  if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível avisar o atendente.'));
+}
+
+// "Faltou queijo": a cozinha diz qual ingrediente do item não tem. O nome fica
+// gravado no item, então renomear o ingrediente depois não muda o aviso.
+export async function marcarIngredienteFaltou(itemId, ingredienteId, faltou) {
+  if (!isSupabaseConfigured) {
+    const db = lerDemo();
+    const item = db.itens_pedido.find((i) => i.id === itemId);
+    const pedido = item && db.pedidos.find((p) => p.id === item.pedido_id);
+    if (!pedido || !STATUS_NA_FILA.includes(pedido.status)) falhaDemo('Este pedido não está mais na fila.');
+    const naLista = (db.produto_ingredientes ?? []).some(
+      (pi) => pi.produto_id === item.produto_id && pi.ingrediente_id === ingredienteId,
+    );
+    const nome = (db.ingredientes ?? []).find((i) => i.id === ingredienteId)?.nome;
+    if (!naLista || !nome) falhaDemo('Este ingrediente não está mais no produto. Atualize a tela.');
+    const atuais = item.faltou_ingredientes ?? [];
+    const novos = faltou ? (atuais.includes(nome) ? atuais : [...atuais, nome]) : atuais.filter((n) => n !== nome);
+    const comItem = {
+      ...db,
+      itens_pedido: db.itens_pedido.map((i) => (i.id === itemId ? { ...i, faltou_ingredientes: novos } : i)),
+    };
+    salvarDemo(atualizarPedidoDemo(comItem, pedido.id, {}));
+    return;
+  }
+
+  const { error } = await supabase.rpc('marcar_ingrediente_faltou', {
+    p_item_id: itemId,
+    p_ingrediente_id: ingredienteId,
+    p_faltou: faltou,
+  });
   if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível avisar o atendente.'));
 }
 

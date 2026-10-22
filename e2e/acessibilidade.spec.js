@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
-const TELAS = ['/', '/login', '/cadastro', '/esqueci-senha', '/privacidade', '/home', '/produtos', '/pedidos', '/cozinha', '/relatorios', '/pagina-do-cliente', '/minha-conta', '/p/demonstracao'];
+const TELAS = ['/', '/login', '/cadastro', '/esqueci-senha', '/privacidade', '/home', '/produtos', '/produtos?aba=ingredientes', '/pedidos', '/cozinha', '/cozinha?aba=esgotados', '/relatorios', '/pagina-do-cliente', '/minha-conta', '/p/demonstracao'];
 
 for (const tela of TELAS) {
   test(`sem problemas de acessibilidade em ${tela}`, async ({ page }) => {

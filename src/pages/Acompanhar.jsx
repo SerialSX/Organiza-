@@ -160,7 +160,7 @@ function NaFila({ numero, situacao }) {
           style={{ borderColor: LARANJA }}
         >
           <AlertIcon className="w-6 h-6 shrink-0 text-[var(--texto-laranja)]" />
-          Faltou um item do seu pedido. Fale com o atendente.
+          Faltou algo para o seu pedido. Fale com o atendente.
         </p>
       )}
 

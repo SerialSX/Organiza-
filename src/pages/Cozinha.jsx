@@ -14,7 +14,7 @@ import { usePedidosAbertos } from '../hooks/usePedidosAbertos';
 import { useAgora } from '../hooks/useAgora';
 import { useTelaAcesa } from '../hooks/useTelaAcesa';
 import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
-import { atualizarStatusPedido, marcarItemFaltou } from '../services/pedidos';
+import { atualizarStatusPedido, marcarIngredienteFaltou, marcarItemFaltou } from '../services/pedidos';
 import { minutosDesde, numeroDoPedido } from '../lib/formatadores';
 import { DESFAZER_PRONTO_SEGUNDOS, LIMITE_ATRASO_MINUTOS } from '../lib/pedidoStatus';
 import { separarPedidos } from '../lib/fila';
@@ -141,6 +141,15 @@ export default function Cozinha() {
     }
   }
 
+  async function alternarIngrediente(item, ingrediente) {
+    setErro('');
+    try {
+      await marcarIngredienteFaltou(item.id, ingrediente.id, !item.faltou_ingredientes.includes(ingrediente.nome));
+    } catch (e) {
+      setErro(e.message);
+    }
+  }
+
   return (
     <AppShell largura="max-w-6xl">
       <PageHeader icon={KitchenIcon} accent={ACCENT} title="Cozinha" subtitle="Do mais antigo para o mais novo" />
@@ -196,7 +205,14 @@ export default function Cozinha() {
           ) : (
             <ul aria-label="Fila de pedidos" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {fila.map((p) => (
-                <CartaoFila key={p.id} pedido={p} agora={agora} onPronto={marcarPronto} onFaltou={alternarFaltou} />
+                <CartaoFila
+                  key={p.id}
+                  pedido={p}
+                  agora={agora}
+                  onPronto={marcarPronto}
+                  onFaltou={alternarFaltou}
+                  onFaltouIngrediente={alternarIngrediente}
+                />
               ))}
             </ul>
           )}

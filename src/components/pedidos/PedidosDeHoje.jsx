@@ -6,7 +6,7 @@ import { CheckIcon, PencilIcon, AlertIcon } from '../icons/AppIcons';
 import { atualizarStatusPedido } from '../../services/pedidos';
 import { numeroDoPedido } from '../../lib/formatadores';
 import { STATUS, podeEditar } from '../../lib/pedidoStatus';
-import { itensQueFaltaram } from '../../lib/fila';
+import { descreverFalta, itensQueFaltaram } from '../../lib/fila';
 
 function resumoDosItens(pedido) {
   return pedido.itens.map((i) => `${i.quantidade}× ${i.nome}${i.observacao ? ` (${i.observacao})` : ''}`).join(', ');
@@ -39,7 +39,7 @@ function CartaoPedidoDeHoje({ pedido, editandoEste, onEditar, onErro }) {
       {faltaram.length > 0 && (
         <p className="flex items-start gap-2 text-sm font-semibold text-[var(--texto-cozinha)]">
           <AlertIcon className="w-5 h-5 shrink-0" />
-          A cozinha avisou que faltou: {faltaram.map((i) => i.nome).join(', ')}. Edite ou cancele o pedido.
+          A cozinha avisou que faltou: {faltaram.map(descreverFalta).join(', ')}. Combine com o cliente: edite o pedido (tire o item ou anote na observação) ou cancele.
         </p>
       )}
 

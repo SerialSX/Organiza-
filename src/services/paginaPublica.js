@@ -76,7 +76,7 @@ export async function acompanharPedido(codigo, numero) {
       status: pedido.status,
       posicao: naFila(pedido) ? fila.findIndex((p) => p.id === pedido.id) + 1 : null,
       tempo_medio_min: tempos.length ? Math.round(tempos.reduce((a, b) => a + b, 0) / tempos.length) : null,
-      faltou: naFila(pedido) && db.itens_pedido.some((i) => i.pedido_id === pedido.id && i.faltou),
+      faltou: naFila(pedido) && db.itens_pedido.some((i) => i.pedido_id === pedido.id && (i.faltou || i.faltou_ingredientes?.length)),
     };
   }
 

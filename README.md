@@ -27,7 +27,7 @@ cp .env.example .env.local   # preencha com a URL e a anon key do projeto Supaba
 
 No SQL Editor do Supabase, rode o arquivo [`supabase/schema.sql`](./supabase/schema.sql) inteiro. Em Authentication → URL Configuration, coloque o endereço do site em Site URL e adicione `/home` em Redirect URLs (link de confirmação de e-mail). Em Authentication → Email Templates → Reset Password, o e-mail precisa mostrar `{{ .Token }}`: é o código de 6 dígitos do "Esqueci minha senha".
 
-Se o banco já estava no ar, não rode o `schema.sql` de novo: rode só os arquivos de [`supabase/migracoes`](./supabase/migracoes) que ainda não rodaram, em ordem de data.
+Se o banco já estava no ar, não rode o `schema.sql` de novo: rode só os arquivos de [`supabase/migracoes`](./supabase/migracoes) que ainda não rodaram, em ordem de data. Se faltar alguma, o sistema mostra um aviso vermelho para a equipe em todas as telas.
 
 Em produção, sem as variáveis do Supabase o sistema mostra "fora do ar" em vez de cair no modo demonstração. Para publicar uma demonstração de propósito, defina `VITE_MODO_DEMO=true`.
 

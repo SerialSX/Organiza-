@@ -23,5 +23,12 @@ export function separarPedidos(pedidos, agora = new Date()) {
 }
 
 export function itensQueFaltaram(pedido) {
-  return pedido.itens.filter((i) => i.faltou);
+  return pedido.itens.filter((i) => i.faltou || i.faltou_ingredientes?.length);
+}
+
+// "X-Burguer (queijo, pão)" quando a cozinha disse o ingrediente; só o nome
+// quando faltou o item inteiro.
+export function descreverFalta(item) {
+  if (item.faltou || !item.faltou_ingredientes?.length) return item.nome;
+  return `${item.nome} (${item.faltou_ingredientes.join(', ').toLowerCase()})`;
 }

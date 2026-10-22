@@ -1,14 +1,22 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { lerDemo, salvarDemo, assinarDemo, novoId } from './demoStore';
 
-const CAMPOS = 'id, nome, preco, custo, disponivel, criado_em';
+// Com a lista de ingredientes (quanto vai de cada um), usada no custo e no
+// "faltou" da cozinha.
+const CAMPOS = 'id, nome, preco, custo, disponivel, criado_em, produto_ingredientes ( ingrediente_id, quantidade )';
 
-function normalizar(p) {
+function normalizar({ produto_ingredientes: lista, ...p }) {
   return {
     ...p,
     preco: Number(p.preco),
     custo: p.custo === null || p.custo === undefined ? null : Number(p.custo),
+    ingredientes: (lista ?? []).map((i) => ({ ingrediente_id: i.ingrediente_id, quantidade: Number(i.quantidade) })),
   };
+}
+
+// No modo demonstração a lista fica à parte, como no banco.
+function comListaDemo(db) {
+  return (p) => ({ ...p, produto_ingredientes: (db.produto_ingredientes ?? []).filter((pi) => pi.produto_id === p.id) });
 }
 
 function porNome(a, b) {
@@ -16,7 +24,10 @@ function porNome(a, b) {
 }
 
 export async function listarProdutos() {
-  if (!isSupabaseConfigured) return lerDemo().produtos.filter((p) => !p.arquivado).map(normalizar).sort(porNome);
+  if (!isSupabaseConfigured) {
+    const db = lerDemo();
+    return db.produtos.filter((p) => !p.arquivado).map(comListaDemo(db)).map(normalizar).sort(porNome);
+  }
 
   const { data, error } = await supabase.from('produtos').select(CAMPOS).eq('arquivado', false).order('nome');
   if (error) throw new Error('Não foi possível carregar os produtos.');
@@ -30,7 +41,7 @@ export async function criarProduto(negocioId, { nome, preco, custo }) {
     const db = lerDemo();
     const produto = { ...novo, id: novoId(), negocio_id: negocioId, criado_em: new Date().toISOString() };
     salvarDemo({ ...db, produtos: [...db.produtos, produto] });
-    return produto;
+    return normalizar(produto);
   }
 
   const { data, error } = await supabase
@@ -86,7 +97,10 @@ export function assinarProdutos(negocioId, callback) {
 
 // Produtos "excluídos" (arquivados): o dono pode devolver ao cardápio.
 export async function listarProdutosArquivados() {
-  if (!isSupabaseConfigured) return lerDemo().produtos.filter((p) => p.arquivado).map(normalizar).sort(porNome);
+  if (!isSupabaseConfigured) {
+    const db = lerDemo();
+    return db.produtos.filter((p) => p.arquivado).map(comListaDemo(db)).map(normalizar).sort(porNome);
+  }
 
   const { data, error } = await supabase.from('produtos').select(CAMPOS).eq('arquivado', true).order('nome');
   if (error) throw new Error('Não foi possível carregar os produtos excluídos.');

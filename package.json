@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "preview": "vite preview",
-    "test:banco": "node supabase/testes/fluxo-do-pedido.mjs && node supabase/testes/pagina-publica.mjs",
+    "test:banco": "node supabase/testes/fluxo-do-pedido.mjs && node supabase/testes/pagina-publica.mjs && node supabase/testes/ingredientes.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {

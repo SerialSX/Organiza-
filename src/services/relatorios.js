@@ -78,6 +78,7 @@ function chaveDoDia(data) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+// Faturamento e número de pedidos (senhas usadas) de cada dia do período.
 export function faturamentoPorDia(pedidos, inicio, fim) {
   const totais = new Map();
   for (const pedido of pedidos) {
@@ -85,14 +86,49 @@ export function faturamentoPorDia(pedidos, inicio, fim) {
     if (pedido.status === 'cancelado') continue;
     const chave = chaveDoDia(pedido.criado_em);
     const valor = pedido.itens.reduce((s, i) => s + i.quantidade * i.preco_unitario, 0);
-    totais.set(chave, (totais.get(chave) ?? 0) + valor);
+    const atual = totais.get(chave) ?? { valor: 0, pedidos: 0 };
+    totais.set(chave, { valor: atual.valor + valor, pedidos: atual.pedidos + 1 });
   }
 
   const dias = [];
   for (const d = new Date(inicio); d < fim; d.setDate(d.getDate() + 1)) {
-    dias.push({ data: new Date(d), valor: totais.get(chaveDoDia(d)) ?? 0 });
+    const { valor, pedidos: quantos } = totais.get(chaveDoDia(d)) ?? { valor: 0, pedidos: 0 };
+    dias.push({ data: new Date(d), valor, pedidos: quantos });
   }
   return dias;
+}
+
+const horaEmFortaleza = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', hourCycle: 'h23', timeZone: 'America/Fortaleza' });
+
+// Pedidos por hora (sem os cancelados), do primeiro ao último horário com
+// movimento: mostra a hora de pico para o dono reforçar a equipe.
+export function pedidosPorHora(pedidos) {
+  const contagem = new Map();
+  for (const p of pedidos) {
+    if (p.status === 'cancelado') continue;
+    const hora = Number(horaEmFortaleza.format(new Date(p.criado_em)));
+    contagem.set(hora, (contagem.get(hora) ?? 0) + 1);
+  }
+  if (!contagem.size) return [];
+  const horas = [...contagem.keys()];
+  const lista = [];
+  for (let h = Math.min(...horas); h <= Math.max(...horas); h++) lista.push({ hora: h, pedidos: contagem.get(h) ?? 0 });
+  return lista;
+}
+
+// O que a cozinha avisou que faltou no período, do que mais faltou para o
+// que menos: lista de compras. Conta também pedidos cancelados, porque a
+// falta aconteceu do mesmo jeito.
+export function faltasNoPeriodo(pedidos) {
+  const vezes = new Map();
+  const somar = (nome) => vezes.set(nome, (vezes.get(nome) ?? 0) + 1);
+  for (const p of pedidos) {
+    for (const item of p.itens) {
+      for (const nome of item.faltou_ingredientes ?? []) somar(nome);
+      if (item.faltou) somar(item.nome);
+    }
+  }
+  return [...vezes].map(([nome, n]) => ({ nome, vezes: n })).sort((a, b) => b.vezes - a.vezes || a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
 export function intervaloDoPeriodo(periodo, agora = new Date()) {

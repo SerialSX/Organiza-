@@ -48,7 +48,7 @@ export default function Privacidade() {
           </p>
           <p>
             <strong className="text-[var(--text-primary)]">Do negócio:</strong> o cardápio (nomes, preços e, se você
-            informar, custos) e os pedidos (itens, quantidades, observações, horários, status e motivo de cancelamento).
+            informar, custos e ingredientes com preço de compra) e os pedidos (itens, quantidades, observações, horários, status e motivo de cancelamento).
           </p>
           <p>
             <strong className="text-[var(--text-primary)]">De quem acompanha o pedido pelo QR code:</strong> não pedimos

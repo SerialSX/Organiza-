@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AppShell from '../components/ui/AppShell';
 import PageHeader from '../components/ui/PageHeader';
 import Aviso from '../components/ui/Aviso';
@@ -7,9 +7,16 @@ import Campo from '../components/ui/Campo';
 import Carregando from '../components/ui/Carregando';
 import EstadoVazio from '../components/ui/EstadoVazio';
 import Etiqueta from '../components/ui/Etiqueta';
-import { ProductsIcon, PlusIcon, PencilIcon, TrashIcon, CloseIcon } from '../components/icons/AppIcons';
+import Abas from '../components/ui/Abas';
+import AbaIngredientes from '../components/produtos/AbaIngredientes';
+import IngredientesDoProduto from '../components/produtos/IngredientesDoProduto';
+import { ProductsIcon, PlusIcon, PencilIcon, TrashIcon, CloseIcon, BoxIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
 import { useProdutos } from '../hooks/useProdutos';
+import { useIngredientes } from '../hooks/useIngredientes';
+import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
+import { salvarIngredientesDoProduto } from '../services/ingredientes';
+import { estimarCusto } from '../lib/custos';
 import {
   criarProduto,
   atualizarProduto,
@@ -20,29 +27,73 @@ import {
 import { formatarMoeda, lerValor, valorParaCampo } from '../lib/formatadores';
 
 const ACCENT = 'var(--color-accent-produtos)';
-const FORM_VAZIO = { nome: '', preco: '', custo: '' };
+const FORM_VAZIO = { nome: '', preco: '', custo: '', lista: [] };
 
-function validar(form) {
+const ABAS = [
+  { id: 'produtos', rotulo: 'Produtos', Icone: ProductsIcon },
+  { id: 'ingredientes', rotulo: 'Ingredientes', Icone: BoxIcon },
+];
+
+const LIMITE_INGREDIENTES = 30;
+
+function listaNumerica(lista) {
+  return lista.map((l) => ({ ingrediente_id: l.ingrediente_id, quantidade: lerValor(l.quantidade) }));
+}
+
+// estimado: custo calculado pelos ingredientes (null quando não há ingrediente com preço)
+function validar(form, estimado) {
   const erros = {};
   const nome = form.nome.trim();
   const preco = lerValor(form.preco);
-  const custo = form.custo.trim() === '' ? null : lerValor(form.custo);
+  const custo = estimado ?? (form.custo.trim() === '' ? null : lerValor(form.custo));
+  const lista = listaNumerica(form.lista);
 
   if (!nome) erros.nome = 'Digite o nome do produto.';
   if (!Number.isFinite(preco) || preco <= 0) erros.preco = 'Digite um preço maior que zero, como 12,50.';
   if (custo !== null && (!Number.isFinite(custo) || custo < 0)) erros.custo = 'Digite um valor como 6,00 ou deixe em branco.';
+  if (lista.some((l) => !(l.quantidade > 0 && l.quantidade <= 100000))) {
+    erros.lista = 'Diga quanto vai de cada ingrediente, como 120 (g) ou 1 (un).';
+  }
+  if (lista.length > LIMITE_INGREDIENTES) erros.lista = `Um produto pode ter até ${LIMITE_INGREDIENTES} ingredientes.`;
   if (Object.keys(erros).length) return { erros };
   return {
-    dados: { nome, preco: Math.round(preco * 100) / 100, custo: custo === null ? null : Math.round(custo * 100) / 100 },
+    dados: {
+      nome,
+      preco: Math.round(preco * 100) / 100,
+      custo: custo === null ? null : Math.round(custo * 100) / 100,
+      lista,
+    },
   };
 }
 
-function FormularioProduto({ inicial, onSalvar, onCancelar }) {
+function mesmaLista(a, b) {
+  const chave = (l) => l.map((i) => `${i.ingrediente_id}:${i.quantidade}`).sort().join('|');
+  return chave(a) === chave(b);
+}
+
+function Lucro({ preco, custo }) {
+  const venda = lerValor(preco);
+  if (custo === null || !(venda > 0)) return null;
+  const lucro = venda - custo;
+  return (
+    <p className="text-sm font-semibold tabular-nums" style={{ color: lucro >= 0 ? 'var(--texto-relatorios)' : 'var(--texto-cozinha)' }}>
+      {lucro >= 0
+        ? `Lucro de ${formatarMoeda(lucro)} por unidade (${Math.round((lucro / venda) * 100)}% do preço)`
+        : `Prejuízo de ${formatarMoeda(-lucro)} por unidade: o custo passou do preço de venda`}
+    </p>
+  );
+}
+
+function FormularioProduto({ inicial, ingredientes, onSalvar, onCancelar, onIrParaIngredientes }) {
   const [form, setForm] = useState(inicial);
   const [erros, setErros] = useState({});
   const [erroGeral, setErroGeral] = useState('');
   const [salvando, setSalvando] = useState(false);
   const editando = Boolean(inicial.id);
+  const porId = Object.fromEntries(ingredientes.map((i) => [i.id, i]));
+  const linhasValidas = listaNumerica(form.lista).filter((l) => l.quantidade > 0);
+  const { total: estimado, semPreco } = estimarCusto(linhasValidas, porId);
+  const custoAtual = estimado ?? (form.custo.trim() === '' ? null : lerValor(form.custo));
 
   function alterar(campo) {
     return (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
@@ -50,7 +101,7 @@ function FormularioProduto({ inicial, onSalvar, onCancelar }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    const { erros: invalidos, dados } = validar(form);
+    const { erros: invalidos, dados } = validar(form, estimado);
     if (invalidos) {
       setErros(invalidos);
       e.currentTarget.elements.namedItem(Object.keys(invalidos)[0])?.focus();
@@ -114,18 +165,48 @@ function FormularioProduto({ inicial, onSalvar, onCancelar }) {
           autoComplete="off"
           erro={erros.preco}
         />
-        <Campo
-          rotulo="Custo (R$, opcional)"
-          name="custo"
-          value={form.custo}
-          onChange={alterar('custo')}
-          placeholder="0,00"
-          inputMode="decimal"
-          autoComplete="off"
-          erro={erros.custo}
-          dica="Com o custo, o relatório mostra quanto você lucra com cada produto."
-        />
+        {estimado === null ? (
+          <Campo
+            rotulo="Custo (R$, opcional)"
+            name="custo"
+            value={form.custo}
+            onChange={alterar('custo')}
+            placeholder="0,00"
+            inputMode="decimal"
+            autoComplete="off"
+            erro={erros.custo}
+            dica="Digite o custo ou adicione os ingredientes abaixo para calcular."
+          />
+        ) : (
+          <div className="flex flex-col gap-1.5" aria-live="polite">
+            <span className="text-sm font-medium text-[var(--text-secondary)]">Custo estimado</span>
+            <p className="min-h-12 flex items-center text-2xl font-bold tabular-nums text-[var(--text-primary)]">
+              {formatarMoeda(estimado)}
+            </p>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Calculado pelos ingredientes. Muda sozinho quando o preço de um ingrediente muda.
+            </p>
+          </div>
+        )}
       </div>
+
+      <Lucro preco={form.preco} custo={custoAtual} />
+
+      <IngredientesDoProduto
+        lista={form.lista}
+        onMudar={(lista) => setForm((f) => ({ ...f, lista }))}
+        ingredientes={ingredientes}
+        erro={erros.lista}
+        onIrParaIngredientes={onIrParaIngredientes}
+        nomeProduto={form.nome}
+      />
+
+      {estimado !== null && semPreco.length > 0 && (
+        <Aviso tipo="info">
+          {semPreco.join(', ')} {semPreco.length === 1 ? 'está' : 'estão'} sem preço e não entra{semPreco.length === 1 ? '' : 'm'} na
+          conta. O custo real pode ser maior.
+        </Aviso>
+      )}
 
       <Botao type="submit" tamanho="grande" cor={ACCENT} larguraTotal disabled={salvando}>
         {salvando ? 'Salvando…' : editando ? 'Salvar alterações' : 'Salvar produto'}
@@ -153,7 +234,7 @@ function Interruptor({ ligado, onChange, rotulo }) {
   );
 }
 
-function CartaoProduto({ produto, onEditar, onErro }) {
+function CartaoProduto({ produto, pelosIngredientes, onEditar, onErro }) {
   const [confirmando, setConfirmando] = useState(false);
   const margem = produto.custo === null ? null : produto.preco - produto.custo;
 
@@ -183,7 +264,7 @@ function CartaoProduto({ produto, onEditar, onErro }) {
           <p className="text-sm tabular-nums text-[var(--text-secondary)] mt-1">
             {margem === null
               ? 'Sem custo cadastrado'
-              : `Custo ${formatarMoeda(produto.custo)}, lucro de ${formatarMoeda(margem)} cada`}
+              : `Custo ${formatarMoeda(produto.custo)}${pelosIngredientes ? ' (pelos ingredientes)' : ''}, lucro de ${formatarMoeda(margem)} cada`}
           </p>
         </div>
         {!produto.disponivel && <Etiqueta cor="var(--color-accent-cozinha)">Esgotado</Etiqueta>}
@@ -298,28 +379,47 @@ function Excluidos({ atualizarCardapio, onErro }) {
 export default function Produtos() {
   const { perfil } = useAuth();
   const { produtos, carregando, erro: erroCarga, recarregar } = useProdutos();
+  const ingredientes = useIngredientes();
+  const [aba, setAba] = useAbaNoEndereco('aba', ABAS, 'produtos');
   // null = fechado; objeto = formulário aberto (com id quando editando)
   const [formulario, setFormulario] = useState(null);
   const [erro, setErro] = useState('');
+  // Produto novo que já foi criado, mas a lista de ingredientes falhou: a
+  // próxima tentativa só atualiza, em vez de criar o produto de novo.
+  const criado = useRef(null);
 
-  async function salvar(dados) {
-    if (formulario.id) await atualizarProduto(formulario.id, dados);
-    else await criarProduto(perfil.negocio_id, dados);
+  const comPreco = new Set(ingredientes.ingredientes.filter((i) => i.preco_compra !== null).map((i) => i.id));
+
+  async function salvar({ lista, ...dados }) {
+    let id = formulario.id ?? criado.current;
+    if (id) await atualizarProduto(id, dados);
+    else {
+      id = (await criarProduto(perfil.negocio_id, dados)).id;
+      criado.current = id;
+    }
+    if (!mesmaLista(lista, listaNumerica(formulario.lista))) await salvarIngredientesDoProduto(id, lista);
+    criado.current = null;
     setFormulario(null);
+    recarregar();
+  }
+
+  function abrir(form) {
+    setErro('');
+    criado.current = null;
+    setFormulario(form);
   }
 
   function abrirNovo() {
-    setErro('');
-    setFormulario(FORM_VAZIO);
+    abrir(FORM_VAZIO);
   }
 
   function abrirEdicao(produto) {
-    setErro('');
-    setFormulario({
+    abrir({
       id: produto.id,
       nome: produto.nome,
       preco: valorParaCampo(produto.preco),
       custo: valorParaCampo(produto.custo),
+      lista: produto.ingredientes.map((l) => ({ ingrediente_id: l.ingrediente_id, quantidade: String(l.quantidade).replace('.', ',') })),
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -338,7 +438,7 @@ export default function Produtos() {
             : 'Cadastre o que você vende'
         }
       >
-        {!formulario && produtos.length > 0 && (
+        {aba === 'produtos' && !formulario && produtos.length > 0 && (
           <Botao cor={ACCENT} tamanho="grande" onClick={abrirNovo}>
             <PlusIcon className="w-5 h-5" />
             Novo produto
@@ -346,42 +446,72 @@ export default function Produtos() {
         )}
       </PageHeader>
 
-      {formulario && (
-        <FormularioProduto
-          key={formulario.id ?? 'novo'}
-          inicial={formulario}
-          onSalvar={salvar}
-          onCancelar={() => setFormulario(null)}
+      <div className="mb-6">
+        <Abas opcoes={ABAS} valor={aba} onMudar={setAba} cor={ACCENT} rotulo="O que mostrar" />
+      </div>
+
+      {/* As duas abas ficam montadas: ir cadastrar um ingrediente no meio de um
+          produto não apaga o que já foi digitado. */}
+      <div hidden={aba !== 'ingredientes'}>
+        <AbaIngredientes
+          {...ingredientes}
+          erroCarga={ingredientes.erro}
+          produtos={produtos}
+          negocioId={perfil.negocio_id}
         />
-      )}
+        {formulario && (
+          <Botao variante="secundaria" className="mt-6" onClick={() => setAba('produtos')}>
+            Voltar para o produto que você estava cadastrando
+          </Botao>
+        )}
+      </div>
 
-      {(erro || erroCarga) && <Aviso className="mb-4">{erro || erroCarga}</Aviso>}
+      <div hidden={aba !== 'produtos'}>
+        {formulario && (
+          <FormularioProduto
+            key={formulario.id ?? 'novo'}
+            inicial={formulario}
+            ingredientes={ingredientes.ingredientes}
+            onSalvar={salvar}
+            onCancelar={() => setFormulario(null)}
+            onIrParaIngredientes={() => setAba('ingredientes')}
+          />
+        )}
 
-      {carregando ? (
-        <Carregando texto="Carregando produtos…" />
-      ) : produtos.length === 0 ? (
-        !formulario && (
-          <EstadoVazio
-            icon={ProductsIcon}
-            accent={ACCENT}
-            titulo="Nenhum produto ainda"
-            texto="Cadastre os itens do seu cardápio para começar a lançar pedidos."
-          >
-            <Botao cor={ACCENT} tamanho="grande" onClick={abrirNovo} className="mt-2">
-              <PlusIcon className="w-5 h-5" />
-              Cadastrar o primeiro produto
-            </Botao>
-          </EstadoVazio>
-        )
-      ) : (
-        <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {produtos.map((produto) => (
-            <CartaoProduto key={produto.id} produto={produto} onEditar={() => abrirEdicao(produto)} onErro={setErro} />
-          ))}
-        </ul>
-      )}
+        {(erro || erroCarga) && <Aviso className="mb-4">{erro || erroCarga}</Aviso>}
 
-      {!carregando && <Excluidos atualizarCardapio={recarregar} onErro={setErro} />}
+        {carregando ? (
+          <Carregando texto="Carregando produtos…" />
+        ) : produtos.length === 0 ? (
+          !formulario && (
+            <EstadoVazio
+              icon={ProductsIcon}
+              accent={ACCENT}
+              titulo="Nenhum produto ainda"
+              texto="Cadastre os itens do seu cardápio para começar a lançar pedidos."
+            >
+              <Botao cor={ACCENT} tamanho="grande" onClick={abrirNovo} className="mt-2">
+                <PlusIcon className="w-5 h-5" />
+                Cadastrar o primeiro produto
+              </Botao>
+            </EstadoVazio>
+          )
+        ) : (
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {produtos.map((produto) => (
+              <CartaoProduto
+                key={produto.id}
+                produto={produto}
+                pelosIngredientes={produto.ingredientes.some((l) => comPreco.has(l.ingrediente_id))}
+                onEditar={() => abrirEdicao(produto)}
+                onErro={setErro}
+              />
+            ))}
+          </ul>
+        )}
+
+        {!carregando && <Excluidos atualizarCardapio={recarregar} onErro={setErro} />}
+      </div>
     </AppShell>
   );
 }

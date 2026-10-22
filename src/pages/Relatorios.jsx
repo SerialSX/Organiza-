@@ -10,7 +10,14 @@ import { ReportsIcon, MoneyIcon, OrdersIcon, TrendIcon, TrophyIcon, BoxIcon, Dow
 import { useProdutos } from '../hooks/useProdutos';
 import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
 import { listarPedidosDoPeriodo } from '../services/pedidos';
-import { calcularRelatorio, faturamentoPorDia, intervaloDoPeriodo, rankingParaCsv } from '../services/relatorios';
+import {
+  calcularRelatorio,
+  faltasNoPeriodo,
+  faturamentoPorDia,
+  intervaloDoPeriodo,
+  pedidosPorHora,
+  rankingParaCsv,
+} from '../services/relatorios';
 import { formatarMoeda } from '../lib/formatadores';
 import { rotuloDoMotivo } from '../lib/pedidoStatus';
 import { corDeTexto } from '../lib/cores';
@@ -75,6 +82,7 @@ function GraficoFaturamento({ dias }) {
   const maior = Math.max(...dias.map((d) => d.valor), 1);
   const mostrarTodosRotulos = dias.length <= 7;
   const melhor = dias.reduce((a, b) => (b.valor > a.valor ? b : a), dias[0]);
+  const maisPedidos = dias.reduce((a, b) => (b.pedidos > a.pedidos ? b : a), dias[0]);
 
   return (
     <section aria-labelledby="titulo-grafico" className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-5">
@@ -83,11 +91,12 @@ function GraficoFaturamento({ dias }) {
       </h2>
       {melhor.valor > 0 && (
         <p className="text-sm tabular-nums text-[var(--text-secondary)] mt-1">
-          Melhor dia: {diaCurto.format(melhor.data)}, com {formatarMoeda(melhor.valor)}
+          Melhor dia: {diaCurto.format(melhor.data)}, com {formatarMoeda(melhor.valor)}. Dia com mais pedidos:{' '}
+          {diaCurto.format(maisPedidos.data)}, com {plural(maisPedidos.pedidos, 'pedido', 'pedidos')}.
         </p>
       )}
       <div className="flex items-end gap-1 sm:gap-2 h-44 mt-4" aria-hidden="true">
-        {dias.map(({ data, valor }, i) => (
+        {dias.map(({ data, valor, pedidos }, i) => (
           <div key={data.toISOString()} className="flex-1 h-full flex flex-col justify-end items-center gap-1 min-w-0">
             <div
               className="w-full rounded-t-md"
@@ -95,7 +104,7 @@ function GraficoFaturamento({ dias }) {
                 height: `${Math.max((valor / maior) * 100, valor ? 4 : 1)}%`,
                 backgroundColor: valor ? ACCENT : 'var(--border-subtle)',
               }}
-              title={`${diaCurto.format(data)}: ${formatarMoeda(valor)}`}
+              title={`${diaCurto.format(data)}: ${formatarMoeda(valor)}, ${plural(pedidos, 'pedido', 'pedidos')}`}
             />
             <span className="text-[10px] tabular-nums text-[var(--text-secondary)] h-3">
               {mostrarTodosRotulos || i % 5 === 0 || i === dias.length - 1 ? diaCurto.format(data) : ''}
@@ -110,17 +119,88 @@ function GraficoFaturamento({ dias }) {
           <tr>
             <th scope="col">Dia</th>
             <th scope="col">Faturamento</th>
+            <th scope="col">Pedidos</th>
           </tr>
         </thead>
         <tbody>
-          {dias.map(({ data, valor }) => (
+          {dias.map(({ data, valor, pedidos }) => (
             <tr key={data.toISOString()}>
               <td>{diaCurto.format(data)}</td>
               <td>{formatarMoeda(valor)}</td>
+              <td>{pedidos}</td>
             </tr>
           ))}
         </tbody>
       </table>
+    </section>
+  );
+}
+
+// Hoje: quantas senhas saíram em cada hora e qual foi o pico.
+function GraficoPorHora({ horas }) {
+  const maior = Math.max(...horas.map((h) => h.pedidos), 1);
+  const pico = horas.reduce((a, b) => (b.pedidos > a.pedidos ? b : a), horas[0]);
+
+  return (
+    <section aria-labelledby="titulo-horas" className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-5">
+      <h2 id="titulo-horas" className="text-lg font-semibold text-[var(--text-primary)]">
+        Pedidos por hora
+      </h2>
+      <p className="text-sm tabular-nums text-[var(--text-secondary)] mt-1">
+        Mais movimento: das {pico.hora}h às {pico.hora + 1}h, com {plural(pico.pedidos, 'pedido', 'pedidos')}.
+      </p>
+      <div className="flex items-end gap-1 sm:gap-2 h-36 mt-4" aria-hidden="true">
+        {horas.map(({ hora, pedidos }) => (
+          <div key={hora} className="flex-1 h-full flex flex-col justify-end items-center gap-1 min-w-0">
+            <span className="text-[10px] font-bold tabular-nums text-[var(--text-secondary)] h-3">{pedidos || ''}</span>
+            <div
+              className="w-full max-w-12 rounded-t-md"
+              style={{
+                height: `${Math.max((pedidos / maior) * 100, pedidos ? 4 : 1)}%`,
+                backgroundColor: hora === pico.hora ? 'var(--color-brand-orange)' : pedidos ? 'var(--color-accent-pedidos)' : 'var(--border-subtle)',
+              }}
+            />
+            <span className="text-[10px] tabular-nums text-[var(--text-secondary)] h-3">{hora}h</span>
+          </div>
+        ))}
+      </div>
+      <table className="sr-only">
+        <caption>Pedidos por hora</caption>
+        <thead>
+          <tr>
+            <th scope="col">Hora</th>
+            <th scope="col">Pedidos</th>
+          </tr>
+        </thead>
+        <tbody>
+          {horas.map(({ hora, pedidos }) => (
+            <tr key={hora}>
+              <td>{hora}h</td>
+              <td>{pedidos}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+// O que a cozinha avisou que faltou: vira lista de compras.
+function Faltas({ faltas }) {
+  return (
+    <section aria-labelledby="titulo-faltas" className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-5">
+      <h2 id="titulo-faltas" className="text-lg font-semibold text-[var(--text-primary)]">
+        Faltou na cozinha
+      </h2>
+      <p className="text-sm text-[var(--text-secondary)] mt-1 mb-4">Compre mais destes antes do próximo movimento.</p>
+      <ul className="flex flex-col gap-2">
+        {faltas.map(({ nome, vezes }) => (
+          <li key={nome} className="flex items-baseline gap-3">
+            <span className="flex-1 min-w-0 font-semibold text-[var(--text-primary)] break-words">{nome}</span>
+            <span className="text-sm font-bold tabular-nums text-[var(--texto-cozinha)]">{plural(vezes, 'vez', 'vezes')}</span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -204,6 +284,8 @@ export default function Relatorios() {
   const carregando = dados.periodo !== periodo;
   const relatorio = calcularRelatorio(dados.pedidos, produtos);
   const { inicio, fim } = intervaloDoPeriodo(periodo);
+  const horas = periodo === 'hoje' ? pedidosPorHora(dados.pedidos) : [];
+  const faltas = faltasNoPeriodo(dados.pedidos);
 
   return (
     <AppShell largura="max-w-6xl">
@@ -274,6 +356,9 @@ export default function Relatorios() {
           </div>
 
           {periodo !== 'hoje' && <GraficoFaturamento dias={faturamentoPorDia(dados.pedidos, inicio, fim)} />}
+          {horas.length > 0 && <GraficoPorHora horas={horas} />}
+
+          {faltas.length > 0 && <Faltas faltas={faltas} />}
 
           <Ranking ranking={relatorio.ranking} />
         </div>

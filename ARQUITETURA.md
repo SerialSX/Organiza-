@@ -47,7 +47,16 @@ itens_pedido
 - id, pedido_id, produto_id, quantidade
 - preco_unitario, custo_unitario   <- copiados do produto na hora do pedido
 - observacao (até 140 caracteres)  <- "sem salada", mostrado na cozinha
-- faltou (boolean)                 <- a cozinha avisa que não tem como fazer
+- faltou (boolean)                 <- a cozinha avisa que não tem como fazer (produto sem ingredientes cadastrados)
+- faltou_ingredientes (text[])     <- "faltou queijo": nomes guardados, o histórico não muda se renomear
+
+ingredientes
+- id, negocio_id, nome (único entre os ativos), unidade ("g" | "ml" | "un")
+- preco_compra, quantidade_compra <- "R$ 45,00 por 1 kg" fica 45,00 por 1000 g; sem preço serve só para o "faltou"
+- arquivado                       <- "excluir" arquiva e tira dos produtos
+
+produto_ingredientes
+- produto_id, ingrediente_id, negocio_id, quantidade  <- "120 g de carne"; chaves compostas garantem o mesmo negócio
 
 contador_pedidos
 - negocio_id, dia, ultimo         <- última senha dada no dia; só o criar_pedido mexe, travando a linha
@@ -61,7 +70,9 @@ limite_consultas   <- consultas da página pública por aparelho (hash do IP, nu
 - **Sem escrita direta:** o cliente não escreve em `pedidos` nem `itens_pedido`. Tudo passa por funções que conferem negócio, status e produtos:
   - `criar_pedido`: transação única, preço lido do banco, sem duplicar;
   - `editar_pedido`: recusa a edição se outra pessoa salvou antes (versão por `alterado_em`);
-  - `cancelar_pedido`, `atualizar_status_pedido` (inclui desfazer um "Pronto" em até 2 minutos) e `marcar_item_faltou`.
+  - `cancelar_pedido`, `atualizar_status_pedido` (inclui desfazer um "Pronto" em até 2 minutos), `marcar_item_faltou` e `marcar_ingrediente_faltou` (só aceita ingrediente que está no produto).
+- **Custo pelos ingredientes:** `salvar_ingredientes_do_produto` troca a lista de uma vez e recalcula o custo; um gatilho em `ingredientes` recalcula todos os produtos quando o preço muda. O custo continua gravado em `produtos.custo`, então pedidos e relatórios não mudam.
+- **Versão do banco:** `versao_do_banco()` precisa bater com `src/lib/versaoDoBanco.js` (um teste confere). Se o banco no ar estiver atrás do código, todas as telas da equipe mostram um aviso vermelho. Toda migração nova sobe os dois números.
 - **Página pública (QR code):** quem não tem conta não lê nenhuma tabela. Só chama `pagina_publica` e `acompanhar_pedido`, que devolvem o mínimo (nome do negócio; posição, status e tempo médio de um pedido) e limitam as consultas por aparelho.
 - **Conta:** `atualizar_meus_dados` (só o dono renomeia o negócio) e `excluir_minha_conta` (apaga a conta e tudo do negócio, em cascata).
 - **Testes do banco:** `npm run test:banco` roda o `schema.sql` num Postgres local (PGlite) e testa essas regras, inclusive tentativas de acesso indevido.
@@ -113,6 +124,7 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js
 
 ### Fase 2. Produtos — pronta
 - Cadastrar, editar, marcar esgotado, excluir (arquivar) e devolver ao cardápio.
+- Ingredientes com preço de compra; cada produto diz quanto leva de cada um e o custo sai sozinho, com o lucro por unidade na hora.
 
 ### Fase 3. Pedidos — pronta
 - Toque para adicionar, observação por item, busca quando o cardápio passa de 12 itens.
@@ -121,11 +133,12 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js
 
 ### Fase 4. Cozinha em tempo real — pronta
 - Fila única do que falta fazer, do mais antigo para o mais novo; atraso a partir de 15 minutos.
-- "Pronto" em um toque com "Desfazer"; "Faltou" por item avisa o atendente.
+- "Pronto" em um toque com "Desfazer"; "Faltou" diz qual ingrediente faltou (ou o item inteiro, se o produto não tem ingredientes) e avisa o atendente e o cliente.
+- Esgotados: "Acabou um ingrediente?" esgota de uma vez os produtos que o levam.
 - Aviso de pedido alterado ou cancelado (destaque, bipe e leitor de tela); tela sempre acesa; aba de esgotados.
 
 ### Fase 5. Relatórios — pronta
-- Hoje, 7 e 30 dias; faturamento, pedidos, ticket médio, lucro, mais vendido × mais lucrativo, gráfico por dia, aviso de reposição e planilha CSV.
+- Hoje, 7 e 30 dias; faturamento, pedidos, ticket médio, lucro, mais vendido × mais lucrativo, gráfico por dia (faturamento e pedidos), pedidos por hora com horário de pico, o que mais faltou na cozinha, aviso de reposição e planilha CSV.
 - Cancelados ficam fora das contas e aparecem à parte, por motivo.
 
 ### Fase 6. Página do cliente via QR code — pronta

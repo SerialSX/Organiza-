@@ -6,7 +6,7 @@ const EVENTO = 'organiza-demo-change';
 let memoria = null;
 
 function vazio() {
-  return { produtos: [], pedidos: [], itens_pedido: [] };
+  return { produtos: [], pedidos: [], itens_pedido: [], ingredientes: [], produto_ingredientes: [] };
 }
 
 export function lerDemo() {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcularRelatorio, faturamentoPorDia, intervaloDoPeriodo, rankingParaCsv } from './relatorios';
+import { calcularRelatorio, faltasNoPeriodo, faturamentoPorDia, intervaloDoPeriodo, pedidosPorHora, rankingParaCsv } from './relatorios';
 
 const produtos = [
   { id: 'x', nome: 'X-Burguer', preco: 18.5, custo: 9 },
@@ -127,5 +127,49 @@ describe('faturamentoPorDia', () => {
     const cancelado = { ...pedido(new Date(2026, 8, 23, 11).toISOString(), [['x', 2, 18.5]]), status: 'cancelado' };
     const dias = faturamentoPorDia([vendido, cancelado], new Date(2026, 8, 23), new Date(2026, 8, 24));
     expect(dias.map((d) => d.valor)).toEqual([18.5]);
+  });
+
+  it('conta os pedidos de cada dia', () => {
+    const pedidos = [
+      pedido(new Date(2026, 8, 23, 10).toISOString(), [['x', 1, 18.5]]),
+      pedido(new Date(2026, 8, 23, 12).toISOString(), [['b', 1, 15]]),
+    ];
+    const dias = faturamentoPorDia(pedidos, new Date(2026, 8, 22), new Date(2026, 8, 24));
+    expect(dias.map((d) => d.pedidos)).toEqual([0, 2]);
+  });
+});
+
+describe('pedidosPorHora', () => {
+  it('conta por hora de Fortaleza, do primeiro ao último horário com movimento', () => {
+    const pedidos = [
+      pedido('2026-09-24T14:10:00Z', [['x', 1, 18.5]]),
+      pedido('2026-09-24T14:50:00Z', [['x', 1, 18.5]]),
+      pedido('2026-09-24T16:05:00Z', [['x', 1, 18.5]]),
+      { ...pedido('2026-09-24T20:00:00Z', [['x', 1, 18.5]]), status: 'cancelado' },
+    ];
+    expect(pedidosPorHora(pedidos)).toEqual([
+      { hora: 11, pedidos: 2 },
+      { hora: 12, pedidos: 0 },
+      { hora: 13, pedidos: 1 },
+    ]);
+  });
+
+  it('sem pedidos, lista vazia', () => {
+    expect(pedidosPorHora([])).toEqual([]);
+  });
+});
+
+describe('faltasNoPeriodo', () => {
+  it('soma ingredientes e itens inteiros que faltaram', () => {
+    const p1 = pedido('2026-09-24T12:00:00', [['x', 1, 18.5]]);
+    p1.itens[0].faltou_ingredientes = ['Queijo'];
+    const p2 = pedido('2026-09-24T13:00:00', [['x', 1, 18.5], ['b', 1, 15]]);
+    p2.itens[0].faltou_ingredientes = ['Queijo', 'Pão'];
+    p2.itens[1].faltou = true;
+    expect(faltasNoPeriodo([p1, p2])).toEqual([
+      { nome: 'Queijo', vezes: 2 },
+      { nome: 'Batata', vezes: 1 },
+      { nome: 'Pão', vezes: 1 },
+    ]);
   });
 });

@@ -1,11 +1,13 @@
 import AppNav from '../AppNav';
 import { useAuth } from '../../context/useAuth';
 import { useOnline } from '../../hooks/useOnline';
-import { WifiOffIcon } from '../icons/AppIcons';
+import { useBancoDesatualizado } from '../../hooks/useBancoDesatualizado';
+import { AlertIcon, WifiOffIcon } from '../icons/AppIcons';
 
 export default function AppShell({ children, largura = 'max-w-5xl' }) {
   const { modoDemo } = useAuth();
   const online = useOnline();
+  const bancoAtrasado = useBancoDesatualizado();
 
   return (
     <div className="min-h-svh bg-[var(--surface)] pb-24 md:pb-0">
@@ -17,6 +19,18 @@ export default function AppShell({ children, largura = 'max-w-5xl' }) {
       </a>
       <AppNav />
       <div role="region" aria-label="Avisos do sistema" className="empty:hidden">
+      {bancoAtrasado && (
+        <p
+          role="alert"
+          className="flex items-start justify-center gap-2 px-4 py-2.5 text-sm font-bold text-[var(--sobre-destaque)] bg-[var(--color-accent-cozinha)]"
+        >
+          <AlertIcon className="w-5 h-5 shrink-0" />
+          <span>
+            O banco de dados do sistema está desatualizado: senhas e outras funções podem sair erradas. Avise quem cuida do
+            Supabase para rodar os arquivos da pasta supabase/migracoes.
+          </span>
+        </p>
+      )}
       {!online && (
         <p
           role="alert"

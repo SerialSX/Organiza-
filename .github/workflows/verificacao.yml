@@ -16,7 +16,7 @@ permissions:
 jobs:
   verificar:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: Baixar o código
@@ -43,8 +43,48 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Preparar o navegador dos testes de tela
-        run: npx playwright install --with-deps chromium
+  # Job separado: baixar o navegador às vezes demora (servidor do GitHub lento)
+  # e não pode derrubar as outras verificações nem estourar o tempo delas.
+  telas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Preparar o Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Ver a versão do Playwright
+        id: playwright
+        run: echo "versao=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # O navegador fica guardado entre execuções; só baixa de novo quando a
+      # versão do Playwright muda.
+      - name: Navegador guardado
+        id: cache-navegador
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.versao }}
+
+      - name: Baixar o navegador
+        if: steps.cache-navegador.outputs.cache-hit != 'true'
+        timeout-minutes: 15
+        run: npx playwright install --with-deps --only-shell chromium
+
+      - name: Instalar as bibliotecas do navegador
+        if: steps.cache-navegador.outputs.cache-hit == 'true'
+        timeout-minutes: 15
+        run: npx playwright install-deps chromium
 
       - name: Testes de tela (fluxo e acessibilidade)
+        timeout-minutes: 10
         run: npm run test:e2e

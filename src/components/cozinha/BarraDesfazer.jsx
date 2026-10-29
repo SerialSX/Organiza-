@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Botao from '../ui/Botao';
 import { CheckIcon } from '../icons/AppIcons';
-import { numeroDoPedido } from '../../lib/formatadores';
+import { chamadaDoPedido } from '../../lib/formatadores';
 
 export default function BarraDesfazer({ pedido, onDesfazer }) {
   const [desfazendo, setDesfazendo] = useState(false);
@@ -15,7 +15,7 @@ export default function BarraDesfazer({ pedido, onDesfazer }) {
         <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl shrink-0 bg-[var(--color-accent-relatorios)] text-[var(--sobre-destaque)]">
           <CheckIcon className="w-5 h-5" />
         </span>
-        <p className="flex-1 font-semibold tabular-nums text-[var(--text-primary)]">Pedido {numeroDoPedido(pedido)} pronto</p>
+        <p className="flex-1 font-semibold tabular-nums text-[var(--text-primary)]">Pedido {chamadaDoPedido(pedido)} pronto</p>
         <Botao
           variante="secundaria"
           disabled={desfazendo}

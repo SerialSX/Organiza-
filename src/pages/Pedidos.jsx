@@ -9,6 +9,7 @@ import GradeDeProdutos from '../components/pedidos/GradeDeProdutos';
 import LinhaDoPedido from '../components/pedidos/LinhaDoPedido';
 import PedidosDeHoje from '../components/pedidos/PedidosDeHoje';
 import PedidoEnviado from '../components/pedidos/PedidoEnviado';
+import DestinoDoPedido from '../components/pedidos/DestinoDoPedido';
 import { OrdersIcon, ProductsIcon, SendIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
 import { useProdutos } from '../hooks/useProdutos';
@@ -22,6 +23,8 @@ import { separarPedidos } from '../lib/fila';
 const ACCENT = 'var(--color-accent-pedidos)';
 // Acima da barra de navegação do celular; no tablet sem essa barra, no rodapé.
 const BARRA_FIXA = 'lg:hidden fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] md:bottom-2 z-10 px-4 pb-2';
+const BALCAO = { tipo: 'balcao', mesa: '' };
+const ID_CAMPO_MESA = 'numero-da-mesa';
 
 function novaChaveEnvio() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -46,6 +49,10 @@ export default function Pedidos() {
   // ficam separados. [{ chave, produtoId, nome, quantidade, observacao }]
   const [carrinho, setCarrinho] = useRascunhoDoPedido(perfil.negocio_id, Boolean(edicao));
   const [rascunhoGuardado, setRascunhoGuardado] = useState([]);
+  // Balcão ou mesa. Na edição, o destino do pedido montado fica guardado à parte.
+  const [destino, setDestino] = useState(BALCAO);
+  const [destinoGuardado, setDestinoGuardado] = useState(BALCAO);
+  const [erroMesa, setErroMesa] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState('');
   const [enviado, setEnviado] = useState(null);
@@ -84,6 +91,13 @@ export default function Pedidos() {
     setCarrinho(atualizar);
   }
 
+  function mexerNoDestino(novo) {
+    setEnviado(null);
+    chaveEnvio.current = null;
+    setErroMesa('');
+    setDestino(novo);
+  }
+
   function adicionar(produto) {
     mexerNoCarrinho((c) => {
       const semObservacao = c.find((l) => l.produtoId === produto.id && !l.observacao.trim());
@@ -109,9 +123,14 @@ export default function Pedidos() {
     try {
       const completo = await buscarPedidoComValores(pedido.id);
       // O que estava sendo montado volta quando a edição terminar.
-      if (!edicao) setRascunhoGuardado(carrinho);
+      if (!edicao) {
+        setRascunhoGuardado(carrinho);
+        setDestinoGuardado(destino);
+      }
       setEdicao({ pedido: completo });
       setEnviado(null);
+      setErroMesa('');
+      setDestino(completo.mesa ? { tipo: 'mesa', mesa: String(completo.mesa) } : BALCAO);
       setCarrinho(
         completo.itens.map((i) => ({
           chave: novaChaveDeLinha(),
@@ -130,6 +149,8 @@ export default function Pedidos() {
   function sairDaEdicao() {
     setEdicao(null);
     setCarrinho(rascunhoGuardado);
+    setDestino(destinoGuardado);
+    setErroMesa('');
   }
 
   // O pedido ficou pronto durante a edição: os itens viram um pedido novo.
@@ -140,15 +161,22 @@ export default function Pedidos() {
 
   async function enviar() {
     if (!itens.length || enviando) return;
+    const mesa = destino.tipo === 'mesa' ? Number(destino.mesa) : null;
+    if (destino.tipo === 'mesa' && !(mesa >= 1 && mesa <= 999)) {
+      setErroMesa('Digite o número da mesa (de 1 a 999).');
+      document.getElementById(ID_CAMPO_MESA)?.focus();
+      return;
+    }
     setErro('');
     setEnviando(true);
     const paraEnviar = itens.map(({ produtoId, quantidade, observacao }) => ({ produto_id: produtoId, quantidade, observacao }));
     try {
       if (edicao) {
-        await editarPedido(edicao.pedido.id, paraEnviar, edicao.pedido.alterado_em);
+        await editarPedido(edicao.pedido.id, paraEnviar, edicao.pedido.alterado_em, mesa);
         setEnviado({ ...edicao.pedido, editado: true });
         setEdicao(null);
         setCarrinho(rascunhoGuardado);
+        setDestino(destinoGuardado);
       } else {
         chaveEnvio.current ??= novaChaveEnvio();
         const pedido = await criarPedido({
@@ -156,9 +184,13 @@ export default function Pedidos() {
           usuarioId: perfil.id,
           itens: paraEnviar,
           chaveEnvio: chaveEnvio.current,
+          mesa,
         });
         setCarrinho([]);
         chaveEnvio.current = null;
+        // Próximo pedido: mesmo tipo (quem atende no salão segue de mesa em
+        // mesa), com o número em branco para não ir para a mesa errada.
+        setDestino((d) => ({ ...d, mesa: '' }));
         setEnviado(pedido);
       }
     } catch (e) {
@@ -214,6 +246,8 @@ export default function Pedidos() {
             <h2 id="titulo-carrinho" className="text-lg font-semibold text-[var(--text-primary)]">
               {edicao ? `Pedido ${numeroEmEdicao}` : 'Pedido'}
             </h2>
+
+            <DestinoDoPedido destino={destino} onMudar={mexerNoDestino} erroMesa={erroMesa} idCampoMesa={ID_CAMPO_MESA} />
 
             {edicaoPerdida && (
               <div className="flex flex-col gap-2">
@@ -306,6 +340,7 @@ export default function Pedidos() {
               <div className="flex-1 min-w-0">
                 <p className="text-xs tabular-nums text-[var(--text-secondary)]">
                   {edicao ? `Pedido ${numeroEmEdicao}, ` : ''}
+                  {destino.tipo === 'mesa' && destino.mesa ? `mesa ${destino.mesa}, ` : ''}
                   {totalItens} {totalItens === 1 ? 'item' : 'itens'}
                 </p>
                 <p className="text-lg font-bold tabular-nums text-[var(--text-primary)]">{formatarMoeda(total)}</p>

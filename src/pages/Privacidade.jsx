@@ -3,8 +3,8 @@ import { useTheme } from '../context/useTheme';
 import ThemeToggle from '../components/ThemeToggle';
 import logoDark from '../assets/logo.svg';
 import logoLight from '../assets/logo-light.svg';
+import { EMAIL_CONTATO } from '../lib/contato';
 
-const EMAIL_CONTATO = import.meta.env.VITE_EMAIL_CONTATO;
 const ATUALIZADA_EM = 'outubro de 2026';
 
 function Bloco({ titulo, children }) {
@@ -88,14 +88,12 @@ export default function Privacidade() {
             <li>apagar sua conta e todos os dados do negócio em Minha conta, na hora, sem precisar pedir;</li>
             <li>tirar dúvidas ou pedir uma cópia dos seus dados falando com a equipe do Organiza+.</li>
           </ul>
-          {EMAIL_CONTATO && (
-            <p>
-              Contato:{' '}
-              <a href={`mailto:${EMAIL_CONTATO}`} className="font-semibold text-[var(--texto-laranja)] underline-offset-4 hover:underline">
-                {EMAIL_CONTATO}
-              </a>
-            </p>
-          )}
+          <p>
+            Contato:{' '}
+            <a href={`mailto:${EMAIL_CONTATO}`} className="font-semibold text-[var(--texto-laranja)] underline underline-offset-4">
+              {EMAIL_CONTATO}
+            </a>
+          </p>
         </Bloco>
       </main>
     </div>

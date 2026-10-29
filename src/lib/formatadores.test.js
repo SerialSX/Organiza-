@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { codigoPedido, formatarEspera, formatarSenha, lerValor, minutosDesde, valorParaCampo } from './formatadores';
+import {
+  chamadaDoPedido,
+  codigoPedido,
+  destinoDoPedido,
+  formatarEspera,
+  formatarSenha,
+  lerValor,
+  minutosDesde,
+  valorParaCampo,
+} from './formatadores';
 
 describe('lerValor', () => {
   it.each([
@@ -46,6 +55,19 @@ describe('formatarSenha', () => {
     expect(formatarSenha(7)).toBe('007');
     expect(formatarSenha(42)).toBe('042');
     expect(formatarSenha(999)).toBe('999');
+  });
+});
+
+describe('destinoDoPedido', () => {
+  it('mostra a mesa de quem come no salão e "Balcão" para quem retira', () => {
+    expect(destinoDoPedido({ numero: 3, mesa: 12 })).toBe('Mesa 12');
+    expect(destinoDoPedido({ numero: 3, mesa: null })).toBe('Balcão');
+    expect(destinoDoPedido({ numero: 3 })).toBe('Balcão');
+  });
+
+  it('a cozinha anuncia a senha e, quando há, a mesa', () => {
+    expect(chamadaDoPedido({ numero: 7, mesa: 12 })).toBe('007, mesa 12');
+    expect(chamadaDoPedido({ numero: 7, mesa: null })).toBe('007');
   });
 });
 

@@ -232,6 +232,28 @@ await ok('no dia seguinte a senha recomeça em 1', async () => {
   igual(await novaSenha(), 1, 'recomeço');
 });
 
+const umRefri = JSON.stringify([{ produto_id: refri, quantidade: 1 }]);
+
+await ok('pedido na mesa guarda a mesa; sem mesa é balcão', async () => {
+  const naMesa = (await rpc(U1, 'criar_pedido($1::jsonb, gen_random_uuid(), $2::int)', [umRefri, 12]))[0];
+  const noBalcao = (await rpc(U1, 'criar_pedido($1::jsonb, gen_random_uuid())', [umRefri]))[0];
+  igual([naMesa.mesa, noBalcao.mesa], [12, null], 'mesas');
+  igual(noBalcao.numero, naMesa.numero + 1, 'mesa e balcão dividem a mesma sequência de senhas');
+});
+
+await erro('mesa fora de 1 a 999', 'entre 1 e 999', () =>
+  rpc(U1, 'criar_pedido($1::jsonb, gen_random_uuid(), $2::int)', [umRefri, 1000]),
+);
+
+await ok('editar troca a mesa ou passa para o balcão', async () => {
+  const p = (await rpc(U1, 'criar_pedido($1::jsonb, gen_random_uuid())', [umRefri]))[0];
+  const versao = '(select alterado_em from public.pedidos where id = $1::uuid)';
+  const naMesa = (await rpc(U1, `editar_pedido($1::uuid, $2::jsonb, ${versao}, $3::int)`, [p.id, umRefri, 7]))[0];
+  igual(naMesa.mesa, 7, 'mesa nova');
+  const noBalcao = (await rpc(U1, `editar_pedido($1::uuid, $2::jsonb, ${versao})`, [p.id, umRefri]))[0];
+  igual(noBalcao.mesa, null, 'balcão');
+});
+
 await erro('cliente não lê nem mexe no contador de senhas', 'permission denied', () =>
   como(U1, 'update public.contador_pedidos set ultimo = 1'),
 );

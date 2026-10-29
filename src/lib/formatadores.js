@@ -53,6 +53,17 @@ export function numeroDoPedido(pedido) {
   return pedido.numero ? formatarSenha(pedido.numero) : codigoPedido(pedido.id);
 }
 
+// Para onde vai o pedido: a mesa (consumo no salão) ou o balcão, onde o
+// cliente retira quando chamam a senha.
+export function destinoDoPedido(pedido) {
+  return pedido.mesa ? `Mesa ${pedido.mesa}` : 'Balcão';
+}
+
+// Como a cozinha anuncia o pedido (e o leitor de tela lê): "007" ou "007, mesa 12".
+export function chamadaDoPedido(pedido) {
+  return pedido.mesa ? `${numeroDoPedido(pedido)}, mesa ${pedido.mesa}` : numeroDoPedido(pedido);
+}
+
 const diaEmFortaleza = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Fortaleza' });
 
 // Mesmo "dia" que o banco grava em pedidos.dia (AAAA-MM-DD, fuso de Fortaleza),

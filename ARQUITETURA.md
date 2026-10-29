@@ -39,6 +39,7 @@ pedidos
 - id, negocio_id, criado_em, criado_por
 - status ("pendente" | "em_preparo" | "pronto" | "entregue" | "cancelado")
 - numero (senha de 1 a 999, em ordem)           <- o que o cliente ouve e digita no QR; mostrada como "007"
+- mesa (1 a 999, opcional)                       <- consumo no salão; vazio = retirada no balcão, chamada pela senha
 - dia (date, fuso de Fortaleza)                  <- separa a fila de hoje das pendências
 - chave_envio (uuid, único)                      <- reenviar o mesmo pedido não duplica
 - alterado_em, pronto_em, entregue_em, cancelado_em, motivo_cancelamento
@@ -87,21 +88,22 @@ limite_consultas   <- consultas da página pública por aparelho (hash do IP, nu
     Acompanhar                               (página do cliente via QR, sem login: /p/:codigo)
     Home, Produtos, Pedidos, Cozinha, Relatorios, PaginaDoCliente, MinhaConta
   /components
-    Navbar, AppNav, TelaDeAcesso, ThemeToggle
+    Navbar, AppNav, TelaDeAcesso, ThemeToggle, RodapeContato
     ProtectedRoute, ExigeConfiguracao       (login e "fora do ar" sem Supabase em produção)
     CancelarPedido, PrintDaTela, ScreenshotPlaceholder
     /ui        (AppShell, PageHeader, Botao, Campo, CampoSenha, Abas, Etiqueta, Aviso, Carregando, EstadoVazio)
-    /pedidos   (GradeDeProdutos, LinhaDoPedido, PedidosDeHoje, PedidoEnviado)
-    /cozinha   (CartaoFila, CartaoCancelado, BarraDesfazer, ListaEsgotados)
+    /pedidos   (GradeDeProdutos, LinhaDoPedido, DestinoDoPedido, PedidosDeHoje, PedidoEnviado)
+    /cozinha   (CartaoFila, CartaoCancelado, BarraDesfazer, ListaEsgotados, MolduraMonitor)
     /icons     (AppIcons: ícones SVG próprios)
   /context     (ThemeProvider, AuthProvider e seus hooks)
   /hooks
     useProdutos, usePedidosAbertos      (dados + tempo real, recarregam ao reconectar)
     useRascunhoDoPedido                 (pedido em montagem guardado no aparelho)
     useAbaNoEndereco, useOnline, useAgora, useTelaAcesa, useRecarregarAoVoltar
+    useAlertaSonoro                     (libera o som da Cozinha no primeiro toque e avisa enquanto o navegador bloquear)
   /services    (único lugar que fala com o banco; cada função tem o caminho Supabase e o do modo demonstração)
     produtos, pedidos, paginaPublica, relatorios, demoStore
-  /lib         (formatadores, pedidoStatus, fila, cores, supabaseClient)
+  /lib         (formatadores, pedidoStatus, fila, cores, alertaSonoro, contato, supabaseClient)
 /supabase
   schema.sql   (tabelas, RLS, funções, trigger de cadastro e Realtime)
   /testes      (testes do schema com PGlite)
@@ -129,6 +131,7 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js
 ### Fase 3. Pedidos — pronta
 - Toque para adicionar, observação por item, busca quando o cardápio passa de 12 itens.
 - Senha de 3 dígitos para o cliente (001, 002…; volta a 001 depois de 999 e a cada dia), envio sem duplicar, rascunho guardado no aparelho.
+- Mesa ou balcão: o pedido pode ir para uma mesa (número de 1 a 999, consumo no salão) ou ser retirado no balcão, chamado pela senha. A mesa aparece no aviso de enviado, na lista do atendente e na Cozinha, e pode ser trocada na edição.
 - Editar (com aviso se outra pessoa alterou) e cancelar com motivo.
 
 ### Fase 4. Cozinha em tempo real — pronta
@@ -136,6 +139,8 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js
 - "Pronto" em um toque com "Desfazer"; "Faltou" diz qual ingrediente faltou (ou o item inteiro, se o produto não tem ingredientes) e avisa o atendente e o cliente.
 - Esgotados: "Acabou um ingrediente?" esgota de uma vez os produtos que o levam.
 - Aviso de pedido alterado ou cancelado (destaque, bipe e leitor de tela); tela sempre acesa; aba de esgotados.
+- Som sempre ligado: pedido novo toca três notas (mais forte que o bipe de alterado/cancelado) e o "Pronto" toca um som curto de confirmação. Abrindo a Cozinha direto, o navegador só libera o som depois do primeiro toque, e a tela avisa.
+- Modo monitor (`/cozinha?modo=monitor`): a fila numa TV ou tablet da cozinha, sem o menu do sistema, com alto contraste fixo (fundo preto) nos dois temas, posição de cada pedido na fila (1º, 2º…), mesa em destaque e tela cheia.
 
 ### Fase 5. Relatórios — pronta
 - Hoje, 7 e 30 dias; faturamento, pedidos, ticket médio, lucro, mais vendido × mais lucrativo, gráfico por dia (faturamento e pedidos), pedidos por hora com horário de pico, o que mais faltou na cozinha, aviso de reposição e planilha CSV.
@@ -148,6 +153,7 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js
 ### Fase 7. Conta e LGPD — pronta
 - Minha conta: nome, nome do negócio, senha, sair de todos os aparelhos e excluir conta.
 - Política de privacidade (`/privacidade`).
+- Contato da equipe para ajuda (joaoemanuel15@edu.unifor.br, em `src/lib/contato.js`): no rodapé da landing, das telas de acesso e do painel, e na política de privacidade.
 
 ### Próximos passos
 - Supabase e Vercel no ar e teste do fluxo completo com dados reais.

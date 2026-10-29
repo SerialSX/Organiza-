@@ -3,6 +3,7 @@ import { useTheme } from '../context/useTheme';
 import logoDark from '../assets/logo.svg';
 import logoLight from '../assets/logo-light.svg';
 import ThemeToggle from './ThemeToggle';
+import RodapeContato from './RodapeContato';
 
 // Moldura das telas de entrar, criar conta e recuperar senha.
 export default function TelaDeAcesso({ titulo, subtitulo, children, rodape }) {
@@ -26,6 +27,7 @@ export default function TelaDeAcesso({ titulo, subtitulo, children, rodape }) {
             {children}
           </div>
           {rodape && <div className="mt-6 text-center text-sm text-[var(--text-secondary)]">{rodape}</div>}
+          <RodapeContato className="mt-6" />
         </div>
       </main>
     </div>

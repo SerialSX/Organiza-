@@ -2,7 +2,7 @@ import { useState } from 'react';
 import Botao from '../ui/Botao';
 import Etiqueta from '../ui/Etiqueta';
 import { AlertIcon, CheckIcon, ClockIcon } from '../icons/AppIcons';
-import { formatarEspera, formatarHora, minutosDesde, numeroDoPedido } from '../../lib/formatadores';
+import { chamadaDoPedido, formatarEspera, formatarHora, minutosDesde, numeroDoPedido } from '../../lib/formatadores';
 import { LIMITE_ATRASO_MINUTOS } from '../../lib/pedidoStatus';
 
 const VERMELHO = 'var(--color-accent-cozinha)';
@@ -111,7 +111,8 @@ function ItemDaFila({ item, onFaltou, onFaltouIngrediente }) {
   );
 }
 
-export default function CartaoFila({ pedido, agora, onPronto, onFaltou, onFaltouIngrediente }) {
+// posicao: lugar na fila (1 = o mais antigo, o próximo a sair).
+export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou, onFaltouIngrediente }) {
   const [salvando, setSalvando] = useState(false);
   const minutos = minutosDesde(pedido.criado_em, agora);
   const atrasado = minutos >= LIMITE_ATRASO_MINUTOS;
@@ -126,14 +127,27 @@ export default function CartaoFila({ pedido, agora, onPronto, onFaltou, onFaltou
 
   return (
     <li
-      aria-label={`Pedido ${numeroDoPedido(pedido)}`}
+      aria-label={`Pedido ${chamadaDoPedido(pedido)}`}
       className="rounded-2xl border-2 bg-[var(--surface-card)] p-4 sm:p-5 flex flex-col gap-4"
       style={{ borderColor: borda }}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {posicao && (
+          <span className="inline-flex min-w-10 items-center justify-center rounded-lg border-2 border-[var(--border-subtle)] px-1.5 py-0.5 text-base font-extrabold tabular-nums text-[var(--text-secondary)]">
+            <span className="sr-only">Posição na fila: </span>
+            {posicao}º
+          </span>
+        )}
         <span className="text-3xl font-extrabold tracking-wide tabular-nums text-[var(--text-primary)]" translate="no">
           {numeroDoPedido(pedido)}
         </span>
+        {pedido.mesa ? (
+          <span className="rounded-lg px-2.5 py-0.5 text-2xl font-extrabold tabular-nums bg-[var(--text-primary)] text-[var(--surface)]">
+            Mesa {pedido.mesa}
+          </span>
+        ) : (
+          <span className="text-base font-bold text-[var(--text-secondary)]">Balcão</span>
+        )}
         {alterado && <Etiqueta cor="var(--color-brand-orange)">Alterado às {formatarHora(pedido.alterado_em)}</Etiqueta>}
         <span
           className="ml-auto inline-flex items-center gap-1.5 font-bold tabular-nums"

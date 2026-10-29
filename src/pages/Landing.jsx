@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import PrintDaTela from '../components/PrintDaTela';
+import RodapeContato from '../components/RodapeContato';
 import printPedidos from '../assets/prints/pedidos.jpg';
 import printCozinha from '../assets/prints/cozinha.jpg';
 import printRelatorios from '../assets/prints/relatorios.jpg';
@@ -249,6 +250,7 @@ export default function Landing() {
             Privacidade
           </Link>
         </p>
+        <RodapeContato className="mt-3" />
       </footer>
     </div>
   );

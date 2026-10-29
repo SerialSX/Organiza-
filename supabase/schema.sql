@@ -61,6 +61,9 @@ create table if not exists public.pedidos (
   -- sequência por negócio (contador_pedidos). Recomeça a cada dia e volta
   -- para 1 depois do 999.
   numero smallint not null check (numero between 1 and 999),
+  -- Mesa onde o cliente está (consumo no salão). Vazio: retirada no balcão,
+  -- e o cliente é chamado pela senha.
+  mesa smallint check (mesa between 1 and 999),
   dia date not null default public.hoje_no_negocio(),
   criado_em timestamptz not null default now(),
   criado_por uuid references public.usuarios (id) on delete set null,
@@ -360,7 +363,11 @@ $$;
 
 -- p_chave_envio é gerada pelo aparelho. Se o mesmo envio chegar de novo
 -- (toque duplo, nova tentativa com internet lenta), devolve o pedido já criado.
-create or replace function public.criar_pedido(p_itens jsonb, p_chave_envio uuid)
+-- p_mesa: mesa onde o cliente está; vazio quando ele retira no balcão.
+-- A versão sem p_mesa não pode continuar no banco: com as duas, a chamada
+-- sem mesa ficaria ambígua.
+drop function if exists public.criar_pedido(jsonb, uuid);
+create or replace function public.criar_pedido(p_itens jsonb, p_chave_envio uuid, p_mesa int default null)
 returns public.pedidos
 language plpgsql
 security definer
@@ -377,6 +384,9 @@ begin
   end if;
   if p_chave_envio is null then
     raise exception 'Não foi possível enviar o pedido. Tente de novo.';
+  end if;
+  if p_mesa is not null and p_mesa not between 1 and 999 then
+    raise exception 'O número da mesa precisa ficar entre 1 e 999.';
   end if;
 
   select * into v_pedido from public.pedidos
@@ -395,8 +405,8 @@ begin
           dia = excluded.dia
     returning ultimo into v_numero;
 
-    insert into public.pedidos (negocio_id, criado_por, chave_envio, numero)
-    values (v_negocio_id, (select auth.uid()), p_chave_envio, v_numero)
+    insert into public.pedidos (negocio_id, criado_por, chave_envio, numero, mesa)
+    values (v_negocio_id, (select auth.uid()), p_chave_envio, v_numero, p_mesa)
     returning * into v_pedido;
   exception when unique_violation then
     -- O mesmo envio chegou duas vezes ao mesmo tempo: devolve o primeiro. A
@@ -411,13 +421,15 @@ begin
 end;
 $$;
 
--- Troca os itens de um pedido que ainda não ficou pronto. A posição na fila
--- (criado_em) não muda; alterado_em faz a cozinha destacar o cartão.
+-- Troca os itens e a mesa de um pedido que ainda não ficou pronto. A posição
+-- na fila (criado_em) não muda; alterado_em faz a cozinha destacar o cartão.
 -- p_versao é o alterado_em que a tela carregou: se outra pessoa editou nesse
 -- meio-tempo, a edição é recusada em vez de apagar a dela sem aviso.
--- A versão antiga, sem p_versao, não pode continuar disponível no banco.
+-- p_mesa é a mesa como ficou (vazio: balcão).
+-- As versões antigas, sem p_versao ou sem p_mesa, não podem continuar no banco.
 drop function if exists public.editar_pedido(uuid, jsonb);
-create or replace function public.editar_pedido(p_pedido_id uuid, p_itens jsonb, p_versao timestamptz)
+drop function if exists public.editar_pedido(uuid, jsonb, timestamptz);
+create or replace function public.editar_pedido(p_pedido_id uuid, p_itens jsonb, p_versao timestamptz, p_mesa int default null)
 returns public.pedidos
 language plpgsql
 security definer
@@ -427,6 +439,10 @@ declare
   v_pedido public.pedidos;
   v_anteriores jsonb;
 begin
+  if p_mesa is not null and p_mesa not between 1 and 999 then
+    raise exception 'O número da mesa precisa ficar entre 1 e 999.';
+  end if;
+
   select * into v_pedido from public.pedidos
   where id = p_pedido_id and negocio_id = public.negocio_do_usuario_atual()
   for update;
@@ -450,7 +466,7 @@ begin
   delete from public.itens_pedido where pedido_id = p_pedido_id;
   perform public.gravar_itens_pedido(p_pedido_id, v_pedido.negocio_id, p_itens, v_anteriores);
 
-  update public.pedidos set alterado_em = now(), atualizado_em = now()
+  update public.pedidos set mesa = p_mesa, alterado_em = now(), atualizado_em = now()
   where id = p_pedido_id
   returning * into v_pedido;
   return v_pedido;
@@ -558,14 +574,14 @@ $$;
 revoke all on function public.negocio_do_usuario_atual() from public, anon;
 revoke all on function public.criar_negocio_do_novo_usuario() from public, anon, authenticated;
 revoke all on function public.gravar_itens_pedido(uuid, uuid, jsonb, jsonb) from public, anon, authenticated;
-revoke all on function public.criar_pedido(jsonb, uuid) from public, anon;
-revoke all on function public.editar_pedido(uuid, jsonb, timestamptz) from public, anon;
+revoke all on function public.criar_pedido(jsonb, uuid, int) from public, anon;
+revoke all on function public.editar_pedido(uuid, jsonb, timestamptz, int) from public, anon;
 revoke all on function public.cancelar_pedido(uuid, text) from public, anon;
 revoke all on function public.atualizar_status_pedido(uuid, text) from public, anon;
 revoke all on function public.marcar_item_faltou(uuid, boolean) from public, anon;
 grant execute on function public.negocio_do_usuario_atual() to authenticated;
-grant execute on function public.criar_pedido(jsonb, uuid) to authenticated;
-grant execute on function public.editar_pedido(uuid, jsonb, timestamptz) to authenticated;
+grant execute on function public.criar_pedido(jsonb, uuid, int) to authenticated;
+grant execute on function public.editar_pedido(uuid, jsonb, timestamptz, int) to authenticated;
 grant execute on function public.cancelar_pedido(uuid, text) to authenticated;
 grant execute on function public.atualizar_status_pedido(uuid, text) to authenticated;
 grant execute on function public.marcar_item_faltou(uuid, boolean) to authenticated;
@@ -1071,7 +1087,7 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select 20261022;
+  select 20261029;
 $$;
 
 revoke all on function public.versao_do_banco() from public;

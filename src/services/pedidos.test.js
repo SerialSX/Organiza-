@@ -60,6 +60,21 @@ describe('criar pedido', () => {
     produto('xb', { disponivel: false });
     await expect(novoPedido()).rejects.toThrow('esgotou');
   });
+
+  it('pedido na mesa guarda a mesa; sem mesa é balcão', async () => {
+    const naMesa = await criarPedido({ negocioId: 'n', usuarioId: 'u', itens: [{ produto_id: 'xb', quantidade: 1 }], chaveEnvio: 'm1', mesa: 12 });
+    const noBalcao = await novoPedido();
+    expect([naMesa.mesa, noBalcao.mesa]).toEqual([12, null]);
+    expect([naMesa.numero, noBalcao.numero]).toEqual([1, 2]);
+    expect((await listarPedidosAbertos()).map((p) => p.mesa)).toEqual([12, null]);
+  });
+
+  it.each([0, 1000, 2.5])('recusa mesa %s', async (mesa) => {
+    await expect(
+      criarPedido({ negocioId: 'n', usuarioId: 'u', itens: [{ produto_id: 'xb', quantidade: 1 }], chaveEnvio: 'm', mesa }),
+    ).rejects.toThrow('entre 1 e 999');
+    expect(lerDemo().pedidos).toHaveLength(0);
+  });
 });
 
 describe('editar pedido', () => {
@@ -76,6 +91,15 @@ describe('editar pedido', () => {
     const p = await novoPedido();
     await editarPedido(p.id, [{ produto_id: 'xb', quantidade: 2 }], null);
     await expect(editarPedido(p.id, [{ produto_id: 'xb', quantidade: 5 }], null)).rejects.toThrow('Outra pessoa');
+  });
+
+  it('troca a mesa ou passa para o balcão', async () => {
+    const p = await novoPedido();
+    await editarPedido(p.id, [{ produto_id: 'xb', quantidade: 1 }], null, 7);
+    const naMesa = await buscarPedidoComValores(p.id);
+    expect(naMesa.mesa).toBe(7);
+    await editarPedido(p.id, [{ produto_id: 'xb', quantidade: 1 }], naMesa.alterado_em, null);
+    expect((await buscarPedidoComValores(p.id)).mesa).toBeNull();
   });
 
   it('não edita pedido pronto', async () => {

@@ -1,4 +1,5 @@
 import AppNav from '../AppNav';
+import RodapeContato from '../RodapeContato';
 import { useAuth } from '../../context/useAuth';
 import { useOnline } from '../../hooks/useOnline';
 import { useBancoDesatualizado } from '../../hooks/useBancoDesatualizado';
@@ -49,6 +50,9 @@ export default function AppShell({ children, largura = 'max-w-5xl' }) {
       <main id="conteudo" tabIndex={-1} className={`${largura} mx-auto px-4 sm:px-6 py-6 sm:py-10 outline-none`}>
         {children}
       </main>
+      <footer className="border-t border-[var(--border-subtle)] px-4 py-6">
+        <RodapeContato />
+      </footer>
     </div>
   );
 }

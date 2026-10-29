@@ -54,6 +54,26 @@
   color-scheme: light;
 }
 
+/* Modo monitor da Cozinha (TV ou tablet na cozinha): alto contraste fixo,
+   fundo preto e texto branco nos dois temas, para ler de longe. */
+.tema-monitor {
+  --surface: #000000;
+  --surface-alt: #000000;
+  --surface-card: #121212;
+  --surface-card-hover: #1E1E1E;
+  --text-primary: #FFFFFF;
+  --text-secondary: #D6D6D6;
+  --border-subtle: #4A4A4A;
+
+  --texto-laranja: #FFB067;
+  --texto-produtos: #FFB067;
+  --texto-pedidos: #8CB8FF;
+  --texto-cozinha: #FF8A7E;
+  --texto-relatorios: #5FD08F;
+
+  color-scheme: dark;
+}
+
 /* Fundo também no "puxar" da tela (overscroll) e na barra do navegador */
 html {
   background: var(--surface);

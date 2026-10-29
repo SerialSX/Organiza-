@@ -32,6 +32,7 @@ function CartaoPedidoDeHoje({ pedido, editandoEste, onEditar, onErro }) {
     <li className="rounded-2xl border-2 p-4 bg-[var(--surface-card)] flex flex-col gap-3" style={{ borderColor: borda }}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-2xl font-extrabold tabular-nums text-[var(--text-primary)]">{numeroDoPedido(pedido)}</span>
+        {pedido.mesa && <span className="text-lg font-bold tabular-nums text-[var(--text-primary)]">Mesa {pedido.mesa}</span>}
         <Etiqueta cor={STATUS[pedido.status].cor}>{STATUS[pedido.status].rotulo}</Etiqueta>
         {editandoEste && <span className="text-sm font-semibold text-[var(--text-secondary)]">Você está editando</span>}
       </div>

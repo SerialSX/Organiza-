@@ -287,3 +287,29 @@ export function WifiOffIcon(props) {
     </svg>
   );
 }
+
+export function MonitorIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M8 20h8M12 16v4" />
+    </svg>
+  );
+}
+
+export function FullscreenIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
+    </svg>
+  );
+}
+
+export function MailIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
+    </svg>
+  );
+}

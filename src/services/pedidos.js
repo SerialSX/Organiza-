@@ -3,7 +3,7 @@ import { CANCELADO_VISIVEL_MINUTOS, MOTIVOS_CANCELAMENTO, STATUS_ABERTOS, STATUS
 import { hojeNoNegocio } from '../lib/formatadores';
 import { lerDemo, salvarDemo, assinarDemo, novoId } from './demoStore';
 
-const CAMPOS_PEDIDO = 'id, numero, dia, status, criado_em, alterado_em, pronto_em, cancelado_em, motivo_cancelamento';
+const CAMPOS_PEDIDO = 'id, numero, mesa, dia, status, criado_em, alterado_em, pronto_em, cancelado_em, motivo_cancelamento';
 
 // Pedidos abertos aparecem na Cozinha: só o que é preciso para preparar,
 // sem preço nem custo. Os ingredientes do produto são as opções do "Faltou".
@@ -28,6 +28,14 @@ function numeroOuNull(valor) {
 function limparObservacao(texto) {
   const limpo = (texto ?? '').trim();
   return limpo ? limpo.slice(0, LIMITE_OBSERVACAO) : null;
+}
+
+// Mesa onde o cliente está (consumo no salão). null: retirada no balcão,
+// chamada pela senha. Mesma regra de criar_pedido/editar_pedido no banco.
+function conferirMesa(mesa) {
+  if (mesa === null || mesa === undefined) return null;
+  if (!Number.isInteger(mesa) || mesa < 1 || mesa > 999) throw new Error('O número da mesa precisa ficar entre 1 e 999.');
+  return mesa;
 }
 
 function porNome(a, b) {
@@ -56,6 +64,7 @@ function normalizarPedido(p, itens) {
   return {
     id: p.id,
     numero: p.numero ?? null,
+    mesa: p.mesa ?? null,
     // Pedidos antigos do modo demonstração não têm "dia"
     dia: p.dia ?? hojeNoNegocio(new Date(p.criado_em)),
     status: p.status,
@@ -165,8 +174,10 @@ function itensParaEnvio(itens) {
 // itens: [{ produto_id, quantidade, observacao }]. Preço e custo vêm do
 // cadastro do produto, nunca de quem lança o pedido. chaveEnvio identifica
 // este envio: mandar de novo com a mesma chave devolve o mesmo pedido.
-export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio }) {
+// mesa: número da mesa, ou null para retirada no balcão.
+export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio, mesa = null }) {
   if (!itens.length) throw new Error('Adicione pelo menos um produto ao pedido.');
+  const mesaDoPedido = conferirMesa(mesa);
 
   if (!isSupabaseConfigured) {
     const db = lerDemo();
@@ -184,6 +195,7 @@ export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio }) {
       id: novoId(),
       negocio_id: negocioId,
       numero,
+      mesa: mesaDoPedido,
       dia,
       status: 'pendente',
       criado_em: new Date().toISOString(),
@@ -198,6 +210,9 @@ export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio }) {
   const { data, error } = await supabase.rpc('criar_pedido', {
     p_itens: itensParaEnvio(itens),
     p_chave_envio: chaveEnvio,
+    // Só manda a mesa quando há: pedido de balcão continua funcionando num
+    // banco que ainda não rodou a migração da mesa.
+    ...(mesaDoPedido ? { p_mesa: mesaDoPedido } : {}),
   });
   if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível enviar o pedido. Tente de novo.'));
   return normalizarPedido(data, []);
@@ -205,8 +220,10 @@ export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio }) {
 
 // versao: o alterado_em do pedido quando a edição começou. Se outra pessoa
 // salvou no meio-tempo, a edição é recusada para não apagar a dela.
-export async function editarPedido(id, itens, versao) {
+// mesa: como o pedido fica depois de salvar (null: balcão).
+export async function editarPedido(id, itens, versao, mesa = null) {
   if (!itens.length) throw new Error('O pedido precisa ter pelo menos um item. Para desistir, cancele o pedido.');
+  const mesaDoPedido = conferirMesa(mesa);
 
   if (!isSupabaseConfigured) {
     const db = lerDemo();
@@ -223,7 +240,7 @@ export async function editarPedido(id, itens, versao) {
     }
     const novosItens = itensDemo(db, id, itens, anteriores);
     const trocados = { ...db, itens_pedido: [...db.itens_pedido.filter((i) => i.pedido_id !== id), ...novosItens] };
-    salvarDemo(atualizarPedidoDemo(trocados, id, { alterado_em: new Date().toISOString() }));
+    salvarDemo(atualizarPedidoDemo(trocados, id, { alterado_em: new Date().toISOString(), mesa: mesaDoPedido }));
     return;
   }
 
@@ -231,6 +248,7 @@ export async function editarPedido(id, itens, versao) {
     p_pedido_id: id,
     p_itens: itensParaEnvio(itens),
     p_versao: versao ?? null,
+    ...(mesaDoPedido ? { p_mesa: mesaDoPedido } : {}),
   });
   if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível salvar as alterações.'));
 }

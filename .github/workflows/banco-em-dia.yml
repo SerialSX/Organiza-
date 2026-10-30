@@ -1,0 +1,39 @@
+name: Banco em dia
+
+# Confere todo dia se o Supabase está na versão que o código espera (a mesma
+# conta da faixa "banco desatualizado"). A chamada também mantém o projeto Free ativo.
+
+on:
+  schedule:
+    - cron: '30 11 * * *' # 08:30 em Fortaleza
+  workflow_dispatch:
+  # Avisa antes do merge quando a PR muda a versão esperada (ou esta checagem).
+  pull_request:
+    paths: [src/lib/versaoDoBanco.js, .github/workflows/banco-em-dia.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  conferir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Comparar a versão do banco com a do código
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          esperada=$(node -e "import('./src/lib/versaoDoBanco.js').then((m) => console.log(m.VERSAO_DO_BANCO))")
+          banco=$(curl -sS --fail-with-body -X POST "$SUPABASE_URL/rest/v1/rpc/versao_do_banco" \
+            -H "apikey: $SUPABASE_KEY" -H "Content-Type: application/json" -d '{}') \
+            || { echo "::error::Não deu para falar com o Supabase (sem os secrets, projeto pausado, fora do ar ou chave errada?) $banco"; exit 1; }
+          echo "Banco: $banco. Código espera: $esperada."
+          if ! [ "$banco" -ge "$esperada" ]; then
+            echo "::error::Banco desatualizado: rode no SQL Editor do Supabase as migrações de supabase/migracoes/ que faltam."
+            exit 1
+          fi

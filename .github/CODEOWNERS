@@ -1,0 +1,6 @@
+# Mudanças no banco (schema, migrações e a versão que o site espera) só entram
+# com a aprovação de quem roda as migrações no Supabase.
+/supabase/                  @LauanMO
+/src/lib/versaoDoBanco.js   @LauanMO
+# Sem esta linha, uma PR poderia tirar a regra acima sem passar pelo dono.
+/.github/CODEOWNERS         @LauanMO

@@ -31,6 +31,20 @@ Se o banco já estava no ar, não rode o `schema.sql` de novo: rode só os arqui
 
 Em produção, sem as variáveis do Supabase o sistema mostra "fora do ar" em vez de cair no modo demonstração. Para publicar uma demonstração de propósito, defina `VITE_MODO_DEMO=true`.
 
+### Importar o cardápio por foto
+
+O botão "Importar do cardápio" usa a Edge Function [`supabase/functions/ler-cardapio`](./supabase/functions/ler-cardapio), que lê a foto com a Gemini API. A chave da API fica **só** nos Secrets do projeto Supabase: nunca no `.env.local`, na Vercel nem em variáveis `VITE_`. Sem a função publicada, só esse botão mostra erro; o resto do sistema não depende dela.
+
+Para publicar (sem Docker; Node 20 ou mais novo), com `GEMINI_API_KEY=...` num arquivo local `supabase/functions/.env`, que o Git ignora:
+
+```bash
+npx supabase@3.0.0 login
+npx supabase@3.0.0 secrets set --env-file supabase/functions/.env --remote=<ref do projeto> --yes
+npx supabase@3.0.0 functions deploy ler-cardapio --use-api --remote=<ref do projeto> --yes
+```
+
+A função exige usuário logado, aceita só JPEG de até 4 MB, limita cada negócio a 20 leituras por dia (`registrar_leitura_cardapio()`, chamada antes da IA) e devolve só nomes e preços, que a pessoa confere antes de salvar.
+
 ## Comandos
 
 ```bash
@@ -41,6 +55,7 @@ npm run lint         # checagem de lint
 npm test             # testes do front (Vitest)
 npm run test:banco   # testes do supabase/schema.sql num Postgres local (PGlite)
 npm run test:e2e     # testes de tela no navegador (Playwright): fluxo e acessibilidade
+node supabase/testes/ler-cardapio-real.mjs foto.jpg   # teste real da Edge Function (veja o cabeçalho do arquivo)
 ```
 
 Na primeira vez, antes do `test:e2e`, rode `npx playwright install chromium`. Os testes de tela usam sempre o modo demonstração, mesmo com `.env.local` preenchido.

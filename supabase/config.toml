@@ -1,0 +1,5 @@
+# Edge Function da leitura do cardápio por foto. O verify_jwt do gateway fica
+# desligado: ele aceita a publishable key no lugar do login e pode recusar os
+# tokens das chaves novas. A própria função confere o login (getClaims).
+[functions.ler-cardapio]
+verify_jwt = false

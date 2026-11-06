@@ -10,7 +10,8 @@ import Etiqueta from '../components/ui/Etiqueta';
 import Abas from '../components/ui/Abas';
 import AbaIngredientes from '../components/produtos/AbaIngredientes';
 import IngredientesDoProduto from '../components/produtos/IngredientesDoProduto';
-import { ProductsIcon, PlusIcon, PencilIcon, TrashIcon, CloseIcon, BoxIcon } from '../components/icons/AppIcons';
+import ImportarCardapio from '../components/produtos/ImportarCardapio';
+import { ProductsIcon, PlusIcon, PencilIcon, TrashIcon, CloseIcon, BoxIcon, CameraIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
 import { useProdutos } from '../hooks/useProdutos';
 import { useIngredientes } from '../hooks/useIngredientes';
@@ -384,6 +385,8 @@ export default function Produtos() {
   // null = fechado; objeto = formulário aberto (com id quando editando)
   const [formulario, setFormulario] = useState(null);
   const [erro, setErro] = useState('');
+  const [importando, setImportando] = useState(false);
+  const [mensagem, setMensagem] = useState('');
   // Produto novo que já foi criado, mas a lista de ingredientes falhou: a
   // próxima tentativa só atualiza, em vez de criar o produto de novo.
   const criado = useRef(null);
@@ -405,12 +408,26 @@ export default function Produtos() {
 
   function abrir(form) {
     setErro('');
+    setMensagem('');
+    setImportando(false);
     criado.current = null;
     setFormulario(form);
   }
 
   function abrirNovo() {
     abrir(FORM_VAZIO);
+  }
+
+  function abrirImportacao() {
+    setErro('');
+    setMensagem('');
+    setImportando(true);
+  }
+
+  function aoImportar(quantidade) {
+    setImportando(false);
+    setMensagem(quantidade === 1 ? '1 produto importado do cardápio.' : `${quantidade} produtos importados do cardápio.`);
+    recarregar();
   }
 
   function abrirEdicao(produto) {
@@ -438,11 +455,17 @@ export default function Produtos() {
             : 'Cadastre o que você vende'
         }
       >
-        {aba === 'produtos' && !formulario && produtos.length > 0 && (
-          <Botao cor={ACCENT} tamanho="grande" onClick={abrirNovo}>
-            <PlusIcon className="w-5 h-5" />
-            Novo produto
-          </Botao>
+        {aba === 'produtos' && !formulario && !importando && produtos.length > 0 && (
+          <div className="flex flex-wrap gap-3">
+            <Botao variante="secundaria" tamanho="grande" onClick={abrirImportacao}>
+              <CameraIcon className="w-5 h-5" />
+              Importar do cardápio
+            </Botao>
+            <Botao cor={ACCENT} tamanho="grande" onClick={abrirNovo}>
+              <PlusIcon className="w-5 h-5" />
+              Novo produto
+            </Botao>
+          </div>
         )}
       </PageHeader>
 
@@ -467,6 +490,15 @@ export default function Produtos() {
       </div>
 
       <div hidden={aba !== 'produtos'}>
+        {importando && (
+          <ImportarCardapio
+            produtos={produtos}
+            negocioId={perfil.negocio_id}
+            onFechar={() => setImportando(false)}
+            onImportado={aoImportar}
+          />
+        )}
+
         {formulario && (
           <FormularioProduto
             key={formulario.id ?? 'novo'}
@@ -479,11 +511,17 @@ export default function Produtos() {
         )}
 
         {(erro || erroCarga) && <Aviso className="mb-4">{erro || erroCarga}</Aviso>}
+        {mensagem && (
+          <Aviso tipo="sucesso" className="mb-4">
+            {mensagem}
+          </Aviso>
+        )}
 
         {carregando ? (
           <Carregando texto="Carregando produtos…" />
         ) : produtos.length === 0 ? (
-          !formulario && (
+          !formulario &&
+          !importando && (
             <EstadoVazio
               icon={ProductsIcon}
               accent={ACCENT}
@@ -493,6 +531,10 @@ export default function Produtos() {
               <Botao cor={ACCENT} tamanho="grande" onClick={abrirNovo} className="mt-2">
                 <PlusIcon className="w-5 h-5" />
                 Cadastrar o primeiro produto
+              </Botao>
+              <Botao variante="secundaria" tamanho="grande" onClick={abrirImportacao} className="mt-2">
+                <CameraIcon className="w-5 h-5" />
+                Importar do cardápio
               </Botao>
             </EstadoVazio>
           )

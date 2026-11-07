@@ -3,7 +3,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { lerDemo, salvarDemo, limparDemo } from '../services/demoStore';
 import { AuthContext } from './authContext';
 import { traduzirErroRecuperacao } from '../lib/recuperacaoSenha';
-import { definirViradaDoDia } from '../lib/formatadores';
+import { definirViradaDoDia, viradaMudaODia } from '../lib/formatadores';
 import { buscarPerfil } from '../services/perfil';
 
 const PERFIL_DEMO = {
@@ -35,6 +35,10 @@ const ERROS_AUTH = [
   [/password/i, 'A senha precisa ter pelo menos 6 caracteres.'],
   [/(fetch|network)/i, 'Sem conexão. Confira a internet e tente de novo.'],
 ];
+
+// Mesmo texto do configurar_operacao no banco.
+const ERRO_VIRADA_NO_TURNO =
+  'Agora não dá para mudar a hora: o dia de trabalho viraria no meio do turno e as senhas se repetiriam. Mude depois das 8h da manhã.';
 
 function traduzirErro(error) {
   if (!error) return null;
@@ -146,9 +150,12 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Serve tanto para a recuperação por código quanto para "Minha conta".
-  const trocarSenha = useCallback(async (senha) => {
+  // senhaAtual: na troca pela Minha conta, vai junto para o Supabase conferir
+  // também (com "Secure password change" ligado no painel, ele exige). Na
+  // recuperação por código não existe senha atual.
+  const trocarSenha = useCallback(async (senha, senhaAtual = null) => {
     if (!isSupabaseConfigured) return { erro: null };
-    const { error } = await supabase.auth.updateUser({ password: senha });
+    const { error } = await supabase.auth.updateUser(senhaAtual ? { password: senha, current_password: senhaAtual } : { password: senha });
     return { erro: traduzirErroRecuperacao(error) };
   }, []);
 
@@ -175,6 +182,7 @@ export function AuthProvider({ children }) {
   const configurarOperacao = useCallback(async ({ viradaDoDia, usaTelaCozinha }) => {
     if (!isSupabaseConfigured) {
       const db = lerDemo();
+      if (viradaMudaODia(viradaDoDia, perfilDemo().virada_do_dia)) return { erro: ERRO_VIRADA_NO_TURNO };
       salvarDemo({ ...db, perfil: { ...db.perfil, virada_do_dia: viradaDoDia, usa_tela_cozinha: usaTelaCozinha } });
       setPerfil(perfilDemo());
       return { erro: null };

@@ -111,7 +111,8 @@ export function tempoAtePronto(pedidos) {
   const minutos = pedidos
     .filter((p) => p.status !== 'cancelado' && p.pronto_em)
     .map((p) => (new Date(p.pronto_em) - new Date(p.criado_em)) / 60000)
-    .filter((m) => m >= 0 && m < 180)
+    // 0 min: só bebida, que nasce pronto sem passar pela cozinha.
+    .filter((m) => m > 0 && m < 180)
     .sort((a, b) => a - b);
   if (!minutos.length) return null;
   const meio = Math.floor(minutos.length / 2);

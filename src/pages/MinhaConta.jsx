@@ -8,6 +8,7 @@ import Campo, { classeCampo } from '../components/ui/Campo';
 import CampoSenha from '../components/ui/CampoSenha';
 import { UserIcon, QrIcon, TrashIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
+import { viradaMudaODia } from '../lib/formatadores';
 
 const ACCENT = 'var(--color-brand-orange)';
 const PERIGO = 'var(--color-accent-cozinha)';
@@ -132,15 +133,27 @@ function ComoVoceTrabalha({ perfil }) {
   const [usaTela, setUsaTela] = useState(perfil.usa_tela_cozinha !== false);
   const [mensagem, setMensagem] = useState(null);
   const [salvando, setSalvando] = useState(false);
-  const mudou = virada !== (perfil.virada_do_dia ?? 5) || usaTela !== (perfil.usa_tela_cozinha !== false);
+  const viradaAtual = perfil.virada_do_dia ?? 5;
+  const mudou = virada !== viradaAtual || usaTela !== (perfil.usa_tela_cozinha !== false);
+  // Entre 0h e 8h, trocar a virada pode virar o dia no meio do turno: o banco
+  // recusa, então a tela avisa antes.
+  const viradaNoTurno = viradaMudaODia(virada, viradaAtual);
 
   async function salvar(e) {
     e.preventDefault();
     setMensagem(null);
     setSalvando(true);
+    const trocouVirada = virada !== viradaAtual;
     const { erro } = await configurarOperacao({ viradaDoDia: virada, usaTelaCozinha: usaTela });
     setSalvando(false);
-    setMensagem(erro ? { tipo: 'erro', texto: erro } : { tipo: 'sucesso', texto: 'Salvo.' });
+    if (erro) setMensagem({ tipo: 'erro', texto: erro });
+    else if (trocouVirada) {
+      setMensagem({
+        tipo: 'sucesso',
+        texto:
+          'Salvo. Nos outros aparelhos (cozinha, celulares da equipe), feche e abra o sistema de novo para eles contarem o dia com a nova hora.',
+      });
+    } else setMensagem({ tipo: 'sucesso', texto: 'Salvo.' });
   }
 
   const opcao = (ativa) =>
@@ -182,9 +195,14 @@ function ComoVoceTrabalha({ perfil }) {
           <p className="text-xs text-[var(--text-secondary)]">
             Pedidos até essa hora contam no dia anterior: a fila não some e a senha não recomeça no meio do turno.
           </p>
+          {viradaNoTurno && (
+            <p className="text-sm font-semibold text-[var(--texto-cozinha)]">
+              Agora não dá para mudar para essa hora: o dia de trabalho viraria no meio do turno. Mude depois das 8h da manhã.
+            </p>
+          )}
         </div>
 
-        <Botao type="submit" cor={ACCENT} className="self-start" disabled={!mudou || salvando}>
+        <Botao type="submit" cor={ACCENT} className="self-start" disabled={!mudou || salvando || viradaNoTurno}>
           {salvando ? 'Salvando…' : 'Salvar'}
         </Botao>
       </form>
@@ -217,7 +235,7 @@ function TrocarSenha() {
       setMensagem({ tipo: 'erro', texto: conferida.erro });
       return;
     }
-    const { erro } = await trocarSenha(senha);
+    const { erro } = await trocarSenha(senha, atual);
     setSalvando(false);
     if (erro) setMensagem({ tipo: 'erro', texto: erro });
     else {

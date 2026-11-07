@@ -55,14 +55,16 @@ export default function AppNav() {
     <>
       {/* Desktop / tablet: barra fixa no topo */}
       <header className="hidden md:block sticky top-0 z-20 bg-[var(--surface-alt)]/95 backdrop-blur border-b border-[var(--border-subtle)]">
-        <div className="max-w-6xl mx-auto flex items-center gap-6 lg:gap-8 px-6 py-3">
+        {/* Tablet (768 a 1023px): ícone em cima e nome embaixo, para os cinco
+            itens e os botões da direita caberem sem empurrar a página de lado. */}
+        <div className="max-w-6xl mx-auto flex items-center gap-3 lg:gap-8 px-4 lg:px-6 py-2 lg:py-3">
           {logo}
-          <nav aria-label="Principal" className="flex items-center gap-1">
+          <nav aria-label="Principal" className="flex items-center gap-0.5 lg:gap-1">
             {items.map(({ label, route, icon: Icon, accent }) => (
               <NavLink
                 key={route}
                 to={route}
-                className="flex items-center gap-2 min-h-11 px-3 lg:px-4 rounded-lg text-sm font-medium transition-colors"
+                className="flex flex-col lg:flex-row items-center gap-0.5 lg:gap-2 min-h-11 px-2 lg:px-4 py-1 lg:py-0 rounded-lg text-xs lg:text-sm font-medium transition-colors"
                 style={({ isActive }) => ({
                   color: isActive ? corDeTexto(accent) : 'var(--text-secondary)',
                   backgroundColor: isActive ? `color-mix(in srgb, ${accent} 15%, transparent)` : 'transparent',

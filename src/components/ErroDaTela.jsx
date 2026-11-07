@@ -1,5 +1,7 @@
 import { Component } from 'react';
-import { ehArquivoDeVersaoAntiga, recarregarUmaVez } from '../lib/recarga';
+import { ehArquivoDeVersaoAntiga, recarregarUmaVez, semInternet } from '../lib/recarga';
+
+const LINK = 'min-h-12 inline-flex items-center rounded-xl px-4 font-semibold underline underline-offset-2 text-[var(--text-primary)]';
 
 // Qualquer erro numa tela vira um aviso com "Recarregar", em vez de a tela
 // ficar em branco no meio do expediente.
@@ -19,13 +21,17 @@ export default class ErroDaTela extends Component {
 
   render() {
     if (!this.state.erro) return this.props.children;
+    const offline = semInternet() && ehArquivoDeVersaoAntiga(this.state.erro);
     return (
       <div className="min-h-svh bg-[var(--surface)] flex items-center justify-center px-5">
         <div role="alert" className="max-w-md text-center flex flex-col items-center gap-4">
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Algo deu errado nesta tela</h1>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">
+            {offline ? 'Sem internet para abrir esta tela' : 'Algo deu errado nesta tela'}
+          </h1>
           <p className="text-[var(--text-secondary)]">
-            Seus pedidos estão salvos. Recarregue a página para continuar. Se acontecer de novo, fale com a equipe pela
-            página de Ajuda.
+            {offline
+              ? 'Os pedidos guardados continuam neste aparelho. A tela abre sozinha quando a conexão voltar.'
+              : 'Seus pedidos estão salvos. Recarregue a página para continuar. Se acontecer de novo, fale com a equipe pela página de Ajuda.'}
           </p>
           <button
             type="button"
@@ -35,6 +41,14 @@ export default class ErroDaTela extends Component {
           >
             Recarregar
           </button>
+          <nav aria-label="Outras telas" className="flex flex-wrap justify-center gap-2">
+            <a href="/home" className={LINK}>
+              Ir para o início
+            </a>
+            <a href="/ajuda" className={LINK}>
+              Ajuda
+            </a>
+          </nav>
         </div>
       </div>
     );

@@ -33,10 +33,13 @@ function Pendente({ pedido, onErro }) {
 
   async function receber(forma) {
     setSalvando(true);
+    onErro('');
     try {
-      await registrarPagamento([pedido.id], forma);
+      const quantos = await registrarPagamento([pedido.id], forma);
+      if (quantos === 0) onErro(`O pedido ${numeroDoPedido(pedido)} já tinha sido recebido em outro aparelho ou foi cancelado.`);
     } catch (e) {
       onErro(e.message);
+    } finally {
       setSalvando(false);
     }
   }
@@ -56,6 +59,39 @@ function Pendente({ pedido, onErro }) {
           </Botao>
         ))}
       </div>
+    </li>
+  );
+}
+
+// Recebido por engano (forma errada, cliente errado): volta para "A receber"
+// e dá para registrar de novo.
+function Recebido({ pedido, onErro }) {
+  const [salvando, setSalvando] = useState(false);
+  const forma = FORMAS_DE_PAGAMENTO.find((f) => f.id === pedido.forma_pagamento)?.rotulo ?? pedido.forma_pagamento;
+
+  async function desfazer() {
+    setSalvando(true);
+    onErro('');
+    try {
+      await registrarPagamento([pedido.id], null);
+    } catch (e) {
+      onErro(e.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+      <span className="font-bold tabular-nums text-[var(--text-primary)]">{numeroDoPedido(pedido)}</span>
+      {pedido.identificacao && <span className="font-medium text-[var(--text-primary)] break-words">{pedido.identificacao}</span>}
+      <span className="text-sm tabular-nums text-[var(--text-secondary)]">
+        {forma} às {formatarHora(pedido.pago_em)}
+      </span>
+      <span className="ml-auto font-semibold tabular-nums text-[var(--text-primary)]">{formatarMoeda(totalDoPedido(pedido))}</span>
+      <Botao variante="texto" onClick={desfazer} disabled={salvando} aria-label={`Desfazer o recebimento do pedido ${numeroDoPedido(pedido)}`}>
+        Desfazer
+      </Botao>
     </li>
   );
 }
@@ -102,6 +138,18 @@ export default function Caixa() {
                 </div>
               ))}
             </dl>
+            {caixa.recebidos.length > 0 && (
+              <details className="mt-4 rounded-xl border border-[var(--border-subtle)] px-3 py-1">
+                <summary className="min-h-11 flex items-center cursor-pointer text-sm font-semibold text-[var(--text-primary)]">
+                  Ver os pedidos recebidos ({caixa.recebidos.length}) e desfazer um recebimento errado
+                </summary>
+                <ul className="divide-y divide-[var(--border-subtle)] pb-2">
+                  {caixa.recebidos.map((p) => (
+                    <Recebido key={p.id} pedido={p} onErro={setErro} />
+                  ))}
+                </ul>
+              </details>
+            )}
             {caixa.devolver > 0 && (
               <p className="mt-4 text-sm font-semibold text-[var(--texto-cozinha)]">
                 Cancelados depois de pagos: {formatarMoeda(caixa.devolver)} a devolver ao cliente (fora do total).

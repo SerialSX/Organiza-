@@ -546,6 +546,9 @@ as $$
 declare
   v_pedido public.pedidos;
   v_anteriores jsonb;
+  v_total_antes numeric;
+  v_total_depois numeric;
+  v_para_cozinha boolean;
 begin
   if p_mesa is not null and p_mesa not between 1 and 999 then
     raise exception 'O número da mesa precisa ficar entre 1 e 999.';
@@ -570,11 +573,29 @@ begin
   )
   into v_anteriores
   from public.itens_pedido where pedido_id = p_pedido_id;
+  select coalesce(sum(quantidade * preco_unitario), 0) into v_total_antes
+  from public.itens_pedido where pedido_id = p_pedido_id;
 
   delete from public.itens_pedido where pedido_id = p_pedido_id;
   perform public.gravar_itens_pedido(p_pedido_id, v_pedido.negocio_id, p_itens, v_anteriores);
 
-  update public.pedidos set mesa = p_mesa, alterado_em = now(), atualizado_em = now()
+  select coalesce(sum(i.quantidade * i.preco_unitario), 0), coalesce(bool_or(pr.vai_para_cozinha), false)
+  into v_total_depois, v_para_cozinha
+  from public.itens_pedido i
+  join public.produtos pr on pr.id = i.produto_id
+  where i.pedido_id = p_pedido_id;
+
+  -- Já pago e o valor mudou: o recebimento não vale mais para o pedido novo.
+  -- Volta para "a receber" (o caixa não pode contar como pago o que não foi).
+  -- Ficou só com bebida: sai da fila da cozinha, como no criar_pedido.
+  update public.pedidos
+  set mesa = p_mesa,
+      alterado_em = now(),
+      atualizado_em = now(),
+      forma_pagamento = case when v_total_depois = v_total_antes then forma_pagamento end,
+      pago_em = case when v_total_depois = v_total_antes then pago_em end,
+      status = case when v_para_cozinha then status else 'pronto' end,
+      pronto_em = case when v_para_cozinha then pronto_em else now() end
   where id = p_pedido_id
   returning * into v_pedido;
   return v_pedido;
@@ -677,11 +698,16 @@ begin
   update public.itens_pedido set faltou = coalesce(p_faltou, false) where id = p_item_id;
   update public.pedidos set atualizado_em = now() where id = v_pedido_id;
   -- Fica registrado mesmo que o atendente edite o pedido depois.
+  -- Toque duplo ou marca e desmarca: a mesma falta conta uma vez só.
   if coalesce(p_faltou, false) then
     insert into public.eventos (negocio_id, tipo, produto_id, pedido_id)
     select p.negocio_id, 'faltou_item', i.produto_id, p.id
     from public.itens_pedido i join public.pedidos p on p.id = i.pedido_id
-    where i.id = p_item_id;
+    where i.id = p_item_id
+      and not exists (
+        select 1 from public.eventos e
+        where e.pedido_id = p.id and e.produto_id = i.produto_id and e.tipo = 'faltou_item'
+      );
   end if;
 end;
 $$;
@@ -858,10 +884,17 @@ begin
   end
   where id = p_item_id;
   update public.pedidos set atualizado_em = now() where id = v_pedido_id;
+  -- Toque duplo ou marca e desmarca: a mesma falta conta uma vez só.
   if coalesce(p_faltou, false) then
     insert into public.eventos (negocio_id, tipo, produto_id, pedido_id, detalhe)
     select p.negocio_id, 'faltou_ingrediente', v_produto_id, p.id, left(v_nome, 60)
-    from public.pedidos p where p.id = v_pedido_id;
+    from public.pedidos p
+    where p.id = v_pedido_id
+      and not exists (
+        select 1 from public.eventos e
+        where e.pedido_id = p.id and e.produto_id = v_produto_id
+          and e.tipo = 'faltou_ingrediente' and e.detalhe = left(v_nome, 60)
+      );
   end if;
 end;
 $$;
@@ -960,30 +993,55 @@ end;
 $$;
 
 -- Só o dono: hora da virada do dia e se a cozinha tem tela própria.
-create or replace function public.configurar_operacao(p_virada_do_dia smallint, p_usa_tela_cozinha boolean)
+-- A virada não muda se isso trocar o dia de trabalho de agora (entre 0h e 8h):
+-- a senha voltaria para 001 no meio do turno e se repetiria no mesmo dia, e
+-- a página do QR poderia mostrar ao cliente o pedido de outra pessoa.
+-- p_agora existe para os testes; no uso normal é o horário do banco.
+drop function if exists public.configurar_operacao(smallint, boolean);
+create or replace function public.configurar_operacao(
+  p_virada_do_dia smallint,
+  p_usa_tela_cozinha boolean,
+  p_agora timestamptz default now()
+)
 returns void
 language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_negocio_id uuid;
+  v_virada_atual smallint;
 begin
+  select u.negocio_id, n.virada_do_dia into v_negocio_id, v_virada_atual
+  from public.usuarios u
+  join public.negocios n on n.id = u.negocio_id
+  where u.id = (select auth.uid()) and u.papel = 'admin';
+  if v_negocio_id is null then
+    raise exception 'Só o dono do negócio pode mudar isso.';
+  end if;
   if p_virada_do_dia is null or p_virada_do_dia not between 0 and 8 then
     raise exception 'Escolha uma hora entre 0h e 8h.';
+  end if;
+  if p_virada_do_dia <> v_virada_atual
+    and ((p_agora at time zone 'America/Fortaleza') - make_interval(hours => p_virada_do_dia))::date
+      <> ((p_agora at time zone 'America/Fortaleza') - make_interval(hours => v_virada_atual))::date
+  then
+    raise exception 'Agora não dá para mudar a hora: o dia de trabalho viraria no meio do turno e as senhas se repetiriam. Mude depois das 8h da manhã.';
   end if;
   update public.negocios
   set virada_do_dia = p_virada_do_dia,
       usa_tela_cozinha = coalesce(p_usa_tela_cozinha, usa_tela_cozinha)
-  where id = public.negocio_do_admin_atual();
+  where id = v_negocio_id;
 end;
 $$;
 
 revoke all on function public.ao_mudar_disponivel() from public, anon, authenticated;
 revoke all on function public.registrar_toque_esgotado(uuid) from public, anon;
 revoke all on function public.registrar_pagamento(uuid[], text) from public, anon;
-revoke all on function public.configurar_operacao(smallint, boolean) from public, anon;
+revoke all on function public.configurar_operacao(smallint, boolean, timestamptz) from public, anon;
 grant execute on function public.registrar_toque_esgotado(uuid) to authenticated;
 grant execute on function public.registrar_pagamento(uuid[], text) to authenticated;
-grant execute on function public.configurar_operacao(smallint, boolean) to authenticated;
+grant execute on function public.configurar_operacao(smallint, boolean, timestamptz) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Página pública de acompanhamento (QR code)
@@ -1138,12 +1196,13 @@ begin
   end if;
 
   -- Média dos 10 últimos pedidos que ficaram prontos hoje: do envio para a
-  -- cozinha até o "Pronto". Recalculada a cada pedido pronto.
+  -- cozinha até o "Pronto". Recalculada a cada pedido pronto. Pedido só de
+  -- bebida nasce pronto (0 min) e não passou pela cozinha: fica de fora.
   select round(avg(extract(epoch from (pronto_em - criado_em)) / 60))::int into v_tempo_medio
   from (
     select pronto_em, criado_em from public.pedidos
     where negocio_id = v_negocio_id and dia = v_hoje
-      and pronto_em is not null and status <> 'cancelado'
+      and pronto_em > criado_em and status <> 'cancelado'
     order by pronto_em desc
     limit 10
   ) ultimos;
@@ -1372,7 +1431,7 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select 20261108;
+  select 20261109;
 $$;
 
 revoke all on function public.versao_do_banco() from public;

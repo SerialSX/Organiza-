@@ -37,6 +37,14 @@ export function usePedidosDoDia(dia = null) {
     };
   }, [negocioId, recarregar]);
 
+  // Rede de segurança, como na fila: o tempo real pode cair sem aviso; a cada
+  // 30 s confere de novo (caixa e contas das mesas não ficam velhos).
+  useEffect(() => {
+    if (!negocioId) return undefined;
+    const id = setInterval(recarregar, 30000);
+    return () => clearInterval(id);
+  }, [negocioId, recarregar]);
+
   useRecarregarAoVoltar(recarregar);
 
   return { pedidos: estado.pedidos, carregando: estado.dia !== diaPedido, erro: estado.erro, recarregar };

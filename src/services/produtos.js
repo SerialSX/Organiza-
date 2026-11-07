@@ -1,15 +1,18 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { lerDemo, salvarDemo, assinarDemo, novoId } from './demoStore';
+import { produtosQueFaltam } from '../lib/cardapiosProntos';
 
 // Com a lista de ingredientes (quanto vai de cada um), usada no custo e no
 // "faltou" da cozinha.
-const CAMPOS = 'id, nome, preco, custo, disponivel, criado_em, produto_ingredientes ( ingrediente_id, quantidade )';
+const CAMPOS =
+  'id, nome, preco, custo, disponivel, vai_para_cozinha, criado_em, produto_ingredientes ( ingrediente_id, quantidade )';
 
 function normalizar({ produto_ingredientes: lista, ...p }) {
   return {
     ...p,
     preco: Number(p.preco),
     custo: p.custo === null || p.custo === undefined ? null : Number(p.custo),
+    vai_para_cozinha: p.vai_para_cozinha ?? true,
     ingredientes: (lista ?? []).map((i) => ({ ingrediente_id: i.ingrediente_id, quantidade: Number(i.quantidade) })),
   };
 }
@@ -34,8 +37,8 @@ export async function listarProdutos() {
   return data.map(normalizar);
 }
 
-export async function criarProduto(negocioId, { nome, preco, custo }) {
-  const novo = { nome: nome.trim(), preco, custo: custo ?? null, disponivel: true };
+export async function criarProduto(negocioId, { nome, preco, custo, vai_para_cozinha = true }) {
+  const novo = { nome: nome.trim(), preco, custo: custo ?? null, disponivel: true, vai_para_cozinha };
 
   if (!isSupabaseConfigured) {
     const db = lerDemo();
@@ -51,6 +54,29 @@ export async function criarProduto(negocioId, { nome, preco, custo }) {
     .single();
   if (error) throw new Error('Não foi possível salvar o produto.');
   return normalizar(data);
+}
+
+// Cardápio pronto: vários de uma vez, sem repetir nome que já existe.
+export async function criarProdutos(negocioId, lista) {
+  const novos = produtosQueFaltam({ produtos: lista }, await listarProdutos()).map((p) => ({
+    nome: p.nome,
+    preco: p.preco,
+    custo: null,
+    disponivel: true,
+    vai_para_cozinha: p.vai_para_cozinha ?? true,
+  }));
+  if (!novos.length) return 0;
+
+  if (!isSupabaseConfigured) {
+    const db = lerDemo();
+    const criados = novos.map((p) => ({ ...p, id: novoId(), negocio_id: negocioId, criado_em: new Date().toISOString() }));
+    salvarDemo({ ...db, produtos: [...db.produtos, ...criados] });
+    return criados.length;
+  }
+
+  const { error } = await supabase.from('produtos').insert(novos.map((p) => ({ ...p, negocio_id: negocioId })));
+  if (error) throw new Error('Não foi possível cadastrar o cardápio.');
+  return novos.length;
 }
 
 export async function atualizarProduto(id, alteracoes) {
@@ -75,6 +101,17 @@ export async function excluirProduto(id) {
 
   const { error } = await supabase.from('produtos').update({ arquivado: true }).eq('id', id);
   if (error) throw new Error('Não foi possível excluir o produto.');
+}
+
+// Tocaram num produto esgotado na tela de pedidos: a venda que teria saído
+// errada. Métrica do TCC; se falhar (sem internet), não atrapalha o atendente.
+export async function registrarToqueEsgotado(produtoId) {
+  if (!isSupabaseConfigured) return;
+  try {
+    await supabase.rpc('registrar_toque_esgotado', { p_produto_id: produtoId });
+  } catch {
+    // só métrica
+  }
 }
 
 export function assinarProdutos(negocioId, callback) {

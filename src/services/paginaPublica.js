@@ -37,7 +37,9 @@ function configDemo() {
 export async function buscarPaginaPublica(codigo) {
   if (!isSupabaseConfigured) {
     const pagina = configDemo();
-    return codigo === pagina.codigo && pagina.ativa ? { nome: pagina.nome_publico || nomeDemo() } : null;
+    return codigo === pagina.codigo && pagina.ativa
+      ? { nome: pagina.nome_publico || nomeDemo(), virada_do_dia: lerDemo().perfil?.virada_do_dia ?? 5 }
+      : null;
   }
 
   const { data, error } = await supabase.rpc('pagina_publica', { p_codigo: codigo });

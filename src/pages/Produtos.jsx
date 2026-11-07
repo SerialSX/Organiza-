@@ -18,8 +18,10 @@ import { useIngredientes } from '../hooks/useIngredientes';
 import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
 import { salvarIngredientesDoProduto } from '../services/ingredientes';
 import { estimarCusto } from '../lib/custos';
+import { CARDAPIOS_PRONTOS } from '../lib/cardapiosProntos';
 import {
   criarProduto,
+  criarProdutos,
   atualizarProduto,
   excluirProduto,
   listarProdutosArquivados,
@@ -28,7 +30,7 @@ import {
 import { formatarMoeda, lerValor, valorParaCampo } from '../lib/formatadores';
 
 const ACCENT = 'var(--color-accent-produtos)';
-const FORM_VAZIO = { nome: '', preco: '', custo: '', lista: [] };
+const FORM_VAZIO = { nome: '', preco: '', custo: '', lista: [], vaiParaCozinha: true };
 
 const ABAS = [
   { id: 'produtos', rotulo: 'Produtos', Icone: ProductsIcon },
@@ -62,6 +64,7 @@ function validar(form, estimado) {
       nome,
       preco: Math.round(preco * 100) / 100,
       custo: custo === null ? null : Math.round(custo * 100) / 100,
+      vai_para_cozinha: form.vaiParaCozinha !== false,
       lista,
     },
   };
@@ -193,6 +196,22 @@ function FormularioProduto({ inicial, ingredientes, onSalvar, onCancelar, onIrPa
 
       <Lucro preco={form.preco} custo={custoAtual} />
 
+      <label className="flex items-start gap-3 rounded-xl border border-[var(--border-subtle)] p-4 cursor-pointer">
+        <input
+          type="checkbox"
+          name="vaiParaCozinha"
+          checked={form.vaiParaCozinha !== false}
+          onChange={(e) => setForm((f) => ({ ...f, vaiParaCozinha: e.target.checked }))}
+          className="mt-0.5 w-5 h-5 shrink-0"
+        />
+        <span>
+          <span className="block font-semibold text-[var(--text-primary)]">Vai para a cozinha</span>
+          <span className="block text-sm text-[var(--text-secondary)]">
+            Desmarque para bebida e o que já sai pronto: entra na conta e no caixa, mas não aparece na fila da cozinha.
+          </span>
+        </span>
+      </label>
+
       <IngredientesDoProduto
         lista={form.lista}
         onMudar={(lista) => setForm((f) => ({ ...f, lista }))}
@@ -235,6 +254,37 @@ function Interruptor({ ligado, onChange, rotulo }) {
   );
 }
 
+// Para quem perguntou "quem cadastra o cardápio?": um toque e o cardápio
+// está lá, com preços de exemplo para conferir.
+function CardapioPronto({ negocioId, onPronto, onErro }) {
+  const [salvando, setSalvando] = useState(null);
+
+  async function usar(cardapio) {
+    setSalvando(cardapio.id);
+    try {
+      await criarProdutos(negocioId, cardapio.produtos);
+      onPronto();
+    } catch (e) {
+      onErro(e.message);
+    }
+    setSalvando(null);
+  }
+
+  return (
+    <div className="mt-4 flex flex-col items-center gap-3">
+      <p className="text-sm font-semibold text-[var(--text-primary)]">Começar com um cardápio pronto:</p>
+      <div className="flex flex-wrap justify-center gap-2">
+        {CARDAPIOS_PRONTOS.map((c) => (
+          <Botao key={c.id} cor={ACCENT} onClick={() => usar(c)} disabled={Boolean(salvando)}>
+            {salvando === c.id ? 'Cadastrando…' : c.nome}
+          </Botao>
+        ))}
+      </div>
+      <p className="text-xs text-[var(--text-secondary)]">Os preços são de exemplo: confira e ajuste depois.</p>
+    </div>
+  );
+}
+
 function CartaoProduto({ produto, pelosIngredientes, onEditar, onErro }) {
   const [confirmando, setConfirmando] = useState(false);
   const margem = produto.custo === null ? null : produto.preco - produto.custo;
@@ -268,7 +318,10 @@ function CartaoProduto({ produto, pelosIngredientes, onEditar, onErro }) {
               : `Custo ${formatarMoeda(produto.custo)}${pelosIngredientes ? ' (pelos ingredientes)' : ''}, lucro de ${formatarMoeda(margem)} cada`}
           </p>
         </div>
-        {!produto.disponivel && <Etiqueta cor="var(--color-accent-cozinha)">Esgotado</Etiqueta>}
+        <div className="flex flex-col items-end gap-1">
+          {!produto.disponivel && <Etiqueta cor="var(--color-accent-cozinha)">Esgotado</Etiqueta>}
+          {produto.vai_para_cozinha === false && <Etiqueta cor="var(--color-accent-pedidos)">Sem cozinha</Etiqueta>}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border-subtle)] pt-4">
@@ -436,6 +489,7 @@ export default function Produtos() {
       nome: produto.nome,
       preco: valorParaCampo(produto.preco),
       custo: valorParaCampo(produto.custo),
+      vaiParaCozinha: produto.vai_para_cozinha !== false,
       lista: produto.ingredientes.map((l) => ({ ingrediente_id: l.ingrediente_id, quantidade: String(l.quantidade).replace('.', ',') })),
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -526,9 +580,10 @@ export default function Produtos() {
               icon={ProductsIcon}
               accent={ACCENT}
               titulo="Nenhum produto ainda"
-              texto="Cadastre os itens do seu cardápio para começar a lançar pedidos."
+              texto="Comece com um cardápio pronto e só ajuste os preços, ou cadastre um por um."
             >
-              <Botao cor={ACCENT} tamanho="grande" onClick={abrirNovo} className="mt-2">
+              <CardapioPronto negocioId={perfil.negocio_id} onPronto={recarregar} onErro={setErro} />
+              <Botao variante="secundaria" tamanho="grande" onClick={abrirNovo} className="mt-2">
                 <PlusIcon className="w-5 h-5" />
                 Cadastrar o primeiro produto
               </Botao>

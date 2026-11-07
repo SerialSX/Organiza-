@@ -48,7 +48,13 @@ export default function Privacidade() {
           </p>
           <p>
             <strong className="text-[var(--text-primary)]">Do negócio:</strong> o cardápio (nomes, preços e, se você
-            informar, custos e ingredientes com preço de compra) e os pedidos (itens, quantidades, observações, horários, status e motivo de cancelamento).
+            informar, custos e ingredientes com preço de compra) e os pedidos (itens, quantidades, observações, horários, status,
+            motivo de cancelamento, forma de pagamento e o nome ou a mesa, se o atendente escrever).
+          </p>
+          <p>
+            <strong className="text-[var(--text-primary)]">Do cliente de vocês:</strong> nada, a não ser o nome ou a mesa que o
+            atendente escrever no pedido para chamar a pessoa. Use só a mesa ou o primeiro nome; não anote telefone, CPF ou
+            outro dado.
           </p>
           <p>
             <strong className="text-[var(--text-primary)]">De quem acompanha o pedido pelo QR code:</strong> não pedimos

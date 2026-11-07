@@ -25,6 +25,8 @@ negocios
 - codigo_publico (text, único, 32 caracteres aleatórios)  <- endereço da página do QR code
 - nome_publico (text, opcional)                            <- nome mostrado ao cliente
 - pagina_ativa (boolean)
+- virada_do_dia (0 a 8, padrão 5)                          <- hora em que o dia de trabalho vira (turno depois da meia-noite)
+- usa_tela_cozinha (boolean)                               <- false: cozinha do lado do balcão, "Pronto" na tela de pedidos
 
 usuarios  (perfil complementar ao Supabase Auth)
 - id (= auth.users.id), negocio_id, nome
@@ -34,15 +36,18 @@ produtos
 - id, negocio_id, nome, preco, custo (opcional), criado_em
 - disponivel (boolean)   <- "esgotado" em tempo real
 - arquivado (boolean)    <- "excluir" arquiva e pode ser desfeito; os pedidos antigos continuam com o nome
+- vai_para_cozinha (boolean) <- false: bebida e o que sai pronto; não entra na fila da cozinha
 
 pedidos
 - id, negocio_id, criado_em, criado_por
 - status ("pendente" | "em_preparo" | "pronto" | "entregue" | "cancelado")
 - numero (senha de 1 a 999, em ordem)           <- o que o cliente ouve e digita no QR; mostrada como "007"
 - mesa (1 a 999, opcional)                       <- consumo no salão; vazio = retirada no balcão, chamada pela senha
-- dia (date, fuso de Fortaleza)                  <- separa a fila de hoje das pendências
-- chave_envio (uuid, único)                      <- reenviar o mesmo pedido não duplica
+- dia (date, fuso de Fortaleza, com a virada)   <- separa a fila de hoje das pendências; dia_do_negocio()
+- chave_envio (uuid, único)                      <- reenviar o mesmo pedido não duplica (fila sem internet)
 - alterado_em, pronto_em, entregue_em, cancelado_em, motivo_cancelamento
+- identificacao (até 30)                         <- "Mesa 4": chamar o cliente e somar a conta da mesa
+- forma_pagamento ("pix" | "dinheiro" | "cartao"), pago_em <- fechamento do caixa; sem forma = a receber
 
 itens_pedido
 - id, pedido_id, produto_id, quantidade
@@ -62,6 +67,10 @@ produto_ingredientes
 contador_pedidos
 - negocio_id, dia, ultimo         <- última senha dada no dia; só o criar_pedido mexe, travando a linha
 
+eventos   <- só funções do banco gravam; métricas do TCC
+- tipo ("marcado_esgotado" | "voltou_disponivel" | "toque_bloqueado" | "faltou_item" | "faltou_ingrediente")
+- produto_id, pedido_id, detalhe, criado_em    <- "esgotado evitou venda" e faltas que continuam contadas depois de editar o pedido
+
 limite_consultas   <- consultas da página pública por aparelho (hash do IP, nunca o IP)
 ```
 
@@ -73,6 +82,7 @@ limite_consultas   <- consultas da página pública por aparelho (hash do IP, nu
   - `editar_pedido`: recusa a edição se outra pessoa salvou antes (versão por `alterado_em`);
   - `cancelar_pedido`, `atualizar_status_pedido` (inclui desfazer um "Pronto" em até 2 minutos), `marcar_item_faltou` e `marcar_ingrediente_faltou` (só aceita ingrediente que está no produto).
 - **Custo pelos ingredientes:** `salvar_ingredientes_do_produto` troca a lista de uma vez e recalcula o custo; um gatilho em `ingredientes` recalcula todos os produtos quando o preço muda. O custo continua gravado em `produtos.custo`, então pedidos e relatórios não mudam.
+- **Operação de campo (migração de 28/10):** `criar_pedido` aceita nome ou mesa e forma de pagamento, e pedido só de bebida já nasce pronto; `registrar_pagamento` recebe vários pedidos de uma vez (a conta da mesa); `configurar_operacao` (só o dono) muda a virada do dia e o modo sem tela de cozinha; `registrar_toque_esgotado` e o gatilho de `produtos.disponivel` gravam os eventos.
 - **Versão do banco:** `versao_do_banco()` precisa bater com `src/lib/versaoDoBanco.js` (um teste confere). Se o banco no ar estiver atrás do código, todas as telas da equipe mostram um aviso vermelho. Toda migração nova sobe os dois números.
 - **Página pública (QR code):** quem não tem conta não lê nenhuma tabela. Só chama `pagina_publica` e `acompanhar_pedido`, que devolvem o mínimo (nome do negócio; posição, status e tempo médio de um pedido) e limitam as consultas por aparelho.
 - **Leitura do cardápio por IA:** o navegador nunca fala com o Google. A Edge Function `ler-cardapio` guarda a chave do Gemini nos Secrets, confere o login (`getClaims`), aceita só JPEG de até 4 MB e chama `registrar_leitura_cardapio()` antes da IA (20 leituras por negócio por dia). A resposta é validada no servidor (até 100 itens, nome de 1 a 120 caracteres, preço até 9.999,99) e a pessoa confere antes de virar produto. A foto não é guardada; `leituras_cardapio` só tem o negócio e a hora.
@@ -134,31 +144,39 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js
 - Senha de 3 dígitos para o cliente (001, 002…; volta a 001 depois de 999 e a cada dia), envio sem duplicar, rascunho guardado no aparelho.
 - Mesa ou balcão: o pedido pode ir para uma mesa (número de 1 a 999, consumo no salão) ou ser retirado no balcão, chamado pela senha. A mesa aparece no aviso de enviado, na lista do atendente e na Cozinha, e pode ser trocada na edição.
 - Editar (com aviso se outra pessoa alterou) e cancelar com motivo.
+- Nome ou mesa no pedido; a conta de cada mesa soma a noite toda e fecha de uma vez. Forma de pagamento na hora ou depois.
+- Sem internet: o pedido fica guardado no aparelho e sai sozinho quando a conexão volta, sem duplicar.
+- Toque em produto esgotado registrado (venda que teria saído errada).
+- Modo sem tela de cozinha: o "Pronto" fica na tela de pedidos.
 
 ### Fase 4. Cozinha em tempo real — pronta
 - Fila única do que falta fazer, do mais antigo para o mais novo; atraso a partir de 15 minutos.
 - "Pronto" em um toque com "Desfazer"; "Faltou" diz qual ingrediente faltou (ou o item inteiro, se o produto não tem ingredientes) e avisa o atendente e o cliente.
 - Esgotados: "Acabou um ingrediente?" esgota de uma vez os produtos que o levam.
 - Aviso de pedido alterado ou cancelado (destaque, bipe e leitor de tela); tela sempre acesa; aba de esgotados.
-- Som sempre ligado: pedido novo toca três notas (mais forte que o bipe de alterado/cancelado) e o "Pronto" toca um som curto de confirmação. Abrindo a Cozinha direto, o navegador só libera o som depois do primeiro toque, e a tela avisa.
+- Som sempre ligado: pedido novo toca três notas (mais forte que o bipe de alterado/cancelado) e o "Pronto" toca um som curto de confirmação. Abrindo a Cozinha direto, o navegador só libera o som depois do primeiro toque, e a tela avisa ("Toque para ligar o som"). Vibração junto com o som, aviso de "Reconectando" com conferência a cada 8 s e cabeçalho compacto no tablet deitado.
 - Modo monitor (`/cozinha?modo=monitor`): a fila numa TV ou tablet da cozinha, sem o menu do sistema, com alto contraste fixo (fundo preto) nos dois temas, posição de cada pedido na fila (1º, 2º…), mesa em destaque e tela cheia.
+- Bebida (produto que não vai para a cozinha) aparece só como lembrete no cartão.
 
 ### Fase 5. Relatórios — pronta
 - Hoje, 7 e 30 dias; faturamento, pedidos, ticket médio, lucro, mais vendido × mais lucrativo, gráfico por dia (faturamento e pedidos), pedidos por hora com horário de pico, o que mais faltou na cozinha, aviso de reposição e planilha CSV.
 - Cancelados ficam fora das contas e aparecem à parte, por motivo.
+- Tempo até ficar pronto (mediana e quantos passaram de 15 min). O "dia" respeita a virada do negócio.
+- Caixa (`/caixa`): recebido por Pix, dinheiro e cartão, o que falta receber e o cancelado depois de pago.
 
 ### Fase 6. Página do cliente via QR code — pronta
 - O dono escolhe o nome mostrado, imprime o cartaz, desliga a página ou troca o endereço.
 - O cliente digita a senha do pedido e acompanha posição na fila, tempo médio e o aviso de pronto, sem cadastro.
 
 ### Fase 7. Conta e LGPD — pronta
-- Minha conta: nome, nome do negócio, senha, sair de todos os aparelhos e excluir conta.
-- Política de privacidade (`/privacidade`).
-- Contato da equipe para ajuda (joaoemanuel15@edu.unifor.br, em `src/lib/contato.js`): no rodapé da landing, das telas de acesso e do painel, e na política de privacidade.
+- Minha conta: nome, nome do negócio, senha (pede a atual), "Como você trabalha" (virada do dia e cozinha), sair de todos os aparelhos e excluir conta (pede a senha). "Sair" desconecta só o aparelho.
+- Política de privacidade (`/privacidade`) e Ajuda (`/ajuda`) com as dúvidas da validação de campo.
+- Contato da equipe para ajuda (joaoemanuel15@edu.unifor.br, em `src/lib/contato.js`): no rodapé da landing, das telas de acesso e do painel, na Ajuda e na política de privacidade.
+- Tela que se recupera sozinha depois de um deploy (ErroDaTela e recarga) e workflow de saúde a cada 6 h.
 
 ### Próximos passos
 - Supabase e Vercel no ar e teste do fluxo completo com dados reais.
-- Decisões em aberto: registro de pagamento, contas de equipe por papel, adicionais pagos.
+- Decisões em aberto: contas de equipe por papel, adicionais pagos, app instalável (PWA) para abrir telas sem internet.
 
 ## Regra geral para todas as fases
 

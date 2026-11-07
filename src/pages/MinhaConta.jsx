@@ -4,7 +4,7 @@ import AppShell from '../components/ui/AppShell';
 import PageHeader from '../components/ui/PageHeader';
 import Aviso from '../components/ui/Aviso';
 import Botao from '../components/ui/Botao';
-import Campo from '../components/ui/Campo';
+import Campo, { classeCampo } from '../components/ui/Campo';
 import CampoSenha from '../components/ui/CampoSenha';
 import { UserIcon, QrIcon, TrashIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
@@ -119,21 +119,104 @@ function SeusDados({ perfil }) {
   );
 }
 
+const HORAS_DE_VIRADA = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+
+function rotuloDaHora(h) {
+  return h === 0 ? 'Meia-noite' : `${h}h da manhã`;
+}
+
+// Só o dono: até que horas o dia de trabalho vai e se a cozinha tem tela própria.
+function ComoVoceTrabalha({ perfil }) {
+  const { configurarOperacao } = useAuth();
+  const [virada, setVirada] = useState(perfil.virada_do_dia ?? 5);
+  const [usaTela, setUsaTela] = useState(perfil.usa_tela_cozinha !== false);
+  const [mensagem, setMensagem] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  const mudou = virada !== (perfil.virada_do_dia ?? 5) || usaTela !== (perfil.usa_tela_cozinha !== false);
+
+  async function salvar(e) {
+    e.preventDefault();
+    setMensagem(null);
+    setSalvando(true);
+    const { erro } = await configurarOperacao({ viradaDoDia: virada, usaTelaCozinha: usaTela });
+    setSalvando(false);
+    setMensagem(erro ? { tipo: 'erro', texto: erro } : { tipo: 'sucesso', texto: 'Salvo.' });
+  }
+
+  const opcao = (ativa) =>
+    `flex items-start gap-3 rounded-2xl border-2 p-4 cursor-pointer ${ativa ? 'border-[var(--color-brand-orange)]' : 'border-[var(--border-subtle)]'}`;
+
+  return (
+    <Secao titulo="Como você trabalha" texto="Vale para todos os aparelhos do negócio.">
+      {mensagem && <Aviso tipo={mensagem.tipo}>{mensagem.texto}</Aviso>}
+      <form onSubmit={salvar} className="flex flex-col gap-5">
+        <fieldset className="flex flex-col gap-3">
+          <legend className="text-sm font-medium text-[var(--text-secondary)] mb-2">Onde os pedidos são preparados?</legend>
+          <label className={opcao(usaTela)}>
+            <input type="radio" name="cozinha" checked={usaTela} onChange={() => setUsaTela(true)} className="mt-1 w-5 h-5" />
+            <span>
+              <span className="block font-semibold text-[var(--text-primary)]">Numa cozinha com tela própria</span>
+              <span className="block text-sm text-[var(--text-secondary)]">Um celular ou tablet na cozinha mostra a fila.</span>
+            </span>
+          </label>
+          <label className={opcao(!usaTela)}>
+            <input type="radio" name="cozinha" checked={!usaTela} onChange={() => setUsaTela(false)} className="mt-1 w-5 h-5" />
+            <span>
+              <span className="block font-semibold text-[var(--text-primary)]">Do lado do balcão, sem outra tela</span>
+              <span className="block text-sm text-[var(--text-secondary)]">O &quot;Pronto&quot; fica na própria tela de pedidos.</span>
+            </span>
+          </label>
+        </fieldset>
+
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="virada" className="text-sm font-medium text-[var(--text-secondary)]">
+            O dia de trabalho termina às
+          </label>
+          <select id="virada" value={virada} onChange={(e) => setVirada(Number(e.target.value))} className={classeCampo}>
+            {HORAS_DE_VIRADA.map((h) => (
+              <option key={h} value={h}>
+                {rotuloDaHora(h)}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-[var(--text-secondary)]">
+            Pedidos até essa hora contam no dia anterior: a fila não some e a senha não recomeça no meio do turno.
+          </p>
+        </div>
+
+        <Botao type="submit" cor={ACCENT} className="self-start" disabled={!mudou || salvando}>
+          {salvando ? 'Salvando…' : 'Salvar'}
+        </Botao>
+      </form>
+    </Secao>
+  );
+}
+
 function TrocarSenha() {
-  const { trocarSenha, modoDemo } = useAuth();
+  const { trocarSenha, confirmarSenhaAtual, modoDemo } = useAuth();
   const [mensagem, setMensagem] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
   async function salvar(e) {
     e.preventDefault();
     const formulario = e.currentTarget;
-    const senha = String(new FormData(formulario).get('senha') ?? '');
+    const dados = new FormData(formulario);
+    const atual = String(dados.get('senhaAtual') ?? '');
+    const senha = String(dados.get('senha') ?? '');
     setMensagem(null);
     if (senha.length < 6) {
       setMensagem({ tipo: 'erro', texto: 'A senha precisa ter pelo menos 6 caracteres.' });
       return;
     }
     setSalvando(true);
+    // Todos os aparelhos usam a mesma conta: sem a senha atual, quem estivesse
+    // com o celular do balcão na mão poderia tomar a conta do dono.
+    const conferida = await confirmarSenhaAtual(atual);
+    if (conferida.erro) {
+      setSalvando(false);
+      setMensagem({ tipo: 'erro', texto: conferida.erro });
+      return;
+    }
     const { erro } = await trocarSenha(senha);
     setSalvando(false);
     if (erro) setMensagem({ tipo: 'erro', texto: erro });
@@ -148,6 +231,7 @@ function TrocarSenha() {
       {modoDemo && <Aviso tipo="info">No modo demonstração não há senha.</Aviso>}
       {mensagem && <Aviso tipo={mensagem.tipo}>{mensagem.texto}</Aviso>}
       <form onSubmit={salvar} className="flex flex-col gap-4">
+        <CampoSenha rotulo="Senha atual" name="senhaAtual" autoComplete="current-password" />
         <CampoSenha rotulo="Senha nova" name="senha" autoComplete="new-password" dica="Mínimo de 6 caracteres." />
         <Botao type="submit" cor={ACCENT} className="self-start" disabled={salvando || modoDemo}>
           {salvando ? 'Salvando…' : 'Trocar senha'}
@@ -207,6 +291,7 @@ export default function MinhaConta() {
       <div className="flex flex-col gap-6">
         <Perfil perfil={perfil} papel={papel} />
         <SeusDados perfil={perfil} />
+        {perfil.papel === 'admin' && <ComoVoceTrabalha perfil={perfil} />}
         <TrocarSenha />
 
         {/* Atalho para a página do QR code (só o dono configura) */}

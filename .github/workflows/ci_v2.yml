@@ -30,6 +30,7 @@ jobs:
       # como variável de ambiente, e não interpolado direto no código
       HEAD_REF: ${{ github.event.pull_request.head.ref }}
       BASE_REF: ${{ github.event.pull_request.base.ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
     steps:
       - name: Verificar tipo da branch
@@ -96,9 +97,33 @@ jobs:
           fi
 
           case "$MERGE_STATE" in
-            CLEAN|HAS_HOOKS|UNSTABLE)
+            CLEAN|HAS_HOOKS)
               echo "Nenhum conflito encontrado."
               echo "ready=true" >> "$GITHUB_ENV"
+              ;;
+            UNSTABLE)
+              # UNSTABLE = alguma verificação falhou ou ainda está rodando. Antes
+              # o merge saía mesmo assim; agora espera a Verificação terminar
+              # (jobs "verificar" e "telas") e só segue se as duas passarem.
+              echo "Aguardando a Verificação terminar..."
+              for espera in $(seq 1 60); do
+                RESULTADO=$(gh api "repos/$GH_REPO/commits/$HEAD_SHA/check-runs" --paginate                   --jq '[.check_runs[] | select(.name == "verificar" or .name == "telas") | .status + ":" + (.conclusion // "")] | join(" ")')
+                echo "Verificação: ${RESULTADO:-ainda não começou}"
+                if [[ "$RESULTADO" == *":failure"* || "$RESULTADO" == *":cancelled"* || "$RESULTADO" == *":timed_out"* ]]; then
+                  echo "::error::A Verificação falhou. Corrija e aprove a PR de novo."
+                  exit 1
+                fi
+                if [[ "$RESULTADO" == "completed:success completed:success" ]]; then
+                  echo "Verificação verde."
+                  echo "ready=true" >> "$GITHUB_ENV"
+                  break
+                fi
+                sleep 20
+              done
+              if ! grep -q '^ready=true' "$GITHUB_ENV"; then
+                echo "::error::A Verificação não terminou em 20 minutos. Aprove a PR de novo quando ela terminar."
+                exit 1
+              fi
               ;;
             BLOCKED)
               # Ex.: a main exige um número mínimo de aprovações antes do merge

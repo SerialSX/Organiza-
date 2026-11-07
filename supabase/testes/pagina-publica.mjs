@@ -96,12 +96,12 @@ await ok('código público tem 32 caracteres aleatórios', async () => {
   if (codigo1 === codigo2) throw new Error('códigos iguais');
 });
 
-await ok('visitante vê o nome do negócio', async () => igual(await pagina(codigo1), { nome: 'Lanche da Ana' }, 'página'));
+await ok('visitante vê o nome do negócio', async () => igual(await pagina(codigo1), { nome: 'Lanche da Ana', virada_do_dia: 5 }, 'página'));
 await ok('endereço errado devolve nada', async () => igual(await pagina('naoexiste'), null, 'página'));
 
 await ok('dono personaliza o nome', async () => {
   await dono(U1, `select public.configurar_pagina_publica('  Lanchonete da Ana  ', true)`);
-  igual(await pagina(codigo1), { nome: 'Lanchonete da Ana' }, 'página');
+  igual(await pagina(codigo1), { nome: 'Lanchonete da Ana', virada_do_dia: 5 }, 'página');
 });
 await erro('nome com mais de 60 caracteres', 'no máximo 60', () =>
   dono(U1, `select public.configurar_pagina_publica($1, true)`, ['x'.repeat(61)]),

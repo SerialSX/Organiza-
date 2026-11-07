@@ -5,12 +5,13 @@ import logoDark from '../assets/logo.svg';
 import logoLight from '../assets/logo-light.svg';
 import ThemeToggle from './ThemeToggle';
 import { corDeTexto } from '../lib/cores';
-import { ProductsIcon, OrdersIcon, KitchenIcon, ReportsIcon, LogoutIcon, UserIcon } from './icons/AppIcons';
+import { ProductsIcon, OrdersIcon, KitchenIcon, ReportsIcon, LogoutIcon, UserIcon, MoneyIcon, HelpIcon } from './icons/AppIcons';
 
-const items = [
+const todosOsItens = [
   { label: 'Produtos', route: '/produtos', icon: ProductsIcon, accent: 'var(--color-accent-produtos)' },
   { label: 'Pedidos', route: '/pedidos', icon: OrdersIcon, accent: 'var(--color-accent-pedidos)' },
-  { label: 'Cozinha', route: '/cozinha', icon: KitchenIcon, accent: 'var(--color-accent-cozinha)' },
+  { label: 'Cozinha', route: '/cozinha', icon: KitchenIcon, accent: 'var(--color-accent-cozinha)', soComTelaCozinha: true },
+  { label: 'Caixa', route: '/caixa', icon: MoneyIcon, accent: 'var(--color-accent-relatorios)' },
   { label: 'Relatórios', route: '/relatorios', icon: ReportsIcon, accent: 'var(--color-accent-relatorios)' },
 ];
 
@@ -20,7 +21,9 @@ const botaoRedondo =
 export default function AppNav() {
   const navigate = useNavigate();
   const { mode } = useTheme();
-  const { sair, modoDemo } = useAuth();
+  const { sair, modoDemo, perfil } = useAuth();
+  // Cozinha do lado do balcão: o "Pronto" fica em Pedidos e a tela some do menu.
+  const items = todosOsItens.filter((i) => !i.soComTelaCozinha || perfil?.usa_tela_cozinha !== false);
 
   async function handleSair() {
     await sair();
@@ -36,6 +39,9 @@ export default function AppNav() {
   const acoes = (
     <div className="ml-auto flex items-center gap-2">
       <ThemeToggle />
+      <Link to="/ajuda" aria-label="Ajuda" title="Ajuda" className={botaoRedondo}>
+        <HelpIcon className="w-5 h-5" />
+      </Link>
       <Link to="/minha-conta" aria-label="Minha conta" title="Minha conta" className={botaoRedondo}>
         <UserIcon className="w-5 h-5" />
       </Link>
@@ -89,11 +95,11 @@ export default function AppNav() {
             <NavLink
               key={route}
               to={route}
-              className="flex-1 flex flex-col items-center gap-1 py-2.5 min-h-14"
+              className="flex-1 min-w-0 flex flex-col items-center gap-1 py-2.5 min-h-14"
               style={({ isActive }) => ({ color: isActive ? corDeTexto(accent) : 'var(--text-secondary)' })}
             >
               <Icon className="w-6 h-6" />
-              <span className="text-xs font-medium">{label}</span>
+              <span className="text-xs font-medium truncate max-w-full">{label}</span>
             </NavLink>
           ))}
         </div>

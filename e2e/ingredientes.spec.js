@@ -96,7 +96,7 @@ test('acabou um ingrediente: esgota de uma vez os produtos que o levam', async (
   await expect(page.getByRole('button', { name: 'X-Burguer, esgotado. Tocar marca que voltou' })).toBeVisible();
 
   await page.goto('/pedidos');
-  await expect(page.getByRole('button', { name: 'X-Burguer, esgotado' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'X-Burguer, esgotado' })).toHaveAttribute('aria-disabled', 'true');
 });
 
 test('excluir ingrediente avisa em quantos produtos ele está', async ({ page }) => {

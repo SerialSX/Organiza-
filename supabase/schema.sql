@@ -17,7 +17,13 @@ create table if not exists public.negocios (
   codigo_publico text not null unique default replace(gen_random_uuid()::text, '-', ''),
   -- Nome mostrado ao cliente; sem ele, vale o nome do cadastro.
   nome_publico text check (nome_publico is null or length(nome_publico) between 1 and 60),
-  pagina_ativa boolean not null default true
+  pagina_ativa boolean not null default true,
+  -- Hora em que o dia de trabalho vira. Com 5, um pedido à 1h da manhã ainda
+  -- é do dia anterior: a fila não some e a senha não recomeça no meio do turno.
+  virada_do_dia smallint not null default 5 check (virada_do_dia between 0 and 8),
+  -- false: a cozinha fica do lado do balcão e o "Pronto" é marcado na tela de
+  -- pedidos, sem uma tela de cozinha separada.
+  usa_tela_cozinha boolean not null default true
 );
 
 create table if not exists public.usuarios (
@@ -37,6 +43,8 @@ create table if not exists public.produtos (
   -- "Excluir" arquiva: o produto some do cardápio, mas os pedidos antigos continuam com nome.
   arquivado boolean not null default false,
   criado_em timestamptz not null default now(),
+  -- false: bebida e o que já sai pronto. Não aparece na fila da cozinha.
+  vai_para_cozinha boolean not null default true,
   -- Alvo das chaves de produto_ingredientes: produto e ingrediente do mesmo negócio.
   unique (id, negocio_id)
 );
@@ -50,6 +58,19 @@ stable
 set search_path = ''
 as $$
   select (now() at time zone 'America/Fortaleza')::date;
+$$;
+
+-- O mesmo, respeitando a hora em que o dia de trabalho do negócio vira.
+-- p_agora existe para os testes; no uso normal é o horário do banco.
+create or replace function public.dia_do_negocio(p_negocio_id uuid, p_agora timestamptz default now())
+returns date
+language sql
+stable
+set search_path = ''
+as $$
+  select ((p_agora at time zone 'America/Fortaleza') - make_interval(hours => coalesce(n.virada_do_dia, 0)))::date
+  from public.negocios n
+  where n.id = p_negocio_id;
 $$;
 
 create table if not exists public.pedidos (
@@ -77,6 +98,12 @@ create table if not exists public.pedidos (
   cancelado_em timestamptz,
   motivo_cancelamento text
     check (motivo_cancelamento in ('cliente_desistiu', 'erro_lancamento', 'faltou_ingrediente', 'outro')),
+  -- Nome do cliente ("Carlos"), opcional: para chamar quando ficar pronto.
+  identificacao text check (identificacao is null or length(identificacao) between 1 and 30),
+  -- Para fechar o caixa. Sem forma, o pedido ainda não foi pago.
+  forma_pagamento text check (forma_pagamento in ('dinheiro', 'pix', 'cartao')),
+  pago_em timestamptz,
+  constraint pedidos_pagamento_coerente check ((forma_pagamento is null) = (pago_em is null)),
   unique (negocio_id, chave_envio)
 );
 
@@ -138,6 +165,22 @@ create table if not exists public.produto_ingredientes (
   foreign key (ingrediente_id, negocio_id) references public.ingredientes (id, negocio_id) on delete cascade
 );
 
+-- Registro do que aconteceu no balcão e na cozinha, para as métricas do TCC:
+-- produto esgotado que evitou venda, faltas avisadas pela cozinha (que
+-- continuam contadas mesmo se o pedido for editado depois). Só funções do
+-- banco gravam aqui.
+create table if not exists public.eventos (
+  id bigint generated always as identity primary key,
+  negocio_id uuid not null references public.negocios (id) on delete cascade,
+  tipo text not null check (tipo in (
+    'marcado_esgotado', 'voltou_disponivel', 'toque_bloqueado', 'faltou_item', 'faltou_ingrediente'
+  )),
+  produto_id uuid references public.produtos (id) on delete cascade,
+  pedido_id uuid references public.pedidos (id) on delete cascade,
+  detalhe text check (detalhe is null or length(detalhe) <= 60),
+  criado_em timestamptz not null default now()
+);
+
 create index if not exists usuarios_negocio_idx on public.usuarios (negocio_id);
 create index if not exists produtos_negocio_idx on public.produtos (negocio_id);
 create index if not exists pedidos_negocio_criado_em_idx on public.pedidos (negocio_id, criado_em);
@@ -154,6 +197,9 @@ create unique index if not exists ingredientes_nome_unico_idx
   on public.ingredientes (negocio_id, lower(trim(nome))) where not arquivado;
 create index if not exists produto_ingredientes_ingrediente_idx on public.produto_ingredientes (ingrediente_id);
 create index if not exists produto_ingredientes_negocio_idx on public.produto_ingredientes (negocio_id);
+create index if not exists eventos_negocio_criado_em_idx on public.eventos (negocio_id, criado_em);
+create index if not exists eventos_produto_idx on public.eventos (produto_id);
+create index if not exists eventos_pedido_idx on public.eventos (pedido_id);
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security
@@ -177,6 +223,7 @@ alter table public.pedidos enable row level security;
 alter table public.itens_pedido enable row level security;
 alter table public.ingredientes enable row level security;
 alter table public.produto_ingredientes enable row level security;
+alter table public.eventos enable row level security;
 -- Só as funções do banco mexem no contador de senhas: RLS ligado e nenhuma policy.
 alter table public.contador_pedidos enable row level security;
 revoke all on public.contador_pedidos from anon, authenticated;
@@ -206,6 +253,15 @@ create policy "ingredientes isolados por negocio_id"
 drop policy if exists "produto_ingredientes isolados por negocio_id" on public.produto_ingredientes;
 create policy "produto_ingredientes isolados por negocio_id"
   on public.produto_ingredientes for select to authenticated
+  using (negocio_id = (select public.negocio_do_usuario_atual()));
+
+-- Eventos: o negócio lê os seus; só as funções do banco escrevem.
+revoke all on public.eventos from anon, authenticated;
+grant select on public.eventos to authenticated;
+
+drop policy if exists "eventos isolados por negocio_id" on public.eventos;
+create policy "eventos isolados por negocio_id"
+  on public.eventos for select to authenticated
   using (negocio_id = (select public.negocio_do_usuario_atual()));
 
 drop policy if exists "negocios isolados por negocio_id" on public.negocios;
@@ -361,13 +417,40 @@ begin
 end;
 $$;
 
+-- Nome do cliente digitado pelo atendente: sem espaços sobrando, até 30 letras.
+create or replace function public.limpar_identificacao(p_texto text)
+returns text
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  v_texto text := nullif(regexp_replace(trim(p_texto), '\s+', ' ', 'g'), '');
+begin
+  if length(v_texto) > 30 then
+    raise exception 'O nome do cliente pode ter no máximo 30 letras.';
+  end if;
+  return v_texto;
+end;
+$$;
+
 -- p_chave_envio é gerada pelo aparelho. Se o mesmo envio chegar de novo
--- (toque duplo, nova tentativa com internet lenta), devolve o pedido já criado.
+-- (toque duplo, internet que caiu e voltou), devolve o pedido já criado.
 -- p_mesa: mesa onde o cliente está; vazio quando ele retira no balcão.
--- A versão sem p_mesa não pode continuar no banco: com as duas, a chamada
--- sem mesa ficaria ambígua.
+-- p_identificacao: nome do cliente para chamar (opcional).
+-- p_forma_pagamento: já pago na hora (opcional; sem ela, o pedido fica a receber).
+-- As versões antigas não podem continuar no banco: com os valores padrão,
+-- uma chamada com menos argumentos ficaria ambígua.
 drop function if exists public.criar_pedido(jsonb, uuid);
-create or replace function public.criar_pedido(p_itens jsonb, p_chave_envio uuid, p_mesa int default null)
+drop function if exists public.criar_pedido(jsonb, uuid, int);
+drop function if exists public.criar_pedido(jsonb, uuid, text, text);
+create or replace function public.criar_pedido(
+  p_itens jsonb,
+  p_chave_envio uuid,
+  p_mesa int default null,
+  p_identificacao text default null,
+  p_forma_pagamento text default null
+)
 returns public.pedidos
 language plpgsql
 security definer
@@ -376,8 +459,9 @@ as $$
 declare
   v_negocio_id uuid := public.negocio_do_usuario_atual();
   v_pedido public.pedidos;
-  v_hoje date := public.hoje_no_negocio();
+  v_hoje date := public.dia_do_negocio(v_negocio_id);
   v_numero smallint;
+  v_identificacao text := public.limpar_identificacao(p_identificacao);
 begin
   if v_negocio_id is null then
     raise exception 'Sua conta ainda não está ligada a um negócio.';
@@ -387,6 +471,9 @@ begin
   end if;
   if p_mesa is not null and p_mesa not between 1 and 999 then
     raise exception 'O número da mesa precisa ficar entre 1 e 999.';
+  end if;
+  if p_forma_pagamento is not null and p_forma_pagamento not in ('dinheiro', 'pix', 'cartao') then
+    raise exception 'Forma de pagamento inválida.';
   end if;
 
   select * into v_pedido from public.pedidos
@@ -405,8 +492,13 @@ begin
           dia = excluded.dia
     returning ultimo into v_numero;
 
-    insert into public.pedidos (negocio_id, criado_por, chave_envio, numero, mesa)
-    values (v_negocio_id, (select auth.uid()), p_chave_envio, v_numero, p_mesa)
+    insert into public.pedidos (
+      negocio_id, criado_por, chave_envio, numero, dia, mesa, identificacao, forma_pagamento, pago_em
+    )
+    values (
+      v_negocio_id, (select auth.uid()), p_chave_envio, v_numero, v_hoje, p_mesa, v_identificacao,
+      p_forma_pagamento, case when p_forma_pagamento is not null then now() end
+    )
     returning * into v_pedido;
   exception when unique_violation then
     -- O mesmo envio chegou duas vezes ao mesmo tempo: devolve o primeiro. A
@@ -417,6 +509,22 @@ begin
   end;
 
   perform public.gravar_itens_pedido(v_pedido.id, v_negocio_id, p_itens);
+
+  -- Só bebida ou o que já sai pronto: não passa pela cozinha. Em todo caso,
+  -- mexe no pedido depois dos itens gravados, para o tempo real avisar as
+  -- telas quando o pedido já está completo.
+  update public.pedidos p
+  set atualizado_em = now(),
+      status = case when vai.para_cozinha then p.status else 'pronto' end,
+      pronto_em = case when vai.para_cozinha then p.pronto_em else now() end
+  from (
+    select coalesce(bool_or(pr.vai_para_cozinha), false) as para_cozinha
+    from public.itens_pedido i
+    join public.produtos pr on pr.id = i.produto_id
+    where i.pedido_id = v_pedido.id
+  ) vai
+  where p.id = v_pedido.id
+  returning p.* into v_pedido;
   return v_pedido;
 end;
 $$;
@@ -530,7 +638,7 @@ begin
   if not ((v_pedido.status = 'pendente' and p_status in ('em_preparo', 'pronto'))
        or (v_pedido.status = 'em_preparo' and p_status = 'pronto')
        or (v_pedido.status = 'pronto' and p_status in ('entregue', 'pendente'))
-       or (v_pedido.dia < public.hoje_no_negocio()
+       or (v_pedido.dia < public.dia_do_negocio(v_pedido.negocio_id)
            and v_pedido.status in ('pendente', 'em_preparo') and p_status = 'entregue')) then
     raise exception 'Este pedido já mudou de status. Atualize a tela.';
   end if;
@@ -568,19 +676,27 @@ begin
 
   update public.itens_pedido set faltou = coalesce(p_faltou, false) where id = p_item_id;
   update public.pedidos set atualizado_em = now() where id = v_pedido_id;
+  -- Fica registrado mesmo que o atendente edite o pedido depois.
+  if coalesce(p_faltou, false) then
+    insert into public.eventos (negocio_id, tipo, produto_id, pedido_id)
+    select p.negocio_id, 'faltou_item', i.produto_id, p.id
+    from public.itens_pedido i join public.pedidos p on p.id = i.pedido_id
+    where i.id = p_item_id;
+  end if;
 end;
 $$;
 
 revoke all on function public.negocio_do_usuario_atual() from public, anon;
 revoke all on function public.criar_negocio_do_novo_usuario() from public, anon, authenticated;
 revoke all on function public.gravar_itens_pedido(uuid, uuid, jsonb, jsonb) from public, anon, authenticated;
-revoke all on function public.criar_pedido(jsonb, uuid, int) from public, anon;
+revoke all on function public.limpar_identificacao(text) from public, anon, authenticated;
+revoke all on function public.criar_pedido(jsonb, uuid, int, text, text) from public, anon;
 revoke all on function public.editar_pedido(uuid, jsonb, timestamptz, int) from public, anon;
 revoke all on function public.cancelar_pedido(uuid, text) from public, anon;
 revoke all on function public.atualizar_status_pedido(uuid, text) from public, anon;
 revoke all on function public.marcar_item_faltou(uuid, boolean) from public, anon;
 grant execute on function public.negocio_do_usuario_atual() to authenticated;
-grant execute on function public.criar_pedido(jsonb, uuid, int) to authenticated;
+grant execute on function public.criar_pedido(jsonb, uuid, int, text, text) to authenticated;
 grant execute on function public.editar_pedido(uuid, jsonb, timestamptz, int) to authenticated;
 grant execute on function public.cancelar_pedido(uuid, text) to authenticated;
 grant execute on function public.atualizar_status_pedido(uuid, text) to authenticated;
@@ -742,6 +858,11 @@ begin
   end
   where id = p_item_id;
   update public.pedidos set atualizado_em = now() where id = v_pedido_id;
+  if coalesce(p_faltou, false) then
+    insert into public.eventos (negocio_id, tipo, produto_id, pedido_id, detalhe)
+    select p.negocio_id, 'faltou_ingrediente', v_produto_id, p.id, left(v_nome, 60)
+    from public.pedidos p where p.id = v_pedido_id;
+  end if;
 end;
 $$;
 
@@ -751,6 +872,118 @@ revoke all on function public.salvar_ingredientes_do_produto(uuid, jsonb) from p
 revoke all on function public.marcar_ingrediente_faltou(uuid, uuid, boolean) from public, anon;
 grant execute on function public.salvar_ingredientes_do_produto(uuid, jsonb) to authenticated;
 grant execute on function public.marcar_ingrediente_faltou(uuid, uuid, boolean) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Esgotados, pagamento e jeito de trabalhar do negócio
+-- ---------------------------------------------------------------------------
+
+-- Marcar e desmarcar esgotado fica registrado (métrica do TCC: quanto tempo
+-- cada produto ficou fora e quantas vendas isso evitou).
+create or replace function public.ao_mudar_disponivel()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.eventos (negocio_id, tipo, produto_id)
+  values (new.negocio_id, case when new.disponivel then 'voltou_disponivel' else 'marcado_esgotado' end, new.id);
+  return new;
+end;
+$$;
+
+drop trigger if exists ao_mudar_disponivel on public.produtos;
+create trigger ao_mudar_disponivel
+  after update of disponivel on public.produtos
+  for each row
+  when (old.disponivel is distinct from new.disponivel)
+  execute function public.ao_mudar_disponivel();
+
+-- O atendente tocou num produto esgotado: a venda que teria saído errada.
+-- Toques repetidos no mesmo produto em 5 segundos contam uma vez só.
+create or replace function public.registrar_toque_esgotado(p_produto_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_negocio_id uuid := public.negocio_do_usuario_atual();
+begin
+  perform 1 from public.produtos
+  where id = p_produto_id and negocio_id = v_negocio_id and not disponivel;
+  if not found then
+    return;
+  end if;
+  if exists (
+    select 1 from public.eventos
+    where negocio_id = v_negocio_id and produto_id = p_produto_id
+      and tipo = 'toque_bloqueado' and criado_em > now() - interval '5 seconds'
+  ) then
+    return;
+  end if;
+  insert into public.eventos (negocio_id, tipo, produto_id)
+  values (v_negocio_id, 'toque_bloqueado', p_produto_id);
+end;
+$$;
+
+-- Recebe um ou mais pedidos de uma vez (a conta da mesa inteira). p_forma
+-- nula desfaz o recebimento. Pedido cancelado não recebe.
+create or replace function public.registrar_pagamento(p_pedido_ids uuid[], p_forma text)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_negocio_id uuid := public.negocio_do_usuario_atual();
+  v_quantos int;
+begin
+  if p_forma is not null and p_forma not in ('dinheiro', 'pix', 'cartao') then
+    raise exception 'Forma de pagamento inválida.';
+  end if;
+  if p_pedido_ids is null or cardinality(p_pedido_ids) not between 1 and 200 then
+    raise exception 'Escolha de 1 a 200 pedidos.';
+  end if;
+
+  update public.pedidos
+  set forma_pagamento = p_forma,
+      pago_em = case when p_forma is null then null else now() end,
+      atualizado_em = now()
+  where id = any (p_pedido_ids)
+    and negocio_id = v_negocio_id
+    and status <> 'cancelado'
+    and (p_forma is null or pago_em is null);
+  get diagnostics v_quantos = row_count;
+  return v_quantos;
+end;
+$$;
+
+-- Só o dono: hora da virada do dia e se a cozinha tem tela própria.
+create or replace function public.configurar_operacao(p_virada_do_dia smallint, p_usa_tela_cozinha boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_virada_do_dia is null or p_virada_do_dia not between 0 and 8 then
+    raise exception 'Escolha uma hora entre 0h e 8h.';
+  end if;
+  update public.negocios
+  set virada_do_dia = p_virada_do_dia,
+      usa_tela_cozinha = coalesce(p_usa_tela_cozinha, usa_tela_cozinha)
+  where id = public.negocio_do_admin_atual();
+end;
+$$;
+
+revoke all on function public.ao_mudar_disponivel() from public, anon, authenticated;
+revoke all on function public.registrar_toque_esgotado(uuid) from public, anon;
+revoke all on function public.registrar_pagamento(uuid[], text) from public, anon;
+revoke all on function public.configurar_operacao(smallint, boolean) from public, anon;
+grant execute on function public.registrar_toque_esgotado(uuid) to authenticated;
+grant execute on function public.registrar_pagamento(uuid[], text) to authenticated;
+grant execute on function public.configurar_operacao(smallint, boolean) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Página pública de acompanhamento (QR code)
@@ -837,10 +1070,11 @@ set search_path = ''
 as $$
 declare
   v_nome text;
+  v_virada smallint;
 begin
   perform public.conferir_limite_consultas();
 
-  select coalesce(nome_publico, nome) into v_nome
+  select coalesce(nome_publico, nome), virada_do_dia into v_nome, v_virada
   from public.negocios
   where codigo_publico = p_codigo and pagina_ativa;
 
@@ -848,7 +1082,8 @@ begin
   if v_nome is null then
     return null;
   end if;
-  return json_build_object('nome', v_nome);
+  -- A virada do dia serve para o celular do cliente esquecer a senha de ontem.
+  return json_build_object('nome', v_nome, 'virada_do_dia', v_virada);
 end;
 $$;
 
@@ -862,7 +1097,7 @@ set search_path = ''
 as $$
 declare
   v_negocio_id uuid;
-  v_hoje date := public.hoje_no_negocio();
+  v_hoje date;
   v_pedido public.pedidos;
   v_posicao int;
   v_tempo_medio int;
@@ -873,6 +1108,7 @@ begin
   select id into v_negocio_id
   from public.negocios
   where codigo_publico = p_codigo and pagina_ativa;
+  v_hoje := public.dia_do_negocio(v_negocio_id);
 
   if v_negocio_id is not null and p_numero between 1 and 999 then
     select * into v_pedido
@@ -1136,7 +1372,7 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select 20261107;
+  select 20261108;
 $$;
 
 revoke all on function public.versao_do_banco() from public;

@@ -33,11 +33,25 @@ describe('perfil de quem entrou', () => {
   });
 
   it('banco sem a migração: entra mesmo assim, em vez de travar em "Sem conexão"', async () => {
+    respostas.push({ data: null, error: { code: '42703', message: 'column negocios_1.modo_atendimento does not exist' } });
     respostas.push({ data: null, error: { code: '42703', message: 'column negocios_1.virada_do_dia does not exist' } });
     respostas.push({ data: { ...linha, negocios: { nome: 'Lanche da Ana' } }, error: null });
     const perfil = await buscarPerfil(usuario);
     expect(perfil).toMatchObject({ negocio_nome: 'Lanche da Ana', virada_do_dia: 0, usa_tela_cozinha: true });
-    expect(selects[1]).toContain('negocios ( nome )');
+    expect(selects.at(-1)).toContain('negocios ( nome )');
+  });
+
+  it('banco com a virada mas sem a pergunta de boas-vindas: mantém a virada e não prende na pergunta', async () => {
+    respostas.push({ data: null, error: { code: '42703', message: 'column negocios_1.modo_atendimento does not exist' } });
+    respostas.push({ data: { ...linha, negocios: { nome: 'Lanche da Ana', virada_do_dia: 5, usa_tela_cozinha: false } }, error: null });
+    const perfil = await buscarPerfil(usuario);
+    expect(perfil).toMatchObject({ virada_do_dia: 5, usa_tela_cozinha: false, modo_atendimento: 'balcao_e_mesa' });
+    expect(selects).toHaveLength(2);
+  });
+
+  it('dono que ainda não respondeu as boas-vindas vem com modo vazio', async () => {
+    respostas.push({ data: { ...linha, negocios: { nome: 'Lanche da Ana', virada_do_dia: 5, usa_tela_cozinha: true, modo_atendimento: null } }, error: null });
+    expect((await buscarPerfil(usuario)).modo_atendimento).toBeNull();
   });
 
   it('falha de rede continua sendo erro (não vira "conta sem negócio")', async () => {

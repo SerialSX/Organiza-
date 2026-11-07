@@ -15,6 +15,9 @@ const PERFIL_DEMO = {
   negocio_nome: 'Meu negócio (demonstração)',
   virada_do_dia: 5,
   usa_tela_cozinha: true,
+  // A demonstração já começa respondida; o teste das perguntas de
+  // boas-vindas apaga este valor para ver a pessoa respondendo.
+  modo_atendimento: 'balcao_e_mesa',
 };
 
 function perfilDemo() {
@@ -196,6 +199,21 @@ export function AuthProvider({ children }) {
     return { erro: null };
   }, []);
 
+  // Respostas das perguntas de boas-vindas (só o dono). Também usado em
+  // Minha conta para mudar depois.
+  const configurarAtendimento = useCallback(async ({ modo, usaTelaCozinha }) => {
+    if (!isSupabaseConfigured) {
+      const db = lerDemo();
+      salvarDemo({ ...db, perfil: { ...db.perfil, modo_atendimento: modo, usa_tela_cozinha: usaTelaCozinha } });
+      setPerfil(perfilDemo());
+      return { erro: null };
+    }
+    const { error } = await supabase.rpc('configurar_atendimento', { p_modo: modo, p_usa_tela_cozinha: usaTelaCozinha });
+    if (error) return { erro: traduzirErro(error) };
+    setPerfil((p) => ({ ...p, modo_atendimento: modo, usa_tela_cozinha: usaTelaCozinha }));
+    return { erro: null };
+  }, []);
+
   // Para quando um aparelho foi perdido ou um funcionário saiu com a senha.
   const sairDeTodosOsAparelhos = useCallback(async () => {
     if (!isSupabaseConfigured) return { erro: null };
@@ -233,6 +251,7 @@ export function AuthProvider({ children }) {
       trocarSenha,
       confirmarSenhaAtual,
       configurarOperacao,
+      configurarAtendimento,
       sair,
       sairDeTodosOsAparelhos,
       excluirConta,
@@ -250,6 +269,7 @@ export function AuthProvider({ children }) {
       trocarSenha,
       confirmarSenhaAtual,
       configurarOperacao,
+      configurarAtendimento,
       sair,
       sairDeTodosOsAparelhos,
       excluirConta,

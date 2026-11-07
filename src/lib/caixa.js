@@ -22,8 +22,9 @@ export function contasAbertas(pedidos) {
 // Fechamento: por forma de pagamento, a receber e o que foi cancelado
 // depois de pago (dinheiro a devolver).
 export function fecharCaixa(pedidos) {
-  const porForma = { pix: 0, dinheiro: 0, cartao: 0 };
-  const quantidadePorForma = { pix: 0, dinheiro: 0, cartao: 0 };
+  // cartao: pedidos pagos antes de separar crédito e débito.
+  const porForma = { pix: 0, dinheiro: 0, credito: 0, debito: 0, cartao: 0 };
+  const quantidadePorForma = { pix: 0, dinheiro: 0, credito: 0, debito: 0, cartao: 0 };
   let aReceber = 0;
   const pendentes = [];
   const recebidos = [];
@@ -45,6 +46,6 @@ export function fecharCaixa(pedidos) {
     }
   }
 
-  const recebido = porForma.pix + porForma.dinheiro + porForma.cartao;
+  const recebido = Object.values(porForma).reduce((s, v) => s + v, 0);
   return { porForma, quantidadePorForma, recebido, aReceber, pendentes, recebidos, devolver, vendido: recebido + aReceber };
 }

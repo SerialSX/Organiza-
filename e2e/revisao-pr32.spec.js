@@ -27,8 +27,7 @@ test('pedido pago e editado com outro valor volta para "a receber"', async ({ pa
   await montarEspetaria(page);
   await page.goto('/pedidos');
   await adicionar(page, 'Espeto de carne');
-  await page.getByRole('group', { name: 'Pagamento' }).getByRole('button', { name: 'Pix' }).click();
-  await enviar(page);
+  await enviar(page, { forma: 'Pix' });
   await expect(page.getByRole('status').filter({ hasText: 'Diga ao cliente a senha' })).toBeVisible();
 
   await page.getByRole('region', { name: 'Na cozinha' }).getByRole('button', { name: 'Editar' }).click();
@@ -49,8 +48,7 @@ test('recebimento errado no caixa pode ser desfeito', async ({ page }) => {
   await montarEspetaria(page);
   await page.goto('/pedidos');
   await adicionar(page, 'Espeto de frango');
-  await page.getByRole('group', { name: 'Pagamento' }).getByRole('button', { name: 'Dinheiro' }).click();
-  await enviar(page);
+  await enviar(page, { forma: 'Dinheiro' });
   await expect(page.getByRole('status').filter({ hasText: 'Diga ao cliente a senha' })).toBeVisible();
 
   await page.goto('/caixa');
@@ -99,6 +97,7 @@ test('pedido guardado sem internet sai mesmo fora da tela de Pedidos', async ({ 
 
   await context.setOffline(true);
   await adicionar(page, 'Espeto de carne');
+  await page.getByRole('button', { name: '+ Anotar o nome do cliente (se quiser)' }).click();
   await page.getByLabel('Nome do cliente (opcional)').fill('Dona Rita');
   await enviar(page);
   await expect(page.getByRole('region', { name: '1 pedido esperando a internet' })).toContainText(/Guardado às \d\d:\d\d/);

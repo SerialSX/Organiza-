@@ -9,12 +9,29 @@ const OPCOES = [
 
 // Para onde vai o pedido: balcão (o cliente retira quando chamam a senha) ou
 // mesa (consumo no salão). destino: { tipo: 'balcao' | 'mesa', mesa: '12' }.
-export default function DestinoDoPedido({ destino, onMudar, erroMesa, idCampoMesa }) {
+// escolhe: só o negócio que atende dos dois jeitos escolhe a cada pedido; nos
+// outros, aparece só o número da mesa (quando é mesa).
+export default function DestinoDoPedido({ destino, onMudar, erroMesa, idCampoMesa, escolhe = true }) {
   function escolher(tipo) {
     onMudar({ ...destino, tipo });
     // Escolheu mesa: o próximo passo é digitar o número.
     if (tipo === 'mesa') setTimeout(() => document.getElementById(idCampoMesa)?.focus(), 0);
   }
+
+  const campoMesa = destino.tipo === 'mesa' && (
+    <Campo
+      id={idCampoMesa}
+      rotulo="Número da mesa"
+      inputMode="numeric"
+      autoComplete="off"
+      placeholder="Ex.: 12"
+      value={destino.mesa}
+      onChange={(e) => onMudar({ ...destino, mesa: e.target.value.replace(/\D/g, '').slice(0, 3) })}
+      erro={erroMesa}
+    />
+  );
+
+  if (!escolhe) return campoMesa || null;
 
   return (
     <fieldset className="flex flex-col gap-3">
@@ -45,18 +62,7 @@ export default function DestinoDoPedido({ destino, onMudar, erroMesa, idCampoMes
           );
         })}
       </div>
-      {destino.tipo === 'mesa' && (
-        <Campo
-          id={idCampoMesa}
-          rotulo="Número da mesa"
-          inputMode="numeric"
-          autoComplete="off"
-          placeholder="Ex.: 12"
-          value={destino.mesa}
-          onChange={(e) => onMudar({ ...destino, mesa: e.target.value.replace(/\D/g, '').slice(0, 3) })}
-          erro={erroMesa}
-        />
-      )}
+      {campoMesa}
     </fieldset>
   );
 }

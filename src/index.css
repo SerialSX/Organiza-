@@ -136,6 +136,12 @@ textarea:focus-visible {
   outline-offset: 0;
 }
 
+/* Títulos que recebem o foco ao trocar de etapa (para o leitor de tela):
+   não são clicáveis, então não ganham o contorno. */
+[tabindex='-1']:focus-visible {
+  outline: none;
+}
+
 .sr-only-focusable:not(:focus) {
   position: absolute;
   width: 1px;
@@ -143,6 +149,20 @@ textarea:focus-visible {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* Tutorial: o contorno laranja pisca onde a pessoa vai tocar. Com
+   "reduzir movimento", o contorno fica parado. */
+.toque-aqui {
+  outline: 3px solid var(--color-brand-orange);
+  outline-offset: 2px;
+  animation: toque-pisca 1.4s ease-in-out infinite;
+}
+
+@keyframes toque-pisca {
+  50% {
+    outline-color: transparent;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

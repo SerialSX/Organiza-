@@ -3,12 +3,11 @@ import Botao from '../ui/Botao';
 import Etiqueta from '../ui/Etiqueta';
 import CancelarPedido from '../CancelarPedido';
 import { CheckIcon, PencilIcon, AlertIcon } from '../icons/AppIcons';
-import { atualizarStatusPedido, FORMAS_DE_PAGAMENTO } from '../../services/pedidos';
+import { atualizarStatusPedido, ROTULO_FORMA } from '../../services/pedidos';
 import { numeroDoPedido } from '../../lib/formatadores';
 import { STATUS, podeEditar } from '../../lib/pedidoStatus';
 import { descreverFalta, itensQueFaltaram } from '../../lib/fila';
 
-const ROTULO_FORMA = Object.fromEntries(FORMAS_DE_PAGAMENTO.map((f) => [f.id, f.rotulo]));
 
 function resumoDosItens(pedido) {
   return pedido.itens.map((i) => `${i.quantidade}× ${i.nome}${i.observacao ? ` (${i.observacao})` : ''}`).join(', ');

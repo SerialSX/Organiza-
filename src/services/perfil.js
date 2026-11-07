@@ -3,7 +3,13 @@ import { definirViradaDoDia } from '../lib/formatadores';
 
 // Perfil de quem entrou: dados do usuário e do negócio dele.
 const CAMPOS_PERFIL = 'id, nome, papel, negocio_id';
-const CAMPOS_NEGOCIO = 'nome, virada_do_dia, usa_tela_cozinha';
+// Do mais novo para o mais antigo: cada migração acrescenta colunas. Se o banco
+// estiver atrás do código, usa a primeira consulta que ele entende.
+const CAMPOS_NEGOCIO = [
+  'nome, virada_do_dia, usa_tela_cozinha, modo_atendimento', // 2026-11-10
+  'nome, virada_do_dia, usa_tela_cozinha', // 2026-11-08
+  'nome',
+];
 
 // 42703 / PGRST204: coluna que não existe, ou seja, banco ainda sem a migração.
 function colunaInexistente(error) {
@@ -13,11 +19,15 @@ function colunaInexistente(error) {
 export async function buscarPerfil(usuario) {
   const consulta = (camposDoNegocio) =>
     supabase.from('usuarios').select(`${CAMPOS_PERFIL}, negocios ( ${camposDoNegocio} )`).eq('id', usuario.id).maybeSingle();
-  let { data, error } = await consulta(CAMPOS_NEGOCIO);
-  // Banco atrás do código (migração ainda não rodou): pede só o que existe
-  // desde sempre. Assim a pessoa entra, vê o aviso de banco desatualizado e
-  // pode sair, em vez de ficar presa em "Sem conexão com o sistema".
-  if (colunaInexistente(error)) ({ data, error } = await consulta('nome'));
+  // Banco atrás do código (migração ainda não rodou): pede só o que existe.
+  // Assim a pessoa entra, vê o aviso de banco desatualizado e pode sair, em
+  // vez de ficar presa em "Sem conexão com o sistema".
+  let data;
+  let error;
+  for (const campos of CAMPOS_NEGOCIO) {
+    ({ data, error } = await consulta(campos));
+    if (!colunaInexistente(error)) break;
+  }
   // Erro de rede não pode virar "perfil inexistente"; quem chama decide.
   if (error) throw error;
   if (!data) return null;
@@ -32,5 +42,9 @@ export async function buscarPerfil(usuario) {
     // banco desatualizado aparece e a migração precisa rodar antes do deploy.
     virada_do_dia: negocio?.virada_do_dia ?? 0,
     usa_tela_cozinha: negocio?.usa_tela_cozinha ?? true,
+    // null: o dono ainda não respondeu as perguntas de boas-vindas. Banco sem
+    // a coluna (undefined): segue com os dois jeitos, como era antes, e não
+    // prende ninguém numa pergunta que não daria para salvar.
+    modo_atendimento: negocio?.modo_atendimento === undefined ? 'balcao_e_mesa' : negocio.modo_atendimento,
   };
 }

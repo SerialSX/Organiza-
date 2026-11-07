@@ -11,9 +11,19 @@ export async function cadastrarProduto(page, nome, preco) {
   await expect(page.getByText(nome, { exact: true })).toBeVisible();
 }
 
+// Pedido de balcão: o cliente paga na hora, então a forma é obrigatória.
+// forma: null para não tocar em nenhuma (testar o bloqueio, ou pedido de mesa).
+export async function pagar(page, forma = 'Pix') {
+  const pagamento = page.getByRole('group', { name: 'Como o cliente pagou?' });
+  if (!forma || !(await pagamento.isVisible())) return;
+  const botao = pagamento.getByRole('button', { name: forma, exact: true });
+  if ((await botao.getAttribute('aria-pressed')) !== 'true') await botao.click();
+}
+
 // O botão de envio muda com o jeito de trabalhar (com ou sem tela de cozinha)
 // e com o tamanho da tela (barra de baixo no celular).
-export async function enviar(page) {
+export async function enviar(page, { forma = 'Pix' } = {}) {
+  await pagar(page, forma);
   await page
     .getByRole('button', { name: /^(Enviar( para a cozinha)?|Lançar pedido)$/ })
     .filter({ visible: true })

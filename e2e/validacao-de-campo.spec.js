@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { enviar, lancarPedido, montarEspetaria } from './ajuda';
+import { enviar, lancarPedido, montarEspetaria, pagar } from './ajuda';
 
 // O que os três negócios da validação de campo pediram (Batata Delas,
 // Império do Sabor e Espetaria VIP), do jeito que eles usariam.
@@ -46,6 +46,8 @@ test('a mesa pede aos poucos, soma tudo e fecha a conta de uma vez; o caixa bate
   await page.getByLabel('Número da mesa').fill('4');
   await enviar(page);
   await expect(page.getByRole('status').filter({ hasText: 'Mesa 4' })).toBeVisible();
+  // Na mesa não se anota pagamento na hora do pedido.
+  await expect(page.getByRole('group', { name: 'Como o cliente pagou?' })).toHaveCount(0);
 
   // Segundo pedido da mesma mesa: continua em Mesa, só o número volta em branco.
   await adicionar(page, 'Cerveja lata');
@@ -63,14 +65,19 @@ test('a mesa pede aos poucos, soma tudo e fecha a conta de uma vez; o caixa bate
   await mesa.getByRole('button', { name: 'Pix' }).click();
   await expect(contas).toBeHidden();
 
-  // No balcão: pago na hora em dinheiro, e um que fica para depois.
+  // Outra mesa fica aberta para o caixa mostrar o que falta receber.
+  await adicionar(page, 'Espeto de linguiça');
+  await page.getByLabel('Número da mesa').fill('7');
+  await enviar(page);
+  await expect(page.getByRole('status').filter({ hasText: 'Mesa 7' })).toBeVisible();
+
+  // No balcão o cliente paga na hora: sem dizer como, o pedido não sai.
   await page.getByText('Retira pela senha').click();
   await adicionar(page, 'Espeto de frango');
-  await page.getByRole('group', { name: 'Pagamento' }).getByRole('button', { name: 'Dinheiro' }).click();
-  await enviar(page);
-  await expect(page.getByRole('status').filter({ hasText: 'Diga ao cliente a senha' })).toBeVisible();
-  await adicionar(page, 'Espeto de linguiça');
-  await enviar(page);
+  await enviar(page, { forma: null });
+  await expect(page.getByRole('alert').filter({ hasText: 'Toque em como o cliente pagou.' })).toBeVisible();
+  await pagar(page, 'Dinheiro');
+  await enviar(page, { forma: null });
   await expect(page.getByRole('status').filter({ hasText: 'Diga ao cliente a senha' })).toBeVisible();
 
   await page.goto('/caixa');
@@ -82,7 +89,7 @@ test('a mesa pede aos poucos, soma tudo e fecha a conta de uma vez; o caixa bate
   await expect(aReceber).toContainText('R$ 8,00');
   await semProblemasDeAcessibilidade(page);
 
-  await aReceber.getByRole('button', { name: 'Cartão' }).click();
+  await aReceber.getByRole('button', { name: 'Crédito' }).click();
   await expect(page.getByText('Tudo recebido. O caixa fechou certinho.')).toBeVisible();
   await expect(recebido).toContainText('R$ 32,00');
 });
@@ -93,7 +100,7 @@ test('cozinha do lado do balcão: o "Pronto" fica na tela de pedidos (pastelaria
   await expect(page.getByText('Pastel de carne', { exact: true })).toBeVisible();
 
   await page.goto('/minha-conta');
-  await page.getByText('Do lado do balcão, sem outra tela').click();
+  await page.getByText('Não, eu mesmo preparo ou a cozinha fica do meu lado').click();
   await page.getByRole('button', { name: 'Salvar' }).last().click();
   await expect(page.getByText('Salvo.')).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Principal' }).first().getByRole('link', { name: 'Cozinha' })).toHaveCount(0);
@@ -112,6 +119,9 @@ test('a internet cai: o pedido fica guardado e sai sozinho quando ela volta (ham
   await expect(page.getByRole('button', { name: /^Adicionar Espeto de carne,/ })).toBeVisible();
   await context.setOffline(true);
   await adicionar(page, 'Espeto de carne');
+  // O nome é opcional e fica escondido até alguém pedir.
+  await expect(page.getByLabel('Nome do cliente (opcional)')).toHaveCount(0);
+  await page.getByRole('button', { name: '+ Anotar o nome do cliente (se quiser)' }).click();
   await page.getByLabel('Nome do cliente (opcional)').fill('Carlos');
   await enviar(page);
   const fila = page.getByRole('region', { name: '1 pedido esperando a internet' });

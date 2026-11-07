@@ -37,14 +37,25 @@ describe('fechamento do caixa', () => {
       pedido('b', { forma: 'dinheiro', itens: [[1, 20]] }),
       pedido('c', { forma: 'pix', itens: [[1, 5]] }),
       pedido('d', { itens: [[1, 12]] }),
-      pedido('e', { forma: 'cartao', status: 'cancelado', itens: [[1, 8]] }),
+      pedido('e', { forma: 'credito', status: 'cancelado', itens: [[1, 8]] }),
     ]);
-    expect(caixa.porForma).toEqual({ pix: 35, dinheiro: 20, cartao: 0 });
+    expect(caixa.porForma).toEqual({ pix: 35, dinheiro: 20, credito: 0, debito: 0, cartao: 0 });
     expect(caixa.quantidadePorForma.pix).toBe(2);
     expect(caixa.recebido).toBe(55);
     expect(caixa.aReceber).toBe(12);
     expect(caixa.pendentes.map((p) => p.id)).toEqual(['d']);
     expect(caixa.devolver).toBe(8);
     expect(caixa.vendido).toBe(67);
+  });
+
+  it('soma crédito e débito separados e ainda conta o "cartão" dos pedidos antigos', () => {
+    const caixa = fecharCaixa([
+      pedido('a', { forma: 'credito', itens: [[1, 30]] }),
+      pedido('b', { forma: 'debito', itens: [[1, 12]] }),
+      pedido('c', { forma: 'cartao', itens: [[1, 8]] }),
+    ]);
+    expect([caixa.porForma.credito, caixa.porForma.debito, caixa.porForma.cartao]).toEqual([30, 12, 8]);
+    expect(caixa.recebido).toBe(50);
+    expect(caixa.pendentes).toEqual([]);
   });
 });

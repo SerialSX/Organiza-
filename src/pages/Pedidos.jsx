@@ -27,12 +27,13 @@ import { formatarMoeda, numeroDoPedido } from '../lib/formatadores';
 import { podeEditar } from '../lib/pedidoStatus';
 import { separarPedidos } from '../lib/fila';
 import { contasAbertas } from '../lib/caixa';
+import { atendeNaMesa, atendeNoBalcao, destinoInicial, modoDoNegocio } from '../lib/atendimento';
 
 const ACCENT = 'var(--color-accent-pedidos)';
 // Acima da barra de navegação do celular; no tablet sem essa barra, no rodapé.
 const BARRA_FIXA = 'lg:hidden fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] md:bottom-2 z-10 px-4 pb-2';
-const BALCAO = { tipo: 'balcao', mesa: '' };
 const ID_CAMPO_MESA = 'numero-da-mesa';
+const ID_PAGAMENTO = 'pagamento-do-pedido';
 
 function novaChaveEnvio() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -63,6 +64,9 @@ export default function Pedidos() {
   const { pedidos: abertos } = usePedidosAbertos();
   const { pedidos: doDia } = usePedidosDoDia();
   const semTelaCozinha = perfil.usa_tela_cozinha === false;
+  // Balcão, mesa ou os dois (perguntas de boas-vindas / Minha conta).
+  const modo = modoDoNegocio(perfil);
+  const inicial = destinoInicial(modo);
 
   // Pedido em edição: { pedido } com os itens e preços como estavam no banco.
   const [edicao, setEdicao] = useState(null);
@@ -71,9 +75,10 @@ export default function Pedidos() {
   const [carrinho, setCarrinho] = useRascunhoDoPedido(perfil.negocio_id, Boolean(edicao));
   const [rascunhoGuardado, setRascunhoGuardado] = useState([]);
   // Balcão ou mesa. Na edição, o destino do pedido montado fica guardado à parte.
-  const [destino, setDestino] = useState(BALCAO);
-  const [destinoGuardado, setDestinoGuardado] = useState(BALCAO);
+  const [destino, setDestino] = useState(inicial);
+  const [destinoGuardado, setDestinoGuardado] = useState(inicial);
   const [erroMesa, setErroMesa] = useState('');
+  const [erroPagamento, setErroPagamento] = useState('');
   const [identificacao, setIdentificacao] = useState('');
   const [forma, setForma] = useState(null);
   const [enviando, setEnviando] = useState(false);
@@ -181,7 +186,7 @@ export default function Pedidos() {
       setEdicao({ pedido: completo });
       setEnviado(null);
       setErroMesa('');
-      setDestino(completo.mesa ? { tipo: 'mesa', mesa: String(completo.mesa) } : BALCAO);
+      setDestino(completo.mesa ? { tipo: 'mesa', mesa: String(completo.mesa) } : { tipo: 'balcao', mesa: '' });
       setCarrinho(
         completo.itens.map((i) => ({
           chave: novaChaveDeLinha(),
@@ -213,16 +218,39 @@ export default function Pedidos() {
   function limparDetalhes() {
     setIdentificacao('');
     setForma(null);
+    setErroPagamento('');
   }
+
+  function escolherForma(nova) {
+    setErroPagamento('');
+    setForma(nova);
+  }
+
+  // O dono mudou o jeito de atender em outro aparelho: o pedido em montagem
+  // não pode ficar num destino que este negócio não usa mais.
+  // Na edição vale o destino que o pedido já tem.
+  const destinoValido = Boolean(edicao) || (destino.tipo === 'mesa' ? atendeNaMesa(modo) : atendeNoBalcao(modo));
+  const destinoAtual = destinoValido ? destino : inicial;
+  const ehBalcao = destinoAtual.tipo === 'balcao';
 
   async function enviar() {
     if (!itens.length || enviando) return;
-    const mesa = destino.tipo === 'mesa' ? Number(destino.mesa) : null;
-    if (destino.tipo === 'mesa' && !(mesa >= 1 && mesa <= 999)) {
+    const mesa = destinoAtual.tipo === 'mesa' ? Number(destinoAtual.mesa) : null;
+    if (destinoAtual.tipo === 'mesa' && !(mesa >= 1 && mesa <= 999)) {
       setErroMesa('Digite o número da mesa (de 1 a 999).');
       document.getElementById(ID_CAMPO_MESA)?.focus();
       return;
     }
+    // No balcão o cliente paga na hora: a forma é obrigatória. Na mesa, nada
+    // se anota agora; a conta fecha quando o cliente vai embora.
+    if (!edicao && ehBalcao && !forma) {
+      setErroPagamento('Toque em como o cliente pagou.');
+      document.getElementById(ID_PAGAMENTO)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      document.getElementById(ID_PAGAMENTO)?.querySelector('button')?.focus({ preventScroll: true });
+      return;
+    }
+    const formaDoPedido = ehBalcao ? forma : null;
+    const nomeDoCliente = ehBalcao ? identificacao : '';
     setErro('');
     setAviso('');
     setEnviando(true);
@@ -243,8 +271,8 @@ export default function Pedidos() {
           itens: paraEnviar,
           chaveEnvio: chaveEnvio.current,
           mesa,
-          identificacao,
-          formaPagamento: forma,
+          identificacao: nomeDoCliente,
+          formaPagamento: formaDoPedido,
         });
         setCarrinho([]);
         limparDetalhes();
@@ -263,8 +291,8 @@ export default function Pedidos() {
           itens: paraEnviar,
           linhas,
           mesa,
-          identificacao,
-          formaPagamento: forma,
+          identificacao: nomeDoCliente,
+          formaPagamento: formaDoPedido,
           resumo: resumo(linhas),
         });
         setCarrinho([]);
@@ -338,7 +366,13 @@ export default function Pedidos() {
               {edicao ? `Pedido ${numeroEmEdicao}` : 'Pedido'}
             </h2>
 
-            <DestinoDoPedido destino={destino} onMudar={mexerNoDestino} erroMesa={erroMesa} idCampoMesa={ID_CAMPO_MESA} />
+            <DestinoDoPedido
+              destino={destinoAtual}
+              onMudar={mexerNoDestino}
+              erroMesa={erroMesa}
+              idCampoMesa={ID_CAMPO_MESA}
+              escolhe={modo === 'balcao_e_mesa'}
+            />
 
             {edicaoPerdida && (
               <div className="flex flex-col gap-2">
@@ -385,12 +419,14 @@ export default function Pedidos() {
               </ul>
             )}
 
-            {!edicao && itens.length > 0 && (
+            {!edicao && itens.length > 0 && ehBalcao && (
               <DetalhesDoPedido
                 identificacao={identificacao}
                 onIdentificacao={setIdentificacao}
                 forma={forma}
-                onForma={setForma}
+                onForma={escolherForma}
+                erroPagamento={erroPagamento}
+                idPagamento={ID_PAGAMENTO}
               />
             )}
 
@@ -449,17 +485,17 @@ export default function Pedidos() {
         <>
           <div className={BARRA_FIXA}>
             <div className="flex flex-col gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-alt)] p-3 shadow-lg">
-              {erro && (
+              {(erro || erroPagamento || erroMesa) && (
                 <p className="text-sm font-semibold text-[var(--texto-cozinha)]" aria-hidden="true">
-                  {erro}
+                  {erro || erroPagamento || erroMesa}
                 </p>
               )}
               <div className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-xs tabular-nums text-[var(--text-secondary)]">
                     {edicao ? `Pedido ${numeroEmEdicao}, ` : ''}
-                    {destino.tipo === 'mesa' && destino.mesa ? `mesa ${destino.mesa}, ` : ''}
-                    {!edicao && identificacao.trim() ? `${identificacao.trim()}, ` : ''}
+                    {destinoAtual.tipo === 'mesa' && destinoAtual.mesa ? `mesa ${destinoAtual.mesa}, ` : ''}
+                    {!edicao && ehBalcao && identificacao.trim() ? `${identificacao.trim()}, ` : ''}
                     {totalItens} {totalItens === 1 ? 'item' : 'itens'}
                   </p>
                   <p className="text-lg font-bold tabular-nums text-[var(--text-primary)]">{formatarMoeda(total)}</p>

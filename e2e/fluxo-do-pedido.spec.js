@@ -35,11 +35,15 @@ test('pedido na mesa: sem o número não sai, e a cozinha vê a mesa', async ({ 
   const enviar = page.getByRole('button', { name: /^Enviar( para a cozinha)?$/ }).filter({ visible: true }).first();
 
   await enviar.click();
-  await expect(page.getByText('Digite o número da mesa (de 1 a 999).')).toBeVisible();
+  // No celular o erro também aparece na barra de baixo (escondido do leitor de tela).
+  await expect(page.getByText('Digite o número da mesa (de 1 a 999).').filter({ visible: true }).first()).toBeVisible();
 
   await page.getByLabel('Número da mesa').fill('12');
   await enviar.click();
-  await expect(page.getByRole('status').filter({ hasText: 'Diga ao cliente a senha' })).toContainText('Mesa 12');
+  // Mesa: não tem senha para falar; quem atende leva até a mesa.
+  const aviso = page.getByRole('status').filter({ hasText: 'Entrou na conta da mesa.' });
+  await expect(aviso).toContainText('Mesa 12');
+  await expect(aviso).not.toContainText('senha');
 
   await page.goto('/cozinha');
   const cartao = page.getByRole('listitem', { name: 'Pedido 001, mesa 12' });

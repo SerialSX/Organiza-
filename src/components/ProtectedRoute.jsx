@@ -1,7 +1,31 @@
+import { lazy, Suspense, useState } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
+import { precisaResponderBoasVindas } from '../lib/atendimento';
 import Carregando from './ui/Carregando';
 import Aviso from './ui/Aviso';
+
+// Só quem ainda não respondeu baixa as telas de boas-vindas.
+const BoasVindas = lazy(() => import('./boasVindas/BoasVindas'));
+
+// Enquanto o dono não responder as perguntas, nenhuma tela do painel abre
+// (nem pelo endereço). Depois de salvar, o passo a passo da cozinha ainda
+// aparece até ele tocar em "Começar"/"Faço isso depois".
+function PortaoBoasVindas({ perfil }) {
+  const [respondendo, setRespondendo] = useState(() => precisaResponderBoasVindas(perfil));
+  if (!respondendo) return <Outlet />;
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[var(--surface)]">
+          <Carregando />
+        </div>
+      }
+    >
+      <BoasVindas onConcluir={() => setRespondendo(false)} />
+    </Suspense>
+  );
+}
 
 function TelaDeAviso({ texto, acao, onAcao }) {
   return (
@@ -55,5 +79,6 @@ export default function ProtectedRoute() {
     );
   }
 
-  return <Outlet />;
+  // key: outra conta neste aparelho começa o portão do zero.
+  return <PortaoBoasVindas key={perfil.id} perfil={perfil} />;
 }

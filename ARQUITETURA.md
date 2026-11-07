@@ -83,6 +83,7 @@ limite_consultas   <- consultas da página pública por aparelho (hash do IP, nu
   - `cancelar_pedido`, `atualizar_status_pedido` (inclui desfazer um "Pronto" em até 2 minutos), `marcar_item_faltou` e `marcar_ingrediente_faltou` (só aceita ingrediente que está no produto).
 - **Custo pelos ingredientes:** `salvar_ingredientes_do_produto` troca a lista de uma vez e recalcula o custo; um gatilho em `ingredientes` recalcula todos os produtos quando o preço muda. O custo continua gravado em `produtos.custo`, então pedidos e relatórios não mudam.
 - **Operação de campo (migração de 28/10):** `criar_pedido` aceita nome ou mesa e forma de pagamento, e pedido só de bebida já nasce pronto; `registrar_pagamento` recebe vários pedidos de uma vez (a conta da mesa); `configurar_operacao` (só o dono) muda a virada do dia e o modo sem tela de cozinha; `registrar_toque_esgotado` e o gatilho de `produtos.disponivel` gravam os eventos.
+- **Boas-vindas e pagamento (migração 2026-11-09):** `negocios.modo_atendimento` (`balcao`, `mesa`, `balcao_e_mesa`; vazio = o dono ainda não respondeu) e `configurar_atendimento` (só o dono) salvam as perguntas de boas-vindas. A forma de pagamento passa a ser Pix, dinheiro, crédito ou débito; `cartao` só continua valendo nos pedidos antigos.
 - **Versão do banco:** `versao_do_banco()` precisa bater com `src/lib/versaoDoBanco.js` (um teste confere). Se o banco no ar estiver atrás do código, todas as telas da equipe mostram um aviso vermelho. Toda migração nova sobe os dois números.
 - **Página pública (QR code):** quem não tem conta não lê nenhuma tabela. Só chama `pagina_publica` e `acompanhar_pedido`, que devolvem o mínimo (nome do negócio; posição, status e tempo médio de um pedido) e limitam as consultas por aparelho.
 - **Leitura do cardápio por IA:** o navegador nunca fala com o Google. A Edge Function `ler-cardapio` guarda a chave do Gemini nos Secrets, confere o login (`getClaims`), aceita só JPEG de até 4 MB e chama `registrar_leitura_cardapio()` antes da IA (20 leituras por negócio por dia). A resposta é validada no servidor (até 100 itens, nome de 1 a 120 caracteres, preço até 9.999,99) e a pessoa confere antes de virar produto. A foto não é guardada; `leituras_cardapio` só tem o negócio e a hora.
@@ -169,7 +170,7 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js
 - O cliente digita a senha do pedido e acompanha posição na fila, tempo médio e o aviso de pronto, sem cadastro.
 
 ### Fase 7. Conta e LGPD — pronta
-- Minha conta: nome, nome do negócio, senha (pede a atual), "Como você trabalha" (virada do dia e cozinha), sair de todos os aparelhos e excluir conta (pede a senha). "Sair" desconecta só o aparelho.
+- Minha conta: nome, nome do negócio, senha (pede a atual), "Como você atende" (balcão, mesa ou os dois; aparelho na cozinha; virada do dia), sair de todos os aparelhos e excluir conta (pede a senha). "Sair" desconecta só o aparelho.
 - Política de privacidade (`/privacidade`) e Ajuda (`/ajuda`) com as dúvidas da validação de campo.
 - Contato da equipe para ajuda (joaoemanuel15@edu.unifor.br, em `src/lib/contato.js`): no rodapé da landing, das telas de acesso e do painel, na Ajuda e na política de privacidade.
 - Tela que se recupera sozinha depois de um deploy (ErroDaTela e recarga) e workflow de saúde a cada 6 h.

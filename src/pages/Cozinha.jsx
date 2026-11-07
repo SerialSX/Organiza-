@@ -23,6 +23,8 @@ import { liberarAudio, tocarAlerta } from '../lib/alertaSonoro';
 import { chamadaDoPedido, minutosDesde } from '../lib/formatadores';
 import { DESFAZER_PRONTO_SEGUNDOS, LIMITE_ATRASO_MINUTOS } from '../lib/pedidoStatus';
 import { separarPedidos } from '../lib/fila';
+import { useAuth } from '../context/useAuth';
+import { ouvirTesteDaCozinha } from '../services/testeCozinha';
 
 const ACCENT = 'var(--color-accent-cozinha)';
 
@@ -99,7 +101,10 @@ function retrato(fila, cancelados, vistosAntes = []) {
 
 export default function Cozinha() {
   const { pedidos, carregando, erro: erroCarga, recarregar, conectado } = usePedidosAbertos();
+  const { perfil } = useAuth();
   const [somAlto, setSomAlto] = useState(lerSomAlto);
+  // "Testar agora" do guia da cozinha: aviso sem pedido de verdade.
+  const [testeRecebido, setTesteRecebido] = useState(false);
   const agora = useAgora();
   useTelaAcesa();
   const som = useAlertaSonoro();
@@ -153,6 +158,21 @@ export default function Cozinha() {
       setAnuncio(frases.join('. '));
     }
   }, [pedidos, carregando]);
+
+  useEffect(
+    () =>
+      ouvirTesteDaCozinha(perfil.negocio_id, () => {
+        setTesteRecebido(true);
+        tocarAlerta('novo', { alto: somAltoRef.current });
+      }),
+    [perfil.negocio_id],
+  );
+
+  useEffect(() => {
+    if (!testeRecebido) return undefined;
+    const id = setTimeout(() => setTesteRecebido(false), 15000);
+    return () => clearTimeout(id);
+  }, [testeRecebido]);
 
   useEffect(() => {
     const original = document.title;
@@ -221,6 +241,12 @@ export default function Cozinha() {
 
   const avisos = (
     <>
+      {testeRecebido && (
+        <Aviso tipo="sucesso" className="mb-4">
+          Teste recebido! Está tudo certo: os pedidos vão aparecer aqui.
+          {som.bloqueado && ' Toque no aviso laranja para ligar o som.'}
+        </Aviso>
+      )}
       <ControleDeSom bloqueado={som.bloqueado} alto={somAlto} onLigar={ligarSom} onAlternarAlto={alternarSomAlto} />
       {!conectado && (
         <p

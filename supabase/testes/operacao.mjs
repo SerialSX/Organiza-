@@ -43,6 +43,37 @@ await ok('modo sem tela de cozinha fica salvo', async () => {
   await dono(U1, 'select public.configurar_operacao(5::smallint, true)');
 });
 
+// ---------------------------------------------------------------------------
+// Perguntas de boas-vindas: como o negócio atende
+// ---------------------------------------------------------------------------
+await ok('negócio novo ainda não respondeu como atende', async () => {
+  const [n] = await dono(U1, 'select modo_atendimento from public.negocios');
+  igual(n.modo_atendimento, null, 'modo');
+});
+
+await ok('dono responde como atende e se a cozinha tem aparelho', async () => {
+  await dono(U1, `select public.configurar_atendimento('mesa', false)`);
+  const [n] = await dono(U1, 'select modo_atendimento, usa_tela_cozinha from public.negocios');
+  igual([n.modo_atendimento, n.usa_tela_cozinha], ['mesa', false], 'respostas');
+  await dono(U1, `select public.configurar_atendimento('balcao_e_mesa', true)`);
+});
+
+await erro('jeito de atender inventado', 'Escolha como você atende', () =>
+  dono(U1, `select public.configurar_atendimento('fiado', true)`),
+);
+await erro('sem dizer onde fica a cozinha', 'quem prepara', () => dono(U1, `select public.configurar_atendimento('balcao', null)`));
+await erro('só o dono responde como o negócio atende', 'Só o dono', async () => {
+  await db.query(`update public.usuarios set papel = 'atendente' where id = '${U2}'`);
+  try {
+    await dono(U2, `select public.configurar_atendimento('mesa', true)`);
+  } finally {
+    await db.query(`update public.usuarios set papel = 'admin' where id = '${U2}'`);
+  }
+});
+await erro('ninguém escreve o jeito de atender direto na tabela', 'permission denied', () =>
+  dono(U1, `update public.negocios set modo_atendimento = 'mesa'`),
+);
+
 await ok('página do cliente recebe a virada para esquecer a senha de ontem', async () => {
   const [{ codigo_publico: codigo }] = (await db.query('select codigo_publico from public.negocios where id = $1', [negocio1])).rows;
   const [{ r }] = await visitante('select public.pagina_publica($1) as r', [codigo]);
@@ -112,6 +143,14 @@ await ok('só existe uma versão de criar_pedido (sem chamada ambígua)', async 
 });
 
 await erro('nome ou mesa com mais de 30 letras', 'no máximo 30', () => pedir(U1, [{ produto_id: espeto, quantidade: 1 }], 'x'.repeat(31)));
+await ok('crédito e débito são anotados separados', async () => {
+  const credito = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'credito');
+  const debito = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'debito');
+  igual([credito.forma_pagamento, debito.forma_pagamento], ['credito', 'debito'], 'formas');
+});
+await erro('"cartão" sem dizer se é crédito ou débito não entra mais', 'Forma de pagamento inválida', () =>
+  pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'cartao'),
+);
 await erro('forma de pagamento inventada', 'Forma de pagamento inválida', () => pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'fiado'));
 
 await ok('fecha a conta da mesa 4 de uma vez, em dinheiro', async () => {

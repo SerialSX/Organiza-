@@ -23,7 +23,11 @@ create table if not exists public.negocios (
   virada_do_dia smallint not null default 5 check (virada_do_dia between 0 and 8),
   -- false: a cozinha fica do lado do balcão e o "Pronto" é marcado na tela de
   -- pedidos, sem uma tela de cozinha separada.
-  usa_tela_cozinha boolean not null default true
+  usa_tela_cozinha boolean not null default true,
+  -- Como o negócio atende: só balcão (paga na hora e recebe um número), só
+  -- mesa (vai somando na conta e paga no final) ou os dois. Vazio: o dono
+  -- ainda não respondeu as perguntas de boas-vindas.
+  modo_atendimento text check (modo_atendimento in ('balcao', 'mesa', 'balcao_e_mesa'))
 );
 
 create table if not exists public.usuarios (
@@ -100,8 +104,9 @@ create table if not exists public.pedidos (
     check (motivo_cancelamento in ('cliente_desistiu', 'erro_lancamento', 'faltou_ingrediente', 'outro')),
   -- Nome do cliente ("Carlos"), opcional: para chamar quando ficar pronto.
   identificacao text check (identificacao is null or length(identificacao) between 1 and 30),
-  -- Para fechar o caixa. Sem forma, o pedido ainda não foi pago.
-  forma_pagamento text check (forma_pagamento in ('dinheiro', 'pix', 'cartao')),
+  -- Para fechar o caixa. Sem forma, o pedido ainda não foi pago. 'cartao'
+  -- ficou só para os pedidos antigos: hoje se anota crédito ou débito.
+  forma_pagamento text check (forma_pagamento in ('dinheiro', 'pix', 'credito', 'debito', 'cartao')),
   pago_em timestamptz,
   constraint pedidos_pagamento_coerente check ((forma_pagamento is null) = (pago_em is null)),
   unique (negocio_id, chave_envio)
@@ -472,7 +477,7 @@ begin
   if p_mesa is not null and p_mesa not between 1 and 999 then
     raise exception 'O número da mesa precisa ficar entre 1 e 999.';
   end if;
-  if p_forma_pagamento is not null and p_forma_pagamento not in ('dinheiro', 'pix', 'cartao') then
+  if p_forma_pagamento is not null and p_forma_pagamento not in ('dinheiro', 'pix', 'credito', 'debito') then
     raise exception 'Forma de pagamento inválida.';
   end if;
 
@@ -939,7 +944,7 @@ declare
   v_negocio_id uuid := public.negocio_do_usuario_atual();
   v_quantos int;
 begin
-  if p_forma is not null and p_forma not in ('dinheiro', 'pix', 'cartao') then
+  if p_forma is not null and p_forma not in ('dinheiro', 'pix', 'credito', 'debito') then
     raise exception 'Forma de pagamento inválida.';
   end if;
   if p_pedido_ids is null or cardinality(p_pedido_ids) not between 1 and 200 then
@@ -977,6 +982,36 @@ begin
 end;
 $$;
 
+-- Só o dono: as respostas das perguntas de boas-vindas (como atende e se a
+-- cozinha tem aparelho próprio). Dá para mudar depois em Minha conta.
+create or replace function public.configurar_atendimento(p_modo text, p_usa_tela_cozinha boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_negocio_id uuid;
+begin
+  select negocio_id into v_negocio_id
+  from public.usuarios
+  where id = (select auth.uid()) and papel = 'admin';
+  if v_negocio_id is null then
+    raise exception 'Só o dono do negócio pode mudar como o negócio atende.';
+  end if;
+  if p_modo is null or p_modo not in ('balcao', 'mesa', 'balcao_e_mesa') then
+    raise exception 'Escolha como você atende seus clientes.';
+  end if;
+  if p_usa_tela_cozinha is null then
+    raise exception 'Diga se quem prepara os pedidos fica longe de você.';
+  end if;
+  update public.negocios
+  set modo_atendimento = p_modo,
+      usa_tela_cozinha = p_usa_tela_cozinha
+  where id = v_negocio_id;
+end;
+$$;
+
 revoke all on function public.ao_mudar_disponivel() from public, anon, authenticated;
 revoke all on function public.registrar_toque_esgotado(uuid) from public, anon;
 revoke all on function public.registrar_pagamento(uuid[], text) from public, anon;
@@ -984,6 +1019,8 @@ revoke all on function public.configurar_operacao(smallint, boolean) from public
 grant execute on function public.registrar_toque_esgotado(uuid) to authenticated;
 grant execute on function public.registrar_pagamento(uuid[], text) to authenticated;
 grant execute on function public.configurar_operacao(smallint, boolean) to authenticated;
+revoke all on function public.configurar_atendimento(text, boolean) from public, anon;
+grant execute on function public.configurar_atendimento(text, boolean) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Página pública de acompanhamento (QR code)
@@ -1372,7 +1409,7 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select 20261108;
+  select 20261109;
 $$;
 
 revoke all on function public.versao_do_banco() from public;

@@ -14,6 +14,9 @@ const PERFIL_DEMO = {
   negocio_nome: 'Meu negócio (demonstração)',
   virada_do_dia: 5,
   usa_tela_cozinha: true,
+  // A demonstração já começa respondida; o teste das perguntas de
+  // boas-vindas apaga este valor para ver a pessoa respondendo.
+  modo_atendimento: 'balcao_e_mesa',
 };
 
 function perfilDemo() {
@@ -41,12 +44,21 @@ function traduzirErro(error) {
   return ERROS_AUTH.find(([padrao]) => padrao.test(error.message ?? ''))?.[1] ?? 'Algo deu errado. Tente de novo em instantes.';
 }
 
+const CAMPOS_PERFIL = 'id, nome, papel, negocio_id';
+const CAMPOS_NEGOCIO = 'nome, virada_do_dia, usa_tela_cozinha, modo_atendimento';
+
+// 42703 / PGRST204: coluna que não existe, ou seja, banco ainda sem a migração.
+function colunaInexistente(error) {
+  return error?.code === '42703' || error?.code === 'PGRST204' || /does not exist/i.test(error?.message ?? '');
+}
+
 async function buscarPerfil(usuario) {
-  const { data, error } = await supabase
-    .from('usuarios')
-    .select('id, nome, papel, negocio_id, negocios ( nome, virada_do_dia, usa_tela_cozinha )')
-    .eq('id', usuario.id)
-    .maybeSingle();
+  const consulta = (camposDoNegocio) =>
+    supabase.from('usuarios').select(`${CAMPOS_PERFIL}, negocios ( ${camposDoNegocio} )`).eq('id', usuario.id).maybeSingle();
+  let { data, error } = await consulta(CAMPOS_NEGOCIO);
+  // Banco atrás do código: entra mesmo assim (o aviso de banco desatualizado
+  // aparece) em vez de travar todo mundo na tela de "sem conexão".
+  if (colunaInexistente(error)) ({ data, error } = await consulta('nome'));
   // Erro de rede não pode virar "perfil inexistente"; quem chama decide.
   if (error) throw error;
   if (!data) return null;
@@ -60,6 +72,10 @@ async function buscarPerfil(usuario) {
     // tela de cozinha) e o aviso de banco desatualizado aparece.
     virada_do_dia: negocio?.virada_do_dia ?? 0,
     usa_tela_cozinha: negocio?.usa_tela_cozinha ?? true,
+    // null: o dono ainda não respondeu as perguntas de boas-vindas. Banco sem
+    // a coluna (undefined): segue com os dois jeitos, como era antes, e não
+    // prende ninguém numa pergunta que não daria para salvar.
+    modo_atendimento: negocio?.modo_atendimento === undefined ? 'balcao_e_mesa' : negocio.modo_atendimento,
   };
 }
 
@@ -209,6 +225,21 @@ export function AuthProvider({ children }) {
     return { erro: null };
   }, []);
 
+  // Respostas das perguntas de boas-vindas (só o dono). Também usado em
+  // Minha conta para mudar depois.
+  const configurarAtendimento = useCallback(async ({ modo, usaTelaCozinha }) => {
+    if (!isSupabaseConfigured) {
+      const db = lerDemo();
+      salvarDemo({ ...db, perfil: { ...db.perfil, modo_atendimento: modo, usa_tela_cozinha: usaTelaCozinha } });
+      setPerfil(perfilDemo());
+      return { erro: null };
+    }
+    const { error } = await supabase.rpc('configurar_atendimento', { p_modo: modo, p_usa_tela_cozinha: usaTelaCozinha });
+    if (error) return { erro: traduzirErro(error) };
+    setPerfil((p) => ({ ...p, modo_atendimento: modo, usa_tela_cozinha: usaTelaCozinha }));
+    return { erro: null };
+  }, []);
+
   // Para quando um aparelho foi perdido ou um funcionário saiu com a senha.
   const sairDeTodosOsAparelhos = useCallback(async () => {
     if (!isSupabaseConfigured) return { erro: null };
@@ -246,6 +277,7 @@ export function AuthProvider({ children }) {
       trocarSenha,
       confirmarSenhaAtual,
       configurarOperacao,
+      configurarAtendimento,
       sair,
       sairDeTodosOsAparelhos,
       excluirConta,
@@ -263,6 +295,7 @@ export function AuthProvider({ children }) {
       trocarSenha,
       confirmarSenhaAtual,
       configurarOperacao,
+      configurarAtendimento,
       sair,
       sairDeTodosOsAparelhos,
       excluirConta,

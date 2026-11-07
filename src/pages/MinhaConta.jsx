@@ -8,6 +8,9 @@ import Campo, { classeCampo } from '../components/ui/Campo';
 import CampoSenha from '../components/ui/CampoSenha';
 import { UserIcon, QrIcon, TrashIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
+import EscolhaDoModo from '../components/boasVindas/EscolhaDoModo';
+import EscolhaDaCozinha from '../components/boasVindas/EscolhaDaCozinha';
+import { atendeNoBalcao, modoDoNegocio } from '../lib/atendimento';
 
 const ACCENT = 'var(--color-brand-orange)';
 const PERIGO = 'var(--color-accent-cozinha)';
@@ -125,48 +128,41 @@ function rotuloDaHora(h) {
   return h === 0 ? 'Meia-noite' : `${h}h da manhã`;
 }
 
-// Só o dono: até que horas o dia de trabalho vai e se a cozinha tem tela própria.
-function ComoVoceTrabalha({ perfil }) {
-  const { configurarOperacao } = useAuth();
+// Só o dono: como atende, se a cozinha tem aparelho próprio e até que horas
+// o dia de trabalho vai. As duas primeiras são as perguntas de boas-vindas.
+function ComoVoceAtende({ perfil }) {
+  const { configurarOperacao, configurarAtendimento } = useAuth();
+  const modoSalvo = modoDoNegocio(perfil);
+  const telaSalva = perfil.usa_tela_cozinha !== false;
+  const [modo, setModo] = useState(modoSalvo);
   const [virada, setVirada] = useState(perfil.virada_do_dia ?? 5);
-  const [usaTela, setUsaTela] = useState(perfil.usa_tela_cozinha !== false);
+  const [usaTela, setUsaTela] = useState(telaSalva);
   const [mensagem, setMensagem] = useState(null);
   const [salvando, setSalvando] = useState(false);
-  const mudou = virada !== (perfil.virada_do_dia ?? 5) || usaTela !== (perfil.usa_tela_cozinha !== false);
+  const mudouAtendimento = modo !== modoSalvo || usaTela !== telaSalva;
+  const mudouVirada = virada !== (perfil.virada_do_dia ?? 5);
 
   async function salvar(e) {
     e.preventDefault();
     setMensagem(null);
     setSalvando(true);
-    const { erro } = await configurarOperacao({ viradaDoDia: virada, usaTelaCozinha: usaTela });
+    let { erro } = mudouAtendimento ? await configurarAtendimento({ modo, usaTelaCozinha: usaTela }) : { erro: null };
+    if (!erro && mudouVirada) ({ erro } = await configurarOperacao({ viradaDoDia: virada, usaTelaCozinha: usaTela }));
     setSalvando(false);
     setMensagem(erro ? { tipo: 'erro', texto: erro } : { tipo: 'sucesso', texto: 'Salvo.' });
   }
 
-  const opcao = (ativa) =>
-    `flex items-start gap-3 rounded-2xl border-2 p-4 cursor-pointer ${ativa ? 'border-[var(--color-brand-orange)]' : 'border-[var(--border-subtle)]'}`;
-
   return (
-    <Secao titulo="Como você trabalha" texto="Vale para todos os aparelhos do negócio.">
+    <Secao titulo="Como você atende" texto="Vale para todos os aparelhos do negócio.">
       {mensagem && <Aviso tipo={mensagem.tipo}>{mensagem.texto}</Aviso>}
-      <form onSubmit={salvar} className="flex flex-col gap-5">
-        <fieldset className="flex flex-col gap-3">
-          <legend className="text-sm font-medium text-[var(--text-secondary)] mb-2">Onde os pedidos são preparados?</legend>
-          <label className={opcao(usaTela)}>
-            <input type="radio" name="cozinha" checked={usaTela} onChange={() => setUsaTela(true)} className="mt-1 w-5 h-5" />
-            <span>
-              <span className="block font-semibold text-[var(--text-primary)]">Numa cozinha com tela própria</span>
-              <span className="block text-sm text-[var(--text-secondary)]">Um celular ou tablet na cozinha mostra a fila.</span>
-            </span>
-          </label>
-          <label className={opcao(!usaTela)}>
-            <input type="radio" name="cozinha" checked={!usaTela} onChange={() => setUsaTela(false)} className="mt-1 w-5 h-5" />
-            <span>
-              <span className="block font-semibold text-[var(--text-primary)]">Do lado do balcão, sem outra tela</span>
-              <span className="block text-sm text-[var(--text-secondary)]">O &quot;Pronto&quot; fica na própria tela de pedidos.</span>
-            </span>
-          </label>
-        </fieldset>
+      <form onSubmit={salvar} className="flex flex-col gap-6">
+        <EscolhaDoModo valor={modo} onMudar={setModo} legendaVisivel colunas="" />
+        <p className="-mt-3 text-sm">
+          <Link to="/ajuda#como-funciona" className="font-semibold text-[var(--texto-laranja)] underline-offset-4 hover:underline">
+            Ver o passo a passo de cada jeito
+          </Link>
+        </p>
+        <EscolhaDaCozinha valor={usaTela} onMudar={setUsaTela} legendaVisivel colunas="" />
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="virada" className="text-sm font-medium text-[var(--text-secondary)]">
@@ -184,7 +180,7 @@ function ComoVoceTrabalha({ perfil }) {
           </p>
         </div>
 
-        <Botao type="submit" cor={ACCENT} className="self-start" disabled={!mudou || salvando}>
+        <Botao type="submit" cor={ACCENT} className="self-start" disabled={!(mudouAtendimento || mudouVirada) || salvando}>
           {salvando ? 'Salvando…' : 'Salvar'}
         </Botao>
       </form>
@@ -291,11 +287,11 @@ export default function MinhaConta() {
       <div className="flex flex-col gap-6">
         <Perfil perfil={perfil} papel={papel} />
         <SeusDados perfil={perfil} />
-        {perfil.papel === 'admin' && <ComoVoceTrabalha perfil={perfil} />}
+        {perfil.papel === 'admin' && <ComoVoceAtende perfil={perfil} />}
         <TrocarSenha />
 
         {/* Atalho para a página do QR code (só o dono configura) */}
-        {perfil.papel === 'admin' && (
+        {perfil.papel === 'admin' && atendeNoBalcao(modoDoNegocio(perfil)) && (
           <Link to="/pagina-do-cliente" className={`${caixa} sm:flex-row sm:items-center gap-4 hover:bg-[var(--surface-card-hover)] transition-colors`}>
             <span
               className="inline-flex items-center justify-center w-12 h-12 rounded-2xl shrink-0 text-[var(--texto-laranja)]"

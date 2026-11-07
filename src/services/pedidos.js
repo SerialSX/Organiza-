@@ -17,11 +17,16 @@ const CAMPOS_COM_VALORES = `${CAMPOS_PEDIDO}, itens_pedido ( ${CAMPOS_ITEM}, pre
 const TAMANHO_PAGINA = 1000;
 const LIMITE_OBSERVACAO = 140;
 
+// Só se anota a forma quando o dinheiro entrou de verdade.
 export const FORMAS_DE_PAGAMENTO = [
   { id: 'pix', rotulo: 'Pix' },
   { id: 'dinheiro', rotulo: 'Dinheiro' },
-  { id: 'cartao', rotulo: 'Cartão' },
+  { id: 'credito', rotulo: 'Crédito' },
+  { id: 'debito', rotulo: 'Débito' },
 ];
+
+// 'cartao' só existe em pedidos pagos antes de separar crédito e débito.
+export const ROTULO_FORMA = { ...Object.fromEntries(FORMAS_DE_PAGAMENTO.map((f) => [f.id, f.rotulo])), cartao: 'Cartão' };
 
 const LIMITE_IDENTIFICACAO = 30;
 
@@ -215,7 +220,7 @@ function itensParaEnvio(itens) {
 // este envio: mandar de novo com a mesma chave devolve o mesmo pedido.
 // mesa: número da mesa, ou null para retirada no balcão.
 // identificacao: nome do cliente para chamar (opcional).
-// formaPagamento: já pago na hora (opcional).
+// formaPagamento: como o cliente pagou, quando paga na hora (balcão).
 export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio, mesa = null, identificacao = null, formaPagamento = null }) {
   if (!itens.length) throw new Error('Adicione pelo menos um produto ao pedido.');
   const mesaDoPedido = conferirMesa(mesa);

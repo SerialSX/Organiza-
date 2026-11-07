@@ -1,10 +1,15 @@
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useTheme } from '../context/useTheme';
 import ThemeToggle from '../components/ThemeToggle';
 import logoDark from '../assets/logo.svg';
 import logoLight from '../assets/logo-light.svg';
 import { useAuth } from '../context/useAuth';
 import { EMAIL_CONTATO, GRUPO_WHATSAPP } from '../lib/contato';
+import { MODOS, modoDoNegocio } from '../lib/atendimento';
+import Abas from '../components/ui/Abas';
+import Tutorial from '../components/boasVindas/Tutorial';
+import GuiaCozinha from '../components/boasVindas/GuiaCozinha';
 
 const PERGUNTAS = [
   {
@@ -26,8 +31,8 @@ const PERGUNTAS = [
     pergunta: 'Minha cozinha fica do lado do balcão. Preciso de outra tela?',
     resposta: (
       <>
-        Não. Em <Link to="/minha-conta">Minha conta</Link>, em &quot;Como você trabalha&quot;, escolha que a cozinha fica do
-        lado do balcão. O botão &quot;Pronto&quot; passa a aparecer na própria tela de pedidos.
+        Não. Em <Link to="/minha-conta">Minha conta</Link>, em &quot;Como você atende&quot;, responda que você mesmo prepara ou
+        que a cozinha fica do seu lado. O botão &quot;Pronto&quot; passa a aparecer na própria tela de pedidos.
       </>
     ),
   },
@@ -44,13 +49,13 @@ const PERGUNTAS = [
   {
     pergunta: 'A mesa vai pedindo aos poucos. Dá para somar tudo?',
     resposta:
-      'Dá. No pedido, escolha "Mesa" e digite o número dela. Os pedidos da mesma mesa vão somando, e em Pedidos aparece a conta aberta de cada mesa, com o total para fechar de uma vez.',
+      'Dá. Em Minha conta, em "Como você atende", escolha Mesa (ou Balcão e mesa). No pedido, digite o número da mesa. Os pedidos da mesma mesa vão somando, e em Pedidos aparece a conta aberta de cada mesa, com o total para fechar de uma vez.',
   },
   {
     pergunta: 'Como fecho o caixa no fim do dia?',
     resposta: (
       <>
-        Em <Link to="/caixa">Caixa</Link>: quanto entrou em Pix, dinheiro e cartão, o que ainda falta receber e o
+        Em <Link to="/caixa">Caixa</Link>: quanto entrou em Pix, dinheiro, crédito e débito, o que ainda falta receber e o
         que foi cancelado depois de pago.
       </>
     ),
@@ -81,11 +86,34 @@ const PERGUNTAS = [
   },
 ];
 
+// Os passo a passos das perguntas de boas-vindas, para ver de novo.
+function ComoFunciona({ modoInicial }) {
+  const [modo, setModo] = useState(modoInicial);
+  const [vez, setVez] = useState(0);
+  return (
+    <section id="como-funciona" aria-labelledby="titulo-como-funciona" className="scroll-mt-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-5 flex flex-col gap-4">
+      <h2 id="titulo-como-funciona" className="text-xl font-bold text-[var(--text-primary)]">
+        Veja como funciona
+      </h2>
+      <Abas opcoes={MODOS.map((m) => ({ id: m.id, rotulo: m.rotulo }))} valor={modo} onMudar={setModo} rotulo="Jeito de atender" cor="var(--color-brand-orange)" />
+      {/* key: trocar de jeito (ou "Ver de novo") volta para o passo 1 */}
+      <Tutorial key={`${modo}-${vez}`} modo={modo} rotuloFim="Ver de novo" onFim={() => setVez((v) => v + 1)} />
+    </section>
+  );
+}
+
 export default function Ajuda() {
   const { mode } = useTheme();
   // A Ajuda é pública. O grupo do WhatsApp só aparece para quem já usa o
   // sistema (logado); quem vem de fora fala com a equipe por e-mail.
-  const { autenticado } = useAuth();
+  const { autenticado, perfil } = useAuth();
+  const { hash } = useLocation();
+  const [guiaAberto, setGuiaAberto] = useState(hash === '#aparelho-da-cozinha');
+
+  // Link vindo de outra tela (ex.: Minha conta → ver o passo a passo).
+  useEffect(() => {
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView();
+  }, [hash]);
 
   return (
     <div className="min-h-svh bg-[var(--surface)]">
@@ -133,6 +161,25 @@ export default function Ajuda() {
             Enquanto isso, anote no papel e lance depois: nenhum pedido se perde.
           </p>
         </section>
+
+        <ComoFunciona modoInicial={autenticado ? modoDoNegocio(perfil) : 'balcao'} />
+
+        <details
+          id="aparelho-da-cozinha"
+          open={guiaAberto}
+          onToggle={(e) => setGuiaAberto(e.currentTarget.open)}
+          className="scroll-mt-6 group rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] px-5 py-4"
+        >
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 min-h-8 text-xl font-bold text-[var(--text-primary)]">
+            Como ligar o aparelho da cozinha
+            <span aria-hidden="true" className="text-[var(--text-secondary)] transition-transform group-open:rotate-45 text-xl">
+              +
+            </span>
+          </summary>
+          <div className="mt-4">
+            {guiaAberto && <GuiaCozinha negocioId={autenticado ? perfil?.negocio_id : null} />}
+          </div>
+        </details>
 
         <div className="flex flex-col gap-3">
           {PERGUNTAS.map(({ pergunta, resposta }) => (

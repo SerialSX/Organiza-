@@ -9,7 +9,7 @@ import EstadoVazio from '../components/ui/EstadoVazio';
 import { MoneyIcon } from '../components/icons/AppIcons';
 import { usePedidosDoDia } from '../hooks/usePedidosDoDia';
 import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
-import { registrarPagamento, FORMAS_DE_PAGAMENTO } from '../services/pedidos';
+import { registrarPagamento, FORMAS_DE_PAGAMENTO, ROTULO_FORMA } from '../services/pedidos';
 import { fecharCaixa, totalDoPedido } from '../lib/caixa';
 import { formatarHora, formatarMoeda, hojeNoNegocio, numeroDoPedido } from '../lib/formatadores';
 
@@ -60,7 +60,7 @@ function Pendente({ pedido, onErro }) {
   );
 }
 
-// Fechamento do caixa: quanto entrou em Pix, dinheiro e cartão, o que ainda
+// Fechamento do caixa: quanto entrou em Pix, dinheiro, crédito e débito, o que ainda
 // falta receber e o que foi cancelado depois de pago (a devolver).
 export default function Caixa() {
   const [aba, setAba] = useAbaNoEndereco('dia', DIAS, 'hoje');
@@ -69,6 +69,8 @@ export default function Caixa() {
   const [erro, setErro] = useState('');
   const caixa = fecharCaixa(pedidos);
   const titulo = dataLonga.format(new Date(`${dia}T12:00:00Z`));
+  // "Cartão" só aparece em dia com pedido pago antes de separar crédito e débito.
+  const formasNoCaixa = [...FORMAS_DE_PAGAMENTO.map((f) => f.id), ...(caixa.quantidadePorForma.cartao ? ['cartao'] : [])];
 
   return (
     <AppShell largura="max-w-4xl">
@@ -91,13 +93,13 @@ export default function Caixa() {
               Recebido
             </h2>
             <p className="text-4xl font-extrabold tabular-nums text-[var(--text-primary)]">{formatarMoeda(caixa.recebido)}</p>
-            <dl className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {FORMAS_DE_PAGAMENTO.map((f) => (
-                <div key={f.id} className="rounded-xl border border-[var(--border-subtle)] p-3">
-                  <dt className="text-sm font-medium text-[var(--text-secondary)]">{f.rotulo}</dt>
-                  <dd className="text-2xl font-bold tabular-nums text-[var(--text-primary)]">{formatarMoeda(caixa.porForma[f.id])}</dd>
+            <dl className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {formasNoCaixa.map((id) => (
+                <div key={id} className="rounded-xl border border-[var(--border-subtle)] p-3 min-w-0">
+                  <dt className="text-sm font-medium text-[var(--text-secondary)]">{ROTULO_FORMA[id]}</dt>
+                  <dd className="text-xl sm:text-2xl font-bold tabular-nums text-[var(--text-primary)]">{formatarMoeda(caixa.porForma[id])}</dd>
                   <dd className="text-xs tabular-nums text-[var(--text-secondary)]">
-                    {caixa.quantidadePorForma[f.id] === 1 ? '1 pedido' : `${caixa.quantidadePorForma[f.id]} pedidos`}
+                    {caixa.quantidadePorForma[id] === 1 ? '1 pedido' : `${caixa.quantidadePorForma[id]} pedidos`}
                   </dd>
                 </div>
               ))}

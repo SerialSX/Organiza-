@@ -10,6 +10,7 @@ import { separarPedidos } from '../lib/fila';
 import { numeroDoPedido } from '../lib/formatadores';
 import { STATUS } from '../lib/pedidoStatus';
 import { useAuth } from '../context/useAuth';
+import { atendeNoBalcao, modoDoNegocio } from '../lib/atendimento';
 import { usePedidosAbertos } from '../hooks/usePedidosAbertos';
 import { ProductsIcon, OrdersIcon, KitchenIcon, ReportsIcon, AlertIcon, CheckIcon, QrIcon } from '../components/icons/AppIcons';
 
@@ -129,15 +130,18 @@ export default function Home() {
           ))}
         </ul>
 
-        <Link to="/pagina-do-cliente" className={`${classeCartao} mt-4 w-full p-5`}>
-          <span className="inline-flex items-center justify-center w-12 h-12 rounded-2xl shrink-0 bg-[var(--color-brand-orange)]">
-            <QrIcon className="w-6 h-6 text-[var(--sobre-destaque)]" />
-          </span>
-          <span className="flex flex-col">
-            <span className="font-semibold text-[var(--text-primary)]">Página do cliente</span>
-            <span className="text-sm text-[var(--text-secondary)]">QR code para o cliente acompanhar o pedido</span>
-          </span>
-        </Link>
+        {/* Só mesa: não tem número para acompanhar, então não tem QR code. */}
+        {atendeNoBalcao(modoDoNegocio(perfil)) && (
+          <Link to="/pagina-do-cliente" className={`${classeCartao} mt-4 w-full p-5`}>
+            <span className="inline-flex items-center justify-center w-12 h-12 rounded-2xl shrink-0 bg-[var(--color-brand-orange)]">
+              <QrIcon className="w-6 h-6 text-[var(--sobre-destaque)]" />
+            </span>
+            <span className="flex flex-col">
+              <span className="font-semibold text-[var(--text-primary)]">Página do cliente</span>
+              <span className="text-sm text-[var(--text-secondary)]">QR code para o cliente acompanhar o pedido</span>
+            </span>
+          </Link>
+        )}
       </nav>
     </AppShell>
   );

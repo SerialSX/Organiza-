@@ -313,3 +313,12 @@ export function MailIcon(props) {
     </svg>
   );
 }
+
+export function CameraIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </svg>
+  );
+}

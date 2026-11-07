@@ -5,8 +5,11 @@ const EVENTO = 'organiza-demo-change';
 
 let memoria = null;
 
+// Mesas da demonstração (o perfil salvo no navegador pode trocar).
+export const MESAS_DEMO = { quantidade_mesas: 8, taxa_servico: 10 };
+
 function vazio() {
-  return { produtos: [], pedidos: [], itens_pedido: [], ingredientes: [], produto_ingredientes: [] };
+  return { produtos: [], pedidos: [], itens_pedido: [], ingredientes: [], produto_ingredientes: [], contas_mesa: [], pagamentos_conta: [] };
 }
 
 export function lerDemo() {

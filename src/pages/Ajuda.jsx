@@ -49,7 +49,32 @@ const PERGUNTAS = [
   {
     pergunta: 'A mesa vai pedindo aos poucos. Dá para somar tudo?',
     resposta:
-      'Dá. Em Minha conta, em "Como você atende", escolha Mesa (ou Balcão e mesa). No pedido, digite o número da mesa. Os pedidos da mesma mesa vão somando, e em Pedidos aparece a conta aberta de cada mesa, com o total para fechar de uma vez.',
+      'Dá. Em Minha conta, em "Como você atende", escolha Mesa (ou Balcão e mesa) e diga quantas mesas você tem. Em Pedidos aparece o mapa das mesas: toque na mesa livre (cinza) para lançar o pedido dela. A mesa fica laranja e mostra o total. Pediu mais? Toque nela e em "Lançar mais".',
+  },
+  {
+    pergunta: 'Como fecho a mesa? E se quiserem dividir?',
+    resposta:
+      'Toque na mesa e em "Fechar mesa". Aparece o consumo, a taxa de serviço (se você cobra) e o total. Escolha como pagaram: "Um pagou tudo" (toque na forma), "Dividiram" (dividir igual entre as pessoas, ou cada um um valor, até o "Falta" chegar a zero) ou "Pagaram separado (sem anotar)", quando cada um pagou o seu e ninguém anotou a forma. Se um grupo vai embora antes, desmarque os pedidos que não são dele.',
+  },
+  {
+    pergunta: 'O cliente não quer pagar a taxa de serviço. E agora?',
+    resposta:
+      'Ao fechar a mesa, toque em "Cliente não quis pagar o serviço". O total fica só com o consumo. No Caixa, a taxa aparece separada: ela é dos garçons e não entra no total vendido nem nos relatórios. A porcentagem muda em Minha conta → Como você atende.',
+  },
+  {
+    pergunta: 'O cliente trocou de mesa, ou duas mesas se juntaram.',
+    resposta:
+      'Toque na mesa e em "Passar para outra mesa". Se a outra estiver livre, a conta só muda de lugar. Se estiver ocupada, o Organiza+ mostra os dois totais e pergunta se é para juntar as contas.',
+  },
+  {
+    pergunta: 'Encheu e faltou mesa.',
+    resposta:
+      'No mapa, toque em "+ Mesa extra" e dê um nome (por exemplo, Varanda). Ela funciona como as outras e some do mapa quando a conta fecha. Se isso acontece toda noite, aumente o número de mesas em Minha conta.',
+  },
+  {
+    pergunta: 'Fechei a mesa errado (forma ou valor). Dá para desfazer?',
+    resposta:
+      'Dá. No Caixa, abra "Ver os recebimentos" e toque em "Desfazer" na conta da mesa. Ela volta a ficar aberta no mapa, para fechar de novo do jeito certo.',
   },
   {
     pergunta: 'Como fecho o caixa no fim do dia?',

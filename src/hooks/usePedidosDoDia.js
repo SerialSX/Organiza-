@@ -2,23 +2,24 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/useAuth';
 import { useRecarregarAoVoltar } from './useRecarregarAoVoltar';
 import { assinarPedidos, listarPedidosDoPeriodo } from '../services/pedidos';
+import { listarContasDoDia } from '../services/mesas';
 import { hojeNoNegocio, inicioDoDia } from '../lib/formatadores';
 
-// Todos os pedidos do dia de trabalho (desde a virada), com valores: conta
-// das mesas e fechamento do caixa.
+// Todos os pedidos do dia de trabalho (desde a virada), com valores, e as
+// contas de mesa fechadas no dia: mapa das mesas e fechamento do caixa.
 export function usePedidosDoDia(dia = null) {
   const { perfil } = useAuth();
   const negocioId = perfil?.negocio_id;
   const diaPedido = dia ?? hojeNoNegocio();
-  const [estado, setEstado] = useState({ dia: null, pedidos: [], erro: '' });
+  const [estado, setEstado] = useState({ dia: null, pedidos: [], contas: [], erro: '' });
   const agendado = useRef(null);
 
   const recarregar = useCallback(async () => {
     const inicio = inicioDoDia(diaPedido);
     const fim = new Date(inicio.getTime() + 24 * 3600000);
     try {
-      const pedidos = await listarPedidosDoPeriodo(inicio, fim);
-      setEstado({ dia: diaPedido, pedidos, erro: '' });
+      const [pedidos, contas] = await Promise.all([listarPedidosDoPeriodo(inicio, fim), listarContasDoDia(diaPedido)]);
+      setEstado({ dia: diaPedido, pedidos, contas, erro: '' });
     } catch (e) {
       setEstado((s) => ({ ...s, dia: diaPedido, erro: e.message }));
     }
@@ -47,5 +48,5 @@ export function usePedidosDoDia(dia = null) {
 
   useRecarregarAoVoltar(recarregar);
 
-  return { pedidos: estado.pedidos, carregando: estado.dia !== diaPedido, erro: estado.erro, recarregar };
+  return { pedidos: estado.pedidos, contas: estado.contas, carregando: estado.dia !== diaPedido, erro: estado.erro, recarregar };
 }

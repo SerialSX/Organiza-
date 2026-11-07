@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
-import { lerDemo, salvarDemo, limparDemo } from '../services/demoStore';
+import { lerDemo, salvarDemo, limparDemo, MESAS_DEMO } from '../services/demoStore';
 import { AuthContext } from './authContext';
 import { traduzirErroRecuperacao } from '../lib/recuperacaoSenha';
 import { definirViradaDoDia, viradaMudaODia } from '../lib/formatadores';
@@ -18,6 +18,7 @@ const PERFIL_DEMO = {
   // A demonstração já começa respondida; o teste das perguntas de
   // boas-vindas apaga este valor para ver a pessoa respondendo.
   modo_atendimento: 'balcao_e_mesa',
+  ...MESAS_DEMO,
 };
 
 function perfilDemo() {
@@ -214,6 +215,20 @@ export function AuthProvider({ children }) {
     return { erro: null };
   }, []);
 
+  // Quantas mesas o negócio tem e a taxa de serviço em % (0: não cobra). Só o dono.
+  const configurarMesas = useCallback(async ({ quantidade, taxaServico }) => {
+    if (!isSupabaseConfigured) {
+      const db = lerDemo();
+      salvarDemo({ ...db, perfil: { ...db.perfil, quantidade_mesas: quantidade, taxa_servico: taxaServico } });
+      setPerfil(perfilDemo());
+      return { erro: null };
+    }
+    const { error } = await supabase.rpc('configurar_mesas', { p_quantidade: quantidade, p_taxa_servico: taxaServico });
+    if (error) return { erro: traduzirErro(error) };
+    setPerfil((p) => ({ ...p, quantidade_mesas: quantidade, taxa_servico: taxaServico }));
+    return { erro: null };
+  }, []);
+
   // Para quando um aparelho foi perdido ou um funcionário saiu com a senha.
   const sairDeTodosOsAparelhos = useCallback(async () => {
     if (!isSupabaseConfigured) return { erro: null };
@@ -252,6 +267,7 @@ export function AuthProvider({ children }) {
       confirmarSenhaAtual,
       configurarOperacao,
       configurarAtendimento,
+      configurarMesas,
       sair,
       sairDeTodosOsAparelhos,
       excluirConta,
@@ -270,6 +286,7 @@ export function AuthProvider({ children }) {
       confirmarSenhaAtual,
       configurarOperacao,
       configurarAtendimento,
+      configurarMesas,
       sair,
       sairDeTodosOsAparelhos,
       excluirConta,

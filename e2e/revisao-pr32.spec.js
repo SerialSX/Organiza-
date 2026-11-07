@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { enviar, montarEspetaria } from './ajuda';
+import { abrirConta, enviar, escolherMesa, montarEspetaria } from './ajuda';
 
 // Correções da revisão da PR #32: o caixa não conta como pago o que mudou de
 // valor, a conta da mesa separa os grupos e o pedido guardado sem internet
@@ -16,9 +16,8 @@ async function adicionar(page, nome) {
 }
 
 async function pedirNaMesa(page, nome, mesa) {
+  await escolherMesa(page, mesa);
   await adicionar(page, nome);
-  await page.getByText('Consumo no salão').click();
-  await page.getByLabel('Número da mesa').fill(String(mesa));
   await enviar(page);
   await expect(page.getByRole('status').filter({ hasText: `Mesa ${mesa}` }).first()).toBeVisible();
 }
@@ -54,7 +53,7 @@ test('recebimento errado no caixa pode ser desfeito', async ({ page }) => {
   await page.goto('/caixa');
   const recebido = page.getByRole('region', { name: 'Recebido' });
   await expect(recebido).toContainText('R$ 8,00');
-  await recebido.getByText(/Ver os pedidos recebidos \(1\)/).click();
+  await recebido.getByText(/Ver os recebimentos \(1\)/).click();
   await semProblemasDeAcessibilidade(page);
   await recebido.getByRole('button', { name: /^Desfazer o recebimento do pedido / }).click();
   await expect(page.getByRole('region', { name: 'A receber' })).toContainText('R$ 8,00');
@@ -67,23 +66,23 @@ test('conta da mesa: desmarca o pedido de outro grupo e recebe só o resto', asy
   await pedirNaMesa(page, 'Espeto de carne', 4);
   await pedirNaMesa(page, 'Cerveja lata', 4);
 
-  const mesa = page.getByRole('region', { name: 'Contas abertas' }).getByRole('listitem').filter({ hasText: 'Mesa 4' }).first();
-  await expect(mesa).toContainText('R$ 16,00');
-  await mesa.getByRole('button', { name: 'Fechar a conta' }).click();
-  const marcas = mesa.getByRole('checkbox');
+  const conta = await abrirConta(page, 4);
+  await expect(conta).toContainText('R$ 16,00');
+  await conta.getByRole('button', { name: 'Fechar mesa' }).click();
+  const marcas = conta.getByRole('checkbox');
   await expect(marcas).toHaveCount(2);
   await expect(marcas.nth(0)).toBeChecked();
   await expect(marcas.nth(1)).toBeChecked();
   await semProblemasDeAcessibilidade(page);
 
-  // O segundo grupo (a cerveja) ainda não vai pagar.
+  // O segundo grupo (a cerveja) ainda não vai pagar. 9 + 10% de serviço.
   await marcas.nth(1).uncheck();
-  await expect(mesa).toContainText('Receber R$ 9,00 (1 pedido)');
-  await mesa.getByRole('button', { name: 'Pix' }).click();
+  await expect(conta).toContainText('R$ 9,90');
+  await conta.getByText('Um pagou tudo').click();
+  await conta.getByRole('button', { name: 'Pix' }).click();
 
-  await expect(mesa).toContainText('1 pedido');
-  await expect(mesa).toContainText('R$ 7,00');
-  await expect(mesa.getByRole('checkbox')).toHaveCount(0);
+  await expect(page.getByText('Mesa 4: conta de R$ 9,90 recebida. Ficou 1 pedido aberto na mesa.')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Mesas', exact: true }).getByRole('button', { name: 'Mesa 4, ocupada, R$ 7,00, 1 pedido' })).toBeVisible();
 });
 
 test('pedido guardado sem internet sai mesmo fora da tela de Pedidos', async ({ page, context }) => {

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { enviar, lancarPedido, montarEspetaria, pagar } from './ajuda';
+import { abrirConta, enviar, escolherMesa, lancarPedido, montarEspetaria, pagar } from './ajuda';
 
 // O que os três negócios da validação de campo pediram (Batata Delas,
 // Império do Sabor e Espetaria VIP), do jeito que eles usariam.
@@ -42,32 +42,33 @@ test('a mesa pede aos poucos, soma tudo e fecha a conta de uma vez; o caixa bate
   await page.goto('/pedidos');
 
   await adicionar(page, 'Espeto de carne');
-  await page.getByText('Consumo no salão').click();
-  await page.getByLabel('Número da mesa').fill('4');
+  await escolherMesa(page, 4);
   await enviar(page);
   await expect(page.getByRole('status').filter({ hasText: 'Mesa 4' })).toBeVisible();
   // Na mesa não se anota pagamento na hora do pedido.
   await expect(page.getByRole('group', { name: 'Como o cliente pagou?' })).toHaveCount(0);
 
-  // Segundo pedido da mesma mesa: continua em Mesa, só o número volta em branco.
+  // Segundo pedido da mesma mesa: a mesa volta em branco (nada vai para a
+  // mesa errada); toca nela de novo e "Lançar mais".
   await adicionar(page, 'Cerveja lata');
-  await expect(page.getByLabel('Número da mesa')).toHaveValue('');
-  await page.getByLabel('Número da mesa').fill('4');
+  await expect(page.getByText('Nenhuma mesa escolhida.')).toBeVisible();
+  await escolherMesa(page, 4);
   await enviar(page);
 
-  const contas = page.getByRole('region', { name: 'Contas abertas' });
-  const mesa = contas.getByRole('listitem').filter({ hasText: 'Mesa 4' });
-  await expect(mesa).toContainText('R$ 16,00');
-  await expect(mesa).toContainText('2 pedidos');
+  const mapa = page.getByRole('region', { name: 'Mesas', exact: true });
+  await expect(mapa.getByRole('button', { name: 'Mesa 4, ocupada, R$ 16,00, 2 pedidos' })).toBeVisible();
   await semProblemasDeAcessibilidade(page);
 
-  await mesa.getByRole('button', { name: 'Fechar a conta' }).click();
-  await mesa.getByRole('button', { name: 'Pix' }).click();
-  await expect(contas).toBeHidden();
+  // 16 + 10% de serviço.
+  const conta = await abrirConta(page, 4);
+  await conta.getByRole('button', { name: 'Fechar mesa' }).click();
+  await conta.getByText('Um pagou tudo').click();
+  await conta.getByRole('button', { name: 'Pix' }).click();
+  await expect(mapa.getByRole('button', { name: /^Mesa 4, livre/ })).toBeVisible();
 
   // Outra mesa fica aberta para o caixa mostrar o que falta receber.
   await adicionar(page, 'Espeto de linguiça');
-  await page.getByLabel('Número da mesa').fill('7');
+  await escolherMesa(page, 7);
   await enviar(page);
   await expect(page.getByRole('status').filter({ hasText: 'Mesa 7' })).toBeVisible();
 
@@ -82,8 +83,9 @@ test('a mesa pede aos poucos, soma tudo e fecha a conta de uma vez; o caixa bate
 
   await page.goto('/caixa');
   const recebido = page.getByRole('region', { name: 'Recebido' });
-  await expect(recebido).toContainText('R$ 24,00');
-  await expect(recebido.locator('dl').getByText('R$ 16,00')).toBeVisible();
+  await expect(recebido).toContainText('R$ 25,60');
+  await expect(recebido.locator('dl').getByText('R$ 17,60')).toBeVisible();
+  await expect(recebido).toContainText('Taxa de serviço: R$ 1,60');
   await expect(recebido.locator('dl').getByText('R$ 8,00')).toBeVisible();
   const aReceber = page.getByRole('region', { name: 'A receber' });
   await expect(aReceber).toContainText('R$ 8,00');
@@ -91,7 +93,7 @@ test('a mesa pede aos poucos, soma tudo e fecha a conta de uma vez; o caixa bate
 
   await aReceber.getByRole('button', { name: 'Crédito' }).click();
   await expect(page.getByText('Tudo recebido. O caixa fechou certinho.')).toBeVisible();
-  await expect(recebido).toContainText('R$ 32,00');
+  await expect(recebido).toContainText('R$ 33,60');
 });
 
 test('cozinha do lado do balcão: o "Pronto" fica na tela de pedidos (pastelaria)', async ({ page }) => {

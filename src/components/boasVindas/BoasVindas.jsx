@@ -8,6 +8,9 @@ import Tutorial from './Tutorial';
 import GuiaCozinha from './GuiaCozinha';
 import EscolhaDoModo from './EscolhaDoModo';
 import EscolhaDaCozinha from './EscolhaDaCozinha';
+import { QuantasMesas, TaxaDeServico } from '../mesas/EscolhaDasMesas';
+import { atendeNaMesa, precisaResponderMesas } from '../../lib/atendimento';
+import { MESAS_PADRAO } from '../../lib/mesas';
 import logoDark from '../../assets/logo.svg';
 import logoLight from '../../assets/logo-light.svg';
 
@@ -40,25 +43,54 @@ function Cabecalho({ pergunta, titulo, porque, children }) {
 // Perguntas de boas-vindas: obrigatórias na primeira vez que o dono entra
 // (inclusive em contas antigas). Sem menu, sem "pular". Depois de cada
 // resposta, um passo a passo mostra como vai funcionar.
+// Quem atende na mesa responde também quantas mesas tem e se cobra a taxa de
+// serviço. Conta que já tinha respondido o resto antes do mapa das mesas
+// responde só essas duas.
 export default function BoasVindas({ onConcluir }) {
   const { mode } = useTheme();
-  const { perfil, configurarAtendimento } = useAuth();
-  const [etapa, setEtapa] = useState('modo'); // modo | tutorial | cozinha | guia | um-aparelho
-  const [modo, setModo] = useState(null);
+  const { perfil, configurarAtendimento, configurarMesas } = useAuth();
+  const [soMesas] = useState(() => perfil.modo_atendimento !== null && precisaResponderMesas(perfil));
+  // modo | tutorial | mesas | taxa | cozinha | guia | um-aparelho | mesas-prontas
+  const [etapa, setEtapa] = useState(soMesas ? 'mesas' : 'modo');
+  const [modo, setModo] = useState(soMesas ? perfil.modo_atendimento : null);
   const [usaTela, setUsaTela] = useState(null);
+  const [mesas, setMesas] = useState(perfil.quantidade_mesas ?? MESAS_PADRAO);
+  const [taxa, setTaxa] = useState(perfil.taxa_servico ?? null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+  const naMesa = Boolean(modo) && atendeNaMesa(modo);
+  const totalDePerguntas = soMesas ? 2 : naMesa ? 4 : 2;
+  const numero = (etapaDaPergunta) =>
+    soMesas ? { mesas: 1, taxa: 2 }[etapaDaPergunta] : { modo: 1, mesas: 2, taxa: 3, cozinha: naMesa ? 4 : 2 }[etapaDaPergunta];
+  const pergunta = (etapaDaPergunta) => `Pergunta ${numero(etapaDaPergunta)} de ${totalDePerguntas}`;
+
+  // As mesas primeiro: se falhar, nada fica salvo pela metade e a pessoa
+  // continua nas perguntas.
+  async function salvarMesas() {
+    if (!naMesa) return { erro: null };
+    return configurarMesas({ quantidade: mesas, taxaServico: taxa });
+  }
 
   async function salvarCozinha() {
     setErro('');
     setSalvando(true);
-    const { erro: falha } = await configurarAtendimento({ modo, usaTelaCozinha: usaTela });
+    let { erro: falha } = await salvarMesas();
+    if (!falha) ({ erro: falha } = await configurarAtendimento({ modo, usaTelaCozinha: usaTela }));
     setSalvando(false);
     if (falha) {
       setErro(falha);
       return;
     }
     setEtapa(usaTela ? 'guia' : 'um-aparelho');
+  }
+
+  async function salvarSoMesas() {
+    setErro('');
+    setSalvando(true);
+    const { erro: falha } = await salvarMesas();
+    setSalvando(false);
+    if (falha) setErro(falha);
+    else setEtapa('mesas-prontas');
   }
 
   return (
@@ -72,13 +104,13 @@ export default function BoasVindas({ onConcluir }) {
         {etapa === 'modo' && (
           <>
             <Cabecalho
-              pergunta="Vamos deixar o Organiza+ do seu jeito · Pergunta 1 de 2"
+              pergunta={`Vamos deixar o Organiza+ do seu jeito · ${pergunta('modo')}`}
               titulo="Como você atende seus clientes?"
               porque="assim o Organiza+ sabe se cada pedido termina na hora ou se vai somando numa conta até o cliente ir embora."
             >
               <p className="text-[var(--text-secondary)]">
-                Cada negócio trabalha de um jeito. Responda 2 perguntas rápidas e o Organiza+ vai funcionar do jeito que você já
-                trabalha. Dá para mudar as respostas depois.
+                Cada negócio trabalha de um jeito. Responda algumas perguntas rápidas e o Organiza+ vai funcionar do jeito que
+                você já trabalha. Dá para mudar as respostas depois.
               </p>
             </Cabecalho>
             <EscolhaDoModo valor={modo} onMudar={setModo} />
@@ -99,7 +131,7 @@ export default function BoasVindas({ onConcluir }) {
               <Tutorial
                 modo={modo}
                 rotuloFim="Entendi, continuar"
-                onFim={() => setEtapa('cozinha')}
+                onFim={() => setEtapa(naMesa ? 'mesas' : 'cozinha')}
                 onVoltarAntesDoInicio={() => setEtapa('modo')}
               />
             </div>
@@ -107,17 +139,95 @@ export default function BoasVindas({ onConcluir }) {
           </>
         )}
 
+        {etapa === 'mesas' && (
+          <>
+            <Cabecalho
+              pergunta={soMesas ? `Novidade: mapa das mesas · ${pergunta('mesas')}` : pergunta('mesas')}
+              titulo="Quantas mesas você tem?"
+              porque="o Organiza+ mostra um mapa com as suas mesas. Você toca na mesa para lançar o pedido e vê na hora quais estão ocupadas e quanto cada uma já gastou."
+            >
+              {soMesas && (
+                <p className="text-[var(--text-secondary)]">
+                  Agora, em vez de digitar o número da mesa, você toca nela num mapa. Responda 2 perguntas rápidas.
+                </p>
+              )}
+            </Cabecalho>
+            <QuantasMesas valor={mesas} onMudar={setMesas} />
+            <p className="text-sm text-[var(--text-secondary)]">
+              Conte as mesas que você monta numa noite normal. Num dia de movimento, dá para abrir uma{' '}
+              <strong className="text-[var(--text-primary)]">mesa extra</strong> na hora.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              {!soMesas && (
+                <Botao variante="secundaria" onClick={() => setEtapa('tutorial')}>
+                  ← Voltar
+                </Botao>
+              )}
+              <Botao tamanho="grande" cor={ACCENT} onClick={() => setEtapa('taxa')}>
+                Continuar
+              </Botao>
+            </div>
+          </>
+        )}
+
+        {etapa === 'taxa' && (
+          <>
+            <Cabecalho
+              pergunta={pergunta('taxa')}
+              titulo="Você cobra a taxa de serviço?"
+              porque="ao fechar a mesa, o Organiza+ já soma a taxa na conta. No Caixa, ela aparece separada, porque é dos garçons e não entra no que você vendeu."
+            />
+            <TaxaDeServico taxa={taxa} onMudar={setTaxa} />
+            {erro && <Aviso>{erro}</Aviso>}
+            <div className="flex flex-wrap items-center gap-3">
+              <Botao variante="secundaria" onClick={() => setEtapa('mesas')}>
+                ← Voltar
+              </Botao>
+              <Botao
+                tamanho="grande"
+                cor={ACCENT}
+                disabled={taxa === null || salvando}
+                onClick={soMesas ? salvarSoMesas : () => setEtapa('cozinha')}
+              >
+                {salvando ? 'Salvando…' : 'Continuar'}
+              </Botao>
+            </div>
+          </>
+        )}
+
+        {etapa === 'mesas-prontas' && (
+          <>
+            <Cabecalho titulo="Pronto! Suas mesas estão no mapa" />
+            <ol className="list-decimal pl-6 flex flex-col gap-2 text-lg text-[var(--text-primary)]">
+              <li>
+                Em <strong>Pedidos</strong>, toque na mesa livre (cinza) para lançar o pedido dela.
+              </li>
+              <li>A mesa fica laranja e mostra quanto já foi consumido.</li>
+              <li>
+                Quando o cliente for embora, toque na mesa e em <strong>Fechar mesa</strong>.
+              </li>
+            </ol>
+            <p className="text-[var(--text-secondary)]">
+              Dá para mudar o número de mesas e a taxa em{' '}
+              <strong className="text-[var(--text-primary)]">Minha conta → Como você atende</strong>.
+            </p>
+            <Botao tamanho="grande" cor={ACCENT} className="self-start" onClick={onConcluir}>
+              Entendi, começar
+            </Botao>
+          </>
+        )}
+
         {etapa === 'cozinha' && (
           <>
             <Cabecalho
-              pergunta="Pergunta 2 de 2"
+              pergunta={pergunta('cozinha')}
               titulo="Quem prepara os pedidos fica longe de você?"
               porque="se quem prepara fica longe do balcão, o Organiza+ mostra cada pedido num celular ou tablet na cozinha, na hora em que você lança. Sem papel e sem precisar gritar o pedido."
             />
             <EscolhaDaCozinha valor={usaTela} onMudar={setUsaTela} />
             {erro && <Aviso>{erro}</Aviso>}
             <div className="flex flex-wrap items-center gap-3">
-              <Botao variante="secundaria" onClick={() => setEtapa('tutorial')}>
+              <Botao variante="secundaria" onClick={() => setEtapa(naMesa ? 'taxa' : 'tutorial')}>
                 ← Voltar
               </Botao>
               <Botao tamanho="grande" cor={ACCENT} disabled={usaTela === null || salvando} onClick={salvarCozinha}>

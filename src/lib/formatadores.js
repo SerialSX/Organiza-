@@ -53,17 +53,18 @@ export function numeroDoPedido(pedido) {
   return pedido.numero ? formatarSenha(pedido.numero) : codigoPedido(pedido.id);
 }
 
-// Para onde vai o pedido: a mesa (consumo no salão) ou o balcão, onde o
-// cliente retira quando chamam a senha.
+// Para onde vai o pedido: a mesa (consumo no salão; a mesa extra pelo nome,
+// "Varanda") ou o balcão, onde o cliente retira quando chamam a senha.
 export function destinoDoPedido(pedido) {
-  return pedido.mesa ? `Mesa ${pedido.mesa}` : 'Balcão';
+  if (!pedido.mesa) return 'Balcão';
+  return pedido.nome_mesa || `Mesa ${pedido.mesa}`;
 }
 
 // Como a cozinha anuncia o pedido (e o leitor de tela lê): "007", "007, mesa 12"
 // ou "007, Carlos" quando o atendente anotou o nome.
 export function chamadaDoPedido(pedido) {
   const partes = [numeroDoPedido(pedido)];
-  if (pedido.mesa) partes.push(`mesa ${pedido.mesa}`);
+  if (pedido.mesa) partes.push(pedido.nome_mesa || `mesa ${pedido.mesa}`);
   if (pedido.identificacao) partes.push(pedido.identificacao);
   return partes.join(', ');
 }

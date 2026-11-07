@@ -51,3 +51,23 @@ export async function lancarPedido(page, itens) {
   await expect(aviso).toBeVisible();
   return (await aviso.locator('p').nth(1).innerText()).trim();
 }
+
+// Escolhe a mesa do pedido no mapa das mesas. Mesa livre: o pedido vai para
+// ela. Mesa ocupada: abre a conta, e "Lançar mais" põe o pedido nela.
+export async function escolherMesa(page, mesa) {
+  const mapa = page.getByRole('region', { name: 'Mesas', exact: true });
+  const cartao = mapa.getByRole('button', { name: new RegExp(`^${typeof mesa === 'number' ? `Mesa ${mesa}` : mesa},`) });
+  await cartao.click();
+  const conta = page.getByRole('dialog');
+  if (await conta.isVisible()) await conta.getByRole('button', { name: 'Lançar mais nesta mesa' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+
+// Abre a conta de uma mesa ocupada (a janela com Lançar mais, Fechar, Passar).
+export async function abrirConta(page, mesa) {
+  const mapa = page.getByRole('region', { name: 'Mesas', exact: true });
+  await mapa.getByRole('button', { name: new RegExp(`^${typeof mesa === 'number' ? `Mesa ${mesa}` : mesa}, ocupada`) }).click();
+  const conta = page.getByRole('dialog');
+  await expect(conta).toBeVisible();
+  return conta;
+}

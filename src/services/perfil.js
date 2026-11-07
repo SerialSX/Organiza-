@@ -6,6 +6,7 @@ const CAMPOS_PERFIL = 'id, nome, papel, negocio_id';
 // Do mais novo para o mais antigo: cada migração acrescenta colunas. Se o banco
 // estiver atrás do código, usa a primeira consulta que ele entende.
 const CAMPOS_NEGOCIO = [
+  'nome, virada_do_dia, usa_tela_cozinha, modo_atendimento, quantidade_mesas, taxa_servico', // 2026-11-11
   'nome, virada_do_dia, usa_tela_cozinha, modo_atendimento', // 2026-11-10
   'nome, virada_do_dia, usa_tela_cozinha', // 2026-11-08
   'nome',
@@ -46,5 +47,10 @@ export async function buscarPerfil(usuario) {
     // a coluna (undefined): segue com os dois jeitos, como era antes, e não
     // prende ninguém numa pergunta que não daria para salvar.
     modo_atendimento: negocio?.modo_atendimento === undefined ? 'balcao_e_mesa' : negocio.modo_atendimento,
+    // null: o dono ainda não respondeu quantas mesas tem e se cobra serviço.
+    // undefined: banco sem a migração das mesas; o pedido de mesa volta a ser
+    // pelo número digitado, sem mapa nem taxa.
+    quantidade_mesas: negocio?.quantidade_mesas,
+    taxa_servico: negocio?.taxa_servico,
   };
 }

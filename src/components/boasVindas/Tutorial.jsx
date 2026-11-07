@@ -182,7 +182,7 @@ const PASSOS = {
   ],
   mesa: [
     {
-      titulo: 'O cliente senta e pede. Você toca no número da mesa, nos produtos e em Enviar.',
+      titulo: 'O cliente senta e pede. Você toca na mesa dele no mapa, nos produtos e em Enviar.',
       texto: 'Não tem número para falar nem QR code: quem atende leva o pedido até a mesa.',
       celular: (
         <>
@@ -200,8 +200,8 @@ const PASSOS = {
       ),
     },
     {
-      titulo: 'Pediu mais? Lance outro pedido para a mesma mesa.',
-      texto: 'O Organiza+ vai somando tudo na conta daquela mesa. Ninguém precisa anotar no papel.',
+      titulo: 'Pediu mais? Toque na mesa (laranja) e em Lançar mais.',
+      texto: 'O Organiza+ vai somando tudo na conta daquela mesa e mostra o total no mapa. Ninguém precisa anotar no papel.',
       celular: (
         <>
           <span className="text-xs text-[var(--text-secondary)]">Contas abertas</span>
@@ -229,8 +229,8 @@ const PASSOS = {
       ),
     },
     {
-      titulo: 'Na hora de ir embora, toque em Fechar a conta e em como ele pagou.',
-      texto: 'O total já está somado. Você recebe tudo de uma vez e a mesa fica livre.',
+      titulo: 'Na hora de ir embora, toque na mesa, em Fechar mesa e em como pagaram.',
+      texto: 'O total já está somado, com a taxa de serviço se você cobra. Dá para dividir entre as pessoas, e a mesa fica livre.',
       celular: (
         <>
           <div className="flex items-baseline justify-between">
@@ -238,7 +238,7 @@ const PASSOS = {
             <b className="tabular-nums">R$ 36,00</b>
           </div>
           <Chip toque cheio cor={VERDE}>
-            Fechar a conta
+            Fechar mesa
           </Chip>
           <Pagamento />
         </>
@@ -289,7 +289,7 @@ const PASSOS = {
       ),
     },
     {
-      titulo: 'Na mesa: digite o número da mesa. Os pedidos vão somando na conta dela.',
+      titulo: 'Na mesa: toque na mesa dele no mapa. Os pedidos vão somando na conta dela.',
       texto: 'Não precisa receber agora. O cliente pede aos poucos e paga tudo no final.',
       celular: (
         <>
@@ -308,7 +308,7 @@ const PASSOS = {
       ),
     },
     {
-      titulo: 'Quando a mesa for embora, toque em Fechar a conta e em como pagaram.',
+      titulo: 'Quando a mesa for embora, toque nela, em Fechar mesa e em como pagaram.',
       texto: 'No fim da noite, o Caixa mostra quanto entrou em Pix, dinheiro, crédito e débito.',
       celular: (
         <>
@@ -317,7 +317,7 @@ const PASSOS = {
             <b className="tabular-nums">R$ 36,00</b>
           </div>
           <Chip toque cheio cor={VERDE}>
-            Fechar a conta
+            Fechar mesa
           </Chip>
           <Pagamento />
         </>

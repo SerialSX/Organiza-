@@ -50,7 +50,7 @@ export default function FilaDeEnvio({ fila, onTentar, onDescartar }) {
         {fila.map((envio) => (
           <li key={envio.chaveEnvio} className="rounded-xl border border-[var(--border-subtle)] px-3 py-2 text-sm">
             <p className="font-semibold text-[var(--text-primary)] break-words">
-              {envio.mesa ? `Mesa ${envio.mesa}: ` : ''}
+              {envio.mesa ? `${envio.nomeMesa || `Mesa ${envio.mesa}`}: ` : ''}
               {envio.identificacao ? `${envio.identificacao}: ` : ''}
               {envio.resumo}
             </p>

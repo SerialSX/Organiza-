@@ -63,6 +63,7 @@ export function useFilaDeEnvio({ negocioId, usuarioId, onEnviado }) {
             itens: envio.itens,
             chaveEnvio: envio.chaveEnvio,
             mesa: envio.mesa ?? null,
+            nomeMesa: envio.nomeMesa ?? null,
             identificacao: envio.identificacao,
             formaPagamento: envio.formaPagamento,
           });

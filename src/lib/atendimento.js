@@ -49,7 +49,31 @@ export function modoDoNegocio(perfil) {
 // Só o dono responde. null quer dizer "ainda não respondeu"; undefined é
 // banco sem a coluna, e aí não dá para salvar a resposta.
 export function precisaResponderBoasVindas(perfil) {
-  return perfil?.papel === 'admin' && perfil.modo_atendimento === null;
+  return perfil?.papel === 'admin' && (perfil.modo_atendimento === null || precisaResponderMesas(perfil));
+}
+
+// Já respondeu como atende, atende na mesa e ainda não disse quantas mesas tem
+// (conta de antes do mapa das mesas): responde só essas perguntas.
+// undefined é banco sem a migração das mesas: não pergunta.
+export function precisaResponderMesas(perfil) {
+  return (
+    perfil?.papel === 'admin' &&
+    IDS.has(perfil.modo_atendimento) &&
+    atendeNaMesa(perfil.modo_atendimento) &&
+    (perfil.quantidade_mesas === null || perfil.taxa_servico === null)
+  );
+}
+
+// Mapa das mesas em Pedidos: atende na mesa e já disse quantas mesas tem.
+// Sem isso (atendente antes do dono responder, banco sem a migração), o
+// pedido de mesa é pelo número digitado, como antes.
+export function usaMapaDeMesas(perfil) {
+  return atendeNaMesa(modoDoNegocio(perfil)) && Number.isInteger(perfil?.quantidade_mesas) && perfil.quantidade_mesas >= 1;
+}
+
+// Taxa de serviço em % (0: não cobra).
+export function taxaDoNegocio(perfil) {
+  return usaMapaDeMesas(perfil) && Number.isInteger(perfil.taxa_servico) ? perfil.taxa_servico : 0;
 }
 
 export function atendeNoBalcao(modo) {

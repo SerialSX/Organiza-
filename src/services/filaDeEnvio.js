@@ -27,7 +27,7 @@ function gravar(negocioId, fila) {
   window.dispatchEvent(new Event('organiza-fila-envio'));
 }
 
-// envio: { chaveEnvio, itens, mesa, identificacao, formaPagamento, resumo }
+// envio: { chaveEnvio, itens, mesa, nomeMesa, identificacao, formaPagamento, resumo }
 export function guardarNaFila(negocioId, envio) {
   const fila = lerFila(negocioId).filter((e) => e.chaveEnvio !== envio.chaveEnvio);
   gravar(negocioId, [...fila, { ...envio, guardadoEm: new Date().toISOString(), erro: null }]);

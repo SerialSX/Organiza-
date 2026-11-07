@@ -1,4 +1,6 @@
 import Campo from '../ui/Campo';
+import Botao from '../ui/Botao';
+import { destinoDoPedido } from '../../lib/formatadores';
 
 const ACCENT = 'var(--color-accent-pedidos)';
 
@@ -11,14 +13,39 @@ const OPCOES = [
 // mesa (consumo no salão). destino: { tipo: 'balcao' | 'mesa', mesa: '12' }.
 // escolhe: só o negócio que atende dos dois jeitos escolhe a cada pedido; nos
 // outros, aparece só o número da mesa (quando é mesa).
-export default function DestinoDoPedido({ destino, onMudar, erroMesa, idCampoMesa, escolhe = true }) {
+// noMapa: a mesa é escolhida tocando no mapa das mesas (sem digitar).
+export default function DestinoDoPedido({ destino, onMudar, erroMesa, idCampoMesa, escolhe = true, noMapa = false, onEscolherNoMapa }) {
   function escolher(tipo) {
     onMudar({ ...destino, tipo });
-    // Escolheu mesa: o próximo passo é digitar o número.
-    if (tipo === 'mesa') setTimeout(() => document.getElementById(idCampoMesa)?.focus(), 0);
+    // Escolheu mesa: o próximo passo é digitar o número (ou tocar no mapa).
+    if (tipo === 'mesa' && noMapa && !destino.mesa) setTimeout(() => onEscolherNoMapa?.(), 0);
+    else if (tipo === 'mesa') setTimeout(() => document.getElementById(idCampoMesa)?.focus(), 0);
   }
 
-  const campoMesa = destino.tipo === 'mesa' && (
+  const mesaDoMapa = destino.tipo === 'mesa' && noMapa && (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-2 px-3 py-2" style={{
+        borderColor: destino.mesa ? ACCENT : erroMesa ? 'var(--color-accent-cozinha)' : 'var(--border-subtle)',
+      }}>
+        <p className="min-w-0 break-words text-[var(--text-primary)]">
+          {destino.mesa ? (
+            <>
+              <span className="text-sm text-[var(--text-secondary)]">Pedido para a </span>
+              <strong className="text-lg">{destinoDoPedido({ mesa: destino.mesa, nome_mesa: destino.nomeMesa })}</strong>
+            </>
+          ) : (
+            <span className="text-sm font-medium">Nenhuma mesa escolhida.</span>
+          )}
+        </p>
+        <Botao variante="secundaria" onClick={onEscolherNoMapa}>
+          {destino.mesa ? 'Trocar a mesa' : 'Escolher a mesa'}
+        </Botao>
+      </div>
+      {erroMesa && <p className="text-sm font-medium text-[var(--texto-cozinha)]">{erroMesa}</p>}
+    </div>
+  );
+
+  const campoMesa = noMapa ? mesaDoMapa : destino.tipo === 'mesa' && (
     <Campo
       id={idCampoMesa}
       rotulo="Número da mesa"

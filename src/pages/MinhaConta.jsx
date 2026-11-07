@@ -10,7 +10,9 @@ import { UserIcon, QrIcon, TrashIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
 import EscolhaDoModo from '../components/boasVindas/EscolhaDoModo';
 import EscolhaDaCozinha from '../components/boasVindas/EscolhaDaCozinha';
-import { atendeNoBalcao, modoDoNegocio } from '../lib/atendimento';
+import { QuantasMesas, TaxaDeServico } from '../components/mesas/EscolhaDasMesas';
+import { atendeNaMesa, atendeNoBalcao, modoDoNegocio } from '../lib/atendimento';
+import { MESAS_PADRAO } from '../lib/mesas';
 import { viradaMudaODia } from '../lib/formatadores';
 
 const ACCENT = 'var(--color-brand-orange)';
@@ -132,15 +134,27 @@ function rotuloDaHora(h) {
 // Só o dono: como atende, se a cozinha tem aparelho próprio e até que horas
 // o dia de trabalho vai. As duas primeiras são as perguntas de boas-vindas.
 function ComoVoceAtende({ perfil }) {
-  const { configurarOperacao, configurarAtendimento } = useAuth();
+  const { configurarOperacao, configurarAtendimento, configurarMesas } = useAuth();
   const modoSalvo = modoDoNegocio(perfil);
   const telaSalva = perfil.usa_tela_cozinha !== false;
   const [modo, setModo] = useState(modoSalvo);
+  // undefined: banco sem a migração das mesas; as perguntas não aparecem.
+  const temMesas = perfil.quantidade_mesas !== undefined;
+  const mesasSalvas = perfil.quantidade_mesas ?? MESAS_PADRAO;
+  const taxaSalva = perfil.taxa_servico ?? null;
+  const [mesas, setMesas] = useState(mesasSalvas);
+  const [taxa, setTaxa] = useState(taxaSalva);
+  const naMesa = temMesas && atendeNaMesa(modo);
+  // Passou a atender na mesa agora (ou nunca respondeu): mesas e taxa entram no salvar.
+  const mudouMesas =
+    naMesa && (mesas !== perfil.quantidade_mesas || taxa !== perfil.taxa_servico);
+  const faltaTaxa = naMesa && taxa === null;
   const [virada, setVirada] = useState(perfil.virada_do_dia ?? 5);
   const [usaTela, setUsaTela] = useState(telaSalva);
   const [mensagem, setMensagem] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const mudouAtendimento = modo !== modoSalvo || usaTela !== telaSalva;
+  const mudouAlgo = mudouAtendimento || mudouMesas;
   const viradaAtual = perfil.virada_do_dia ?? 5;
   const mudouVirada = virada !== viradaAtual;
   // Entre 0h e 8h, trocar a virada pode virar o dia no meio do turno: o banco
@@ -152,7 +166,8 @@ function ComoVoceAtende({ perfil }) {
     setMensagem(null);
     setSalvando(true);
     const trocouVirada = mudouVirada;
-    let { erro } = mudouAtendimento ? await configurarAtendimento({ modo, usaTelaCozinha: usaTela }) : { erro: null };
+    let { erro } = mudouMesas ? await configurarMesas({ quantidade: mesas, taxaServico: taxa }) : { erro: null };
+    if (!erro && mudouAtendimento) ({ erro } = await configurarAtendimento({ modo, usaTelaCozinha: usaTela }));
     if (!erro && mudouVirada) ({ erro } = await configurarOperacao({ viradaDoDia: virada, usaTelaCozinha: usaTela }));
     setSalvando(false);
     if (erro) setMensagem({ tipo: 'erro', texto: erro });
@@ -175,6 +190,12 @@ function ComoVoceAtende({ perfil }) {
             Ver o passo a passo de cada jeito
           </Link>
         </p>
+        {naMesa && (
+          <>
+            <QuantasMesas valor={mesas} onMudar={setMesas} rotuloVisivel />
+            <TaxaDeServico taxa={taxa} onMudar={setTaxa} legendaVisivel colunas="" />
+          </>
+        )}
         <EscolhaDaCozinha valor={usaTela} onMudar={setUsaTela} legendaVisivel colunas="" />
 
         <div className="flex flex-col gap-1.5">
@@ -202,7 +223,7 @@ function ComoVoceAtende({ perfil }) {
           type="submit"
           cor={ACCENT}
           className="self-start"
-          disabled={!(mudouAtendimento || mudouVirada) || salvando || viradaNoTurno}
+          disabled={!(mudouAlgo || mudouVirada) || salvando || viradaNoTurno || faltaTaxa}
         >
           {salvando ? 'Salvando…' : 'Salvar'}
         </Botao>

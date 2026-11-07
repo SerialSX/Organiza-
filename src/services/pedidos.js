@@ -2,19 +2,41 @@ import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { CANCELADO_VISIVEL_MINUTOS, MOTIVOS_CANCELAMENTO, STATUS_ABERTOS, STATUS_NA_FILA } from '../lib/pedidoStatus';
 import { hojeNoNegocio } from '../lib/formatadores';
 import { lerDemo, salvarDemo, assinarDemo, novoId } from './demoStore';
+import { limparNomeMesa } from '../lib/mesas';
 
-const CAMPOS_PEDIDO =
+const CAMPOS_PEDIDO_BASE =
   'id, numero, mesa, dia, status, criado_em, alterado_em, pronto_em, cancelado_em, motivo_cancelamento, identificacao, forma_pagamento, pago_em';
+// Migração 2026-11-11 (mesas): nome da mesa extra e a conta em que foi pago.
+const CAMPOS_DAS_MESAS = ', nome_mesa, conta_id';
 
 // Pedidos abertos aparecem na Cozinha: só o que é preciso para preparar,
 // sem preço nem custo. Os ingredientes do produto são as opções do "Faltou".
 const CAMPOS_ITEM = 'id, produto_id, quantidade, observacao, faltou, faltou_ingredientes';
 const PRODUTO_DO_ITEM = 'produtos ( nome, vai_para_cozinha, produto_ingredientes ( ingrediente_id, ingredientes ( nome ) ) )';
-const CAMPOS_ABERTOS = `${CAMPOS_PEDIDO}, itens_pedido ( ${CAMPOS_ITEM}, ${PRODUTO_DO_ITEM} )`;
-const CAMPOS_COM_VALORES = `${CAMPOS_PEDIDO}, itens_pedido ( ${CAMPOS_ITEM}, preco_unitario, custo_unitario, ${PRODUTO_DO_ITEM} )`;
+const ITENS_ABERTOS = `itens_pedido ( ${CAMPOS_ITEM}, ${PRODUTO_DO_ITEM} )`;
+const ITENS_COM_VALORES = `itens_pedido ( ${CAMPOS_ITEM}, preco_unitario, custo_unitario, ${PRODUTO_DO_ITEM} )`;
 // Caixa, contas das mesas e relatórios: sem a lista de ingredientes de cada
 // produto (só a Cozinha e a edição usam), que pesa em todo pedido do dia.
-const CAMPOS_DO_PERIODO = `${CAMPOS_PEDIDO}, itens_pedido ( ${CAMPOS_ITEM}, preco_unitario, custo_unitario, produtos ( nome, vai_para_cozinha ) )`;
+const ITENS_DO_PERIODO = `itens_pedido ( ${CAMPOS_ITEM}, preco_unitario, custo_unitario, produtos ( nome, vai_para_cozinha ) )`;
+
+// Banco ainda sem a migração das mesas: pede só as colunas antigas, para a
+// fila, a cozinha e o caixa continuarem funcionando (o aviso de banco
+// desatualizado aparece para a equipe).
+let bancoTemMesas = true;
+
+// 42703 / PGRST204: coluna que não existe, ou seja, banco ainda sem a migração.
+export function colunaInexistente(error) {
+  return error?.code === '42703' || error?.code === 'PGRST204' || /does not exist/i.test(error?.message ?? '');
+}
+
+async function consultarPedidos(montar, itens) {
+  if (bancoTemMesas) {
+    const resposta = await montar(`${CAMPOS_PEDIDO_BASE}${CAMPOS_DAS_MESAS}, ${itens}`);
+    if (!colunaInexistente(resposta.error)) return resposta;
+    bancoTemMesas = false;
+  }
+  return montar(`${CAMPOS_PEDIDO_BASE}, ${itens}`);
+}
 
 // O Supabase devolve no máximo 1000 linhas por consulta.
 const TAMANHO_PAGINA = 1000;
@@ -32,6 +54,12 @@ export const FORMAS_DE_PAGAMENTO = [
 export const ROTULO_FORMA = { ...Object.fromEntries(FORMAS_DE_PAGAMENTO.map((f) => [f.id, f.rotulo])), cartao: 'Cartão' };
 
 const LIMITE_IDENTIFICACAO = 30;
+
+// Mesmos textos do banco (editar_pedido e cancelar_pedido).
+const ERRO_PAGO_NA_CONTA_VALOR =
+  'Este pedido já foi pago na conta da mesa. Para mudar o valor, desfaça o recebimento da conta no Caixa.';
+const ERRO_PAGO_NA_CONTA_CANCELAR =
+  'Este pedido já foi pago na conta da mesa. Para cancelar, desfaça o recebimento da conta no Caixa.';
 
 export function limparIdentificacao(texto) {
   const limpo = (texto ?? '').trim().replace(/\s+/g, ' ');
@@ -115,6 +143,8 @@ function normalizarPedido(p, itens) {
     identificacao: p.identificacao ?? null,
     forma_pagamento: p.forma_pagamento ?? null,
     pago_em: p.pago_em ?? null,
+    nome_mesa: p.nome_mesa ?? null,
+    conta_id: p.conta_id ?? null,
     itens,
   };
 }
@@ -224,9 +254,20 @@ function itensParaEnvio(itens) {
 // mesa: número da mesa, ou null para retirada no balcão.
 // identificacao: nome do cliente para chamar (opcional).
 // formaPagamento: como o cliente pagou, quando paga na hora (balcão).
-export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio, mesa = null, identificacao = null, formaPagamento = null }) {
+// nomeMesa: nome da mesa extra ("Varanda"); só vale com mesa.
+export async function criarPedido({
+  negocioId,
+  usuarioId,
+  itens,
+  chaveEnvio,
+  mesa = null,
+  identificacao = null,
+  formaPagamento = null,
+  nomeMesa = null,
+}) {
   if (!itens.length) throw new Error('Adicione pelo menos um produto ao pedido.');
   const mesaDoPedido = conferirMesa(mesa);
+  const nomeDaMesaExtra = mesaDoPedido ? limparNomeMesa(nomeMesa) : null;
   // Valida pelo ROTULO_FORMA (inclui 'cartao'): pedido guardado sem internet
   // na versão anterior do site ainda pode chegar com "Cartão".
   if (formaPagamento && !(formaPagamento in ROTULO_FORMA)) {
@@ -254,6 +295,8 @@ export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio, mes
       negocio_id: negocioId,
       numero,
       mesa: mesaDoPedido,
+      nome_mesa: nomeDaMesaExtra,
+      conta_id: null,
       dia,
       status: 'pendente',
       criado_em: new Date().toISOString(),
@@ -279,6 +322,9 @@ export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio, mes
       p_mesa: mesaDoPedido,
       p_identificacao: nomeOuMesa,
       p_forma_pagamento: formaPagamento,
+      // Banco sem a migração das mesas não conhece o parâmetro: só manda
+      // quando há nome (mesa extra), que só aparece com o mapa das mesas.
+      ...(nomeDaMesaExtra ? { p_nome_mesa: nomeDaMesaExtra } : {}),
     });
   } catch (e) {
     if (ehFalhaDeRede(e)) throw new SemInternet();
@@ -293,9 +339,11 @@ export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio, mes
 // versao: o alterado_em do pedido quando a edição começou. Se outra pessoa
 // salvou no meio-tempo, a edição é recusada para não apagar a dela.
 // mesa: como o pedido fica depois de salvar (null: balcão).
-export async function editarPedido(id, itens, versao, mesa = null) {
+// nomeMesa: nome da mesa extra; sem ele, quem fica na mesma mesa mantém o nome.
+export async function editarPedido(id, itens, versao, mesa = null, nomeMesa = null) {
   if (!itens.length) throw new Error('O pedido precisa ter pelo menos um item. Para desistir, cancele o pedido.');
   const mesaDoPedido = conferirMesa(mesa);
+  const nomeDaMesaExtra = limparNomeMesa(nomeMesa);
 
   if (!isSupabaseConfigured) {
     const db = lerDemo();
@@ -313,13 +361,22 @@ export async function editarPedido(id, itens, versao, mesa = null) {
     const novosItens = itensDemo(db, id, itens, anteriores);
     const somar = (lista) => lista.reduce((s, i) => s + i.quantidade * (i.preco_unitario ?? 0), 0);
     const mudouValor = Math.round(somar(novosItens) * 100) !== Math.round(somar(db.itens_pedido.filter((i) => i.pedido_id === id)) * 100);
+    // Mesma regra do editar_pedido: pago na conta da mesa não muda de valor
+    // nem de mesa sem desfazer a conta.
+    if (pedido.conta_id && mudouValor) falhaDemo(ERRO_PAGO_NA_CONTA_VALOR);
     const precisaCozinha = novosItens.some((i) => db.produtos.find((p) => p.id === i.produto_id)?.vai_para_cozinha ?? true);
     const agora = new Date().toISOString();
     const trocados = { ...db, itens_pedido: [...db.itens_pedido.filter((i) => i.pedido_id !== id), ...novosItens] };
+    const nomeQueFica = pedido.conta_id
+      ? (pedido.nome_mesa ?? null)
+      : !mesaDoPedido
+        ? null
+        : (nomeDaMesaExtra ?? (mesaDoPedido === pedido.mesa ? (pedido.nome_mesa ?? null) : null));
     salvarDemo(
       atualizarPedidoDemo(trocados, id, {
         alterado_em: agora,
-        mesa: mesaDoPedido,
+        mesa: pedido.conta_id ? pedido.mesa : mesaDoPedido,
+        nome_mesa: nomeQueFica,
         // Mesmas regras do editar_pedido: pago com outro valor volta para "a
         // receber"; só bebida sai da fila da cozinha.
         ...(mudouValor ? { forma_pagamento: null, pago_em: null } : {}),
@@ -334,6 +391,7 @@ export async function editarPedido(id, itens, versao, mesa = null) {
     p_itens: itensParaEnvio(itens),
     p_versao: versao ?? null,
     ...(mesaDoPedido ? { p_mesa: mesaDoPedido } : {}),
+    ...(mesaDoPedido && nomeDaMesaExtra ? { p_nome_mesa: nomeDaMesaExtra } : {}),
   });
   if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível salvar as alterações.'));
 }
@@ -344,6 +402,7 @@ export async function cancelarPedido(id, motivo) {
   if (!isSupabaseConfigured) {
     const db = lerDemo();
     const pedido = pedidoDemo(db, id);
+    if (pedido.conta_id) falhaDemo(ERRO_PAGO_NA_CONTA_CANCELAR);
     if (['entregue', 'cancelado'].includes(pedido.status)) falhaDemo('Este pedido já foi encerrado.');
     salvarDemo(
       atualizarPedidoDemo(db, id, {
@@ -449,7 +508,7 @@ export async function registrarPagamento(ids, forma) {
     const agora = new Date().toISOString();
     let quantos = 0;
     const pedidos = db.pedidos.map((p) => {
-      if (!ids.includes(p.id) || p.status === 'cancelado' || (forma && p.pago_em)) return p;
+      if (!ids.includes(p.id) || p.status === 'cancelado' || p.conta_id || (forma && p.pago_em)) return p;
       quantos++;
       return { ...p, forma_pagamento: forma, pago_em: forma ? agora : null, atualizado_em: agora };
     });
@@ -478,11 +537,15 @@ export async function listarPedidosAbertos() {
   }
 
   const desde = new Date(agora - CANCELADO_VISIVEL_MINUTOS * 60000).toISOString();
-  const { data, error } = await supabase
-    .from('pedidos')
-    .select(CAMPOS_ABERTOS)
-    .or(`status.in.(${STATUS_ABERTOS.join(',')}),and(status.eq.cancelado,cancelado_em.gte.${desde})`)
-    .order('criado_em', { ascending: true });
+  const { data, error } = await consultarPedidos(
+    (campos) =>
+      supabase
+        .from('pedidos')
+        .select(campos)
+        .or(`status.in.(${STATUS_ABERTOS.join(',')}),and(status.eq.cancelado,cancelado_em.gte.${desde})`)
+        .order('criado_em', { ascending: true }),
+    ITENS_ABERTOS,
+  );
   if (error) throw new Error('Não foi possível carregar os pedidos.');
   return data.map(normalizarSupabase);
 }
@@ -495,7 +558,10 @@ export async function buscarPedidoComValores(id) {
     return pedido;
   }
 
-  const { data, error } = await supabase.from('pedidos').select(CAMPOS_COM_VALORES).eq('id', id).maybeSingle();
+  const { data, error } = await consultarPedidos(
+    (campos) => supabase.from('pedidos').select(campos).eq('id', id).maybeSingle(),
+    ITENS_COM_VALORES,
+  );
   if (error || !data) throw new Error('Não foi possível abrir o pedido.');
   return normalizarSupabase(data);
 }
@@ -515,15 +581,19 @@ export async function listarPedidosDoPeriodo(inicio, fim) {
   const todos = [];
   for (let pagina = 0; ; pagina++) {
     const de = pagina * TAMANHO_PAGINA;
-    const { data, error } = await supabase
-      .from('pedidos')
-      .select(CAMPOS_DO_PERIODO)
-      .gte('criado_em', inicio.toISOString())
-      .lt('criado_em', fim.toISOString())
-      // id desempata pedidos do mesmo instante, para nenhum pular de página
-      .order('criado_em', { ascending: true })
-      .order('id', { ascending: true })
-      .range(de, de + TAMANHO_PAGINA - 1);
+    const { data, error } = await consultarPedidos(
+      (campos) =>
+        supabase
+          .from('pedidos')
+          .select(campos)
+          .gte('criado_em', inicio.toISOString())
+          .lt('criado_em', fim.toISOString())
+          // id desempata pedidos do mesmo instante, para nenhum pular de página
+          .order('criado_em', { ascending: true })
+          .order('id', { ascending: true })
+          .range(de, de + TAMANHO_PAGINA - 1),
+      ITENS_DO_PERIODO,
+    );
     if (error) throw new Error('Não foi possível carregar os pedidos do período.');
     todos.push(...data);
     if (data.length < TAMANHO_PAGINA) break;

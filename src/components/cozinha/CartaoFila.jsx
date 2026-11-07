@@ -2,7 +2,7 @@ import { useState } from 'react';
 import Botao from '../ui/Botao';
 import Etiqueta from '../ui/Etiqueta';
 import { AlertIcon, CheckIcon, ClockIcon } from '../icons/AppIcons';
-import { chamadaDoPedido, formatarEspera, formatarHora, minutosDesde, numeroDoPedido } from '../../lib/formatadores';
+import { chamadaDoPedido, destinoDoPedido, formatarEspera, formatarHora, minutosDesde, numeroDoPedido } from '../../lib/formatadores';
 import { LIMITE_ATRASO_MINUTOS } from '../../lib/pedidoStatus';
 
 const VERMELHO = 'var(--color-accent-cozinha)';
@@ -146,7 +146,7 @@ export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou,
         </span>
         {pedido.mesa ? (
           <span className="rounded-lg px-2.5 py-0.5 text-2xl font-extrabold tabular-nums bg-[var(--text-primary)] text-[var(--surface)]">
-            Mesa {pedido.mesa}
+            {destinoDoPedido(pedido)}
           </span>
         ) : (
           <span className="text-base font-bold text-[var(--text-secondary)]">Balcão</span>

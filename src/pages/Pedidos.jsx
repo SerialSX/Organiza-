@@ -13,6 +13,8 @@ import DestinoDoPedido from '../components/pedidos/DestinoDoPedido';
 import DetalhesDoPedido from '../components/pedidos/DetalhesDoPedido';
 import FilaDeEnvio from '../components/pedidos/FilaDeEnvio';
 import ContasAbertas from '../components/pedidos/ContasAbertas';
+import MapaDeMesas, { ID_MAPA } from '../components/mesas/MapaDeMesas';
+import ContaDaMesa from '../components/mesas/ContaDaMesa';
 import { OrdersIcon, ProductsIcon, SendIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
 import { useProdutos } from '../hooks/useProdutos';
@@ -23,17 +25,26 @@ import { useRascunhoDoPedido, novaChaveDeLinha } from '../hooks/useRascunhoDoPed
 import { criarPedido, editarPedido, buscarPedidoComValores, ROTULO_FORMA } from '../services/pedidos';
 import { registrarToqueEsgotado } from '../services/produtos';
 import { guardarNaFila } from '../services/filaDeEnvio';
-import { formatarMoeda, numeroDoPedido } from '../lib/formatadores';
+import { destinoDoPedido, formatarMoeda, numeroDoPedido } from '../lib/formatadores';
 import { podeEditar } from '../lib/pedidoStatus';
 import { separarPedidos } from '../lib/fila';
 import { contasAbertas, totalDoPedido } from '../lib/caixa';
-import { atendeNaMesa, atendeNoBalcao, destinoInicial, modoDoNegocio } from '../lib/atendimento';
+import { atendeNaMesa, atendeNoBalcao, destinoInicial, modoDoNegocio, taxaDoNegocio, usaMapaDeMesas } from '../lib/atendimento';
+import { montarMapa, proximaMesaExtra } from '../lib/mesas';
 
 const ACCENT = 'var(--color-accent-pedidos)';
 // Acima da barra de navegação do celular; no tablet sem essa barra, no rodapé.
 const BARRA_FIXA = 'lg:hidden fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] md:bottom-2 z-10 px-4 pb-2';
 const ID_CAMPO_MESA = 'numero-da-mesa';
 const ID_PAGAMENTO = 'pagamento-do-pedido';
+const ID_CARDAPIO = 'cardapio-do-pedido';
+
+// Leva a tela até um ponto (o mapa, o cardápio) e põe o foco nele.
+function irPara(id, foco = null) {
+  const alvo = document.getElementById(id);
+  alvo?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  (foco ? alvo?.querySelector(foco) : null)?.focus({ preventScroll: true });
+}
 
 function novaChaveEnvio() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -75,6 +86,14 @@ export default function Pedidos() {
   // Balcão, mesa ou os dois (perguntas de boas-vindas / Minha conta).
   const modo = modoDoNegocio(perfil);
   const inicial = destinoInicial(modo);
+  // Mapa das mesas: toca na mesa em vez de digitar o número.
+  const mapaAtivo = usaMapaDeMesas(perfil);
+  const taxa = taxaDoNegocio(perfil);
+  // Conta aberta na janela: a mesa e os pedidos que ela tinha ao abrir. Se a
+  // conta fechar em outro aparelho, a janela some e não volta sozinha quando
+  // outro cliente sentar.
+  const [contaAberta, setContaAberta] = useState(null);
+  const [avisoMesas, setAvisoMesas] = useState('');
 
   // Pedido em edição: { pedido } com os itens e preços como estavam no banco.
   const [edicao, setEdicao] = useState(null);
@@ -136,7 +155,16 @@ export default function Pedidos() {
   }
 
   const { fila, prontos } = separarPedidos(abertos);
-  const contas = contasAbertas(doDia);
+  const contas = mapaAtivo ? [] : contasAbertas(doDia);
+  const mapa = mapaAtivo ? montarMapa(doDia, perfil.quantidade_mesas) : [];
+  const sugestaoExtra = mapaAtivo ? proximaMesaExtra(mapa, perfil.quantidade_mesas) : null;
+  // Mesa extra recém-aberta (ainda sem pedido) aparece no mapa já escolhida.
+  const mesaEscolhida = destino.tipo === 'mesa' && destino.mesa ? Number(destino.mesa) : null;
+  if (mapaAtivo && mesaEscolhida && !mapa.some((m) => m.mesa === mesaEscolhida)) {
+    mapa.push({ mesa: mesaEscolhida, nome: destino.nomeMesa ?? null, extra: true, pedidos: [], total: 0 });
+  }
+  const mesaDaConta =
+    contaAberta && mapa.find((m) => m.mesa === contaAberta.mesa && m.pedidos.some((p) => contaAberta.ids.includes(p.id)));
   const pedidoAgora = edicao && abertos.find((p) => p.id === edicao.pedido.id);
   // Enquanto o atendente edita, a cozinha pode marcar pronto, alguém pode
   // cancelar ou outra pessoa pode editar o mesmo pedido.
@@ -157,6 +185,28 @@ export default function Pedidos() {
     chaveEnvio.current = null;
     setErroMesa('');
     setDestino(novo);
+  }
+
+  // Tocou numa mesa (livre no mapa ou "Lançar mais"): o pedido em montagem é dela.
+  function pedirNaMesa(mesa) {
+    setAvisoMesas('');
+    setContaAberta(null);
+    mexerNoDestino({ tipo: 'mesa', mesa: String(mesa.mesa), nomeMesa: mesa.nome ?? null });
+    setTimeout(() => irPara(ID_CARDAPIO), 0);
+  }
+
+  function abrirConta(mesa) {
+    setAvisoMesas('');
+    setContaAberta({ mesa: mesa.mesa, ids: mesa.pedidos.map((p) => p.id) });
+  }
+
+  function contaConcluida(texto) {
+    setContaAberta(null);
+    setAvisoMesas(texto);
+    // A mesa que estava escolhida para o próximo pedido pode ter mudado.
+    if (destino.tipo === 'mesa' && Number(destino.mesa) === contaAberta?.mesa) {
+      mexerNoDestino({ tipo: 'mesa', mesa: '', nomeMesa: null });
+    }
   }
 
   function adicionar(produto) {
@@ -197,7 +247,11 @@ export default function Pedidos() {
       setEdicao({ pedido: completo });
       setEnviado(null);
       setErroMesa('');
-      setDestino(completo.mesa ? { tipo: 'mesa', mesa: String(completo.mesa) } : { tipo: 'balcao', mesa: '' });
+      setDestino(
+        completo.mesa
+          ? { tipo: 'mesa', mesa: String(completo.mesa), nomeMesa: completo.nome_mesa ?? null }
+          : { tipo: 'balcao', mesa: '' },
+      );
       setCarrinho(
         completo.itens.map((i) => ({
           chave: novaChaveDeLinha(),
@@ -247,9 +301,15 @@ export default function Pedidos() {
   async function enviar() {
     if (!itens.length || enviando) return;
     const mesa = destinoAtual.tipo === 'mesa' ? Number(destinoAtual.mesa) : null;
+    const nomeMesa = mesa ? (destinoAtual.nomeMesa ?? null) : null;
     if (destinoAtual.tipo === 'mesa' && !(mesa >= 1 && mesa <= 999)) {
-      setErroMesa('Digite o número da mesa (de 1 a 999).');
-      document.getElementById(ID_CAMPO_MESA)?.focus();
+      if (mapaAtivo) {
+        setErroMesa('Toque na mesa do pedido, no mapa das mesas.');
+        irPara(ID_MAPA, 'button');
+      } else {
+        setErroMesa('Digite o número da mesa (de 1 a 999).');
+        document.getElementById(ID_CAMPO_MESA)?.focus();
+      }
       return;
     }
     // No balcão o cliente paga na hora: a forma é obrigatória. Na mesa, nada
@@ -269,7 +329,7 @@ export default function Pedidos() {
     const linhas = itens.map(({ nome, quantidade, observacao }) => ({ nome, quantidade, observacao }));
     try {
       if (edicao) {
-        await editarPedido(edicao.pedido.id, paraEnviar, edicao.pedido.alterado_em, mesa);
+        await editarPedido(edicao.pedido.id, paraEnviar, edicao.pedido.alterado_em, mesa, nomeMesa);
         setEnviado({ ...edicao.pedido, editado: true, voltouAReceber: Boolean(edicao.pedido.pago_em) && valorMudou });
         setEdicao(null);
         setCarrinho(rascunhoGuardado);
@@ -282,6 +342,7 @@ export default function Pedidos() {
           itens: paraEnviar,
           chaveEnvio: chaveEnvio.current,
           mesa,
+          nomeMesa,
           identificacao: nomeDoCliente,
           formaPagamento: formaDoPedido,
         });
@@ -290,7 +351,7 @@ export default function Pedidos() {
         chaveEnvio.current = null;
         // Próximo pedido: mesmo tipo (quem atende no salão segue de mesa em
         // mesa), com o número em branco para não ir para a mesa errada.
-        setDestino((d) => ({ ...d, mesa: '' }));
+        setDestino((d) => ({ ...d, mesa: '', nomeMesa: null }));
         setEnviado({ ...pedido, itens: linhas });
       }
     } catch (e) {
@@ -302,6 +363,7 @@ export default function Pedidos() {
           itens: paraEnviar,
           linhas,
           mesa,
+          nomeMesa,
           identificacao: nomeDoCliente,
           formaPagamento: formaDoPedido,
           resumo: resumo(linhas),
@@ -351,6 +413,29 @@ export default function Pedidos() {
 
       <FilaDeEnvio fila={filaDeEnvio} onTentar={tentarAgora} onDescartar={descartar} />
 
+      {mapaAtivo && produtos.length > 0 && (
+        <MapaDeMesas
+          mapa={mapa}
+          escolhida={mesaEscolhida}
+          onEscolherLivre={pedirNaMesa}
+          onAbrirConta={abrirConta}
+          sugestaoExtra={sugestaoExtra}
+          onAbrirExtra={pedirNaMesa}
+          aviso={avisoMesas && <Aviso tipo="sucesso">{avisoMesas}</Aviso>}
+        />
+      )}
+      {mesaDaConta && (
+        <ContaDaMesa
+          key={mesaDaConta.mesa}
+          mesa={mesaDaConta}
+          mapa={mapa}
+          taxa={taxa}
+          onLancarMais={pedirNaMesa}
+          onConcluido={contaConcluida}
+          onFechar={() => setContaAberta(null)}
+        />
+      )}
+
       {produtos.length === 0 && !edicao ? (
         <EstadoVazio
           icon={ProductsIcon}
@@ -364,12 +449,14 @@ export default function Pedidos() {
         </EstadoVazio>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
+          <div id={ID_CARDAPIO} className="scroll-mt-24 min-w-0">
           <GradeDeProdutos
             produtos={produtos}
             quantidadePorProduto={quantidadePorProduto}
             onAdicionar={adicionar}
             onEsgotado={tocouEsgotado}
           />
+          </div>
 
           <aside
             aria-labelledby="titulo-carrinho"
@@ -386,6 +473,8 @@ export default function Pedidos() {
               erroMesa={erroMesa}
               idCampoMesa={ID_CAMPO_MESA}
               escolhe={modo === 'balcao_e_mesa'}
+              noMapa={mapaAtivo}
+              onEscolherNoMapa={() => irPara(ID_MAPA, 'button')}
             />
 
             {edicaoPerdida && (
@@ -515,7 +604,9 @@ export default function Pedidos() {
                 <div className="flex-1 min-w-0">
                   <p className="text-xs tabular-nums text-[var(--text-secondary)]">
                     {edicao ? `Pedido ${numeroEmEdicao}, ` : ''}
-                    {destinoAtual.tipo === 'mesa' && destinoAtual.mesa ? `mesa ${destinoAtual.mesa}, ` : ''}
+                    {destinoAtual.tipo === 'mesa' && destinoAtual.mesa
+                      ? `${destinoDoPedido({ mesa: destinoAtual.mesa, nome_mesa: destinoAtual.nomeMesa })}, `
+                      : ''}
                     {!edicao && ehBalcao && identificacao.trim() ? `${identificacao.trim()}, ` : ''}
                     {totalItens} {totalItens === 1 ? 'item' : 'itens'}
                   </p>

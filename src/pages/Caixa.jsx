@@ -10,6 +10,8 @@ import { MoneyIcon } from '../components/icons/AppIcons';
 import { usePedidosDoDia } from '../hooks/usePedidosDoDia';
 import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
 import { registrarPagamento, FORMAS_DE_PAGAMENTO, ROTULO_FORMA } from '../services/pedidos';
+import { desfazerContaMesa } from '../services/mesas';
+import { nomeDaMesa } from '../lib/mesas';
 import { fecharCaixa, totalDoPedido } from '../lib/caixa';
 import { formatarHora, formatarMoeda, hojeNoNegocio, numeroDoPedido } from '../lib/formatadores';
 
@@ -96,14 +98,54 @@ function Recebido({ pedido, onErro }) {
   );
 }
 
+const JEITO = { um_pagou: 'Um pagou tudo', dividiram: 'Dividiram', separado: 'Pagaram separado, sem detalhe' };
+
+function vezes(n) {
+  return n === 1 ? '1 recebimento' : `${n} recebimentos`;
+}
+
+// Conta de mesa recebida errado (forma, valor, mesa): desfaz e a mesa volta a
+// ficar aberta em Pedidos, para fechar de novo.
+function ContaRecebida({ conta, onErro }) {
+  const [salvando, setSalvando] = useState(false);
+  const formas = [...new Set(conta.pagamentos.map((p) => ROTULO_FORMA[p.forma] ?? p.forma))].join(', ');
+
+  async function desfazer() {
+    setSalvando(true);
+    onErro('');
+    try {
+      await desfazerContaMesa(conta.id);
+    } catch (e) {
+      onErro(e.message);
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+      <span className="font-bold text-[var(--text-primary)] break-words">Conta da {nomeDaMesa(conta)}</span>
+      <span className="text-sm tabular-nums text-[var(--text-secondary)]">
+        {JEITO[conta.jeito]}
+        {formas ? ` (${formas})` : ''} às {formatarHora(conta.criado_em)}
+        {conta.servico > 0 ? ` · serviço ${formatarMoeda(conta.servico)}` : ''}
+      </span>
+      <span className="ml-auto font-semibold tabular-nums text-[var(--text-primary)]">{formatarMoeda(conta.consumo + conta.servico)}</span>
+      <Botao variante="texto" onClick={desfazer} disabled={salvando} aria-label={`Desfazer o recebimento da conta da ${nomeDaMesa(conta)}`}>
+        Desfazer
+      </Botao>
+    </li>
+  );
+}
+
 // Fechamento do caixa: quanto entrou em Pix, dinheiro, crédito e débito, o que ainda
 // falta receber e o que foi cancelado depois de pago (a devolver).
 export default function Caixa() {
   const [aba, setAba] = useAbaNoEndereco('dia', DIAS, 'hoje');
   const dia = diaEscolhido(aba);
-  const { pedidos, carregando, erro: erroCarga } = usePedidosDoDia(dia);
+  const { pedidos, contas, carregando, erro: erroCarga } = usePedidosDoDia(dia);
   const [erro, setErro] = useState('');
-  const caixa = fecharCaixa(pedidos);
+  const caixa = fecharCaixa(pedidos, contas);
+  const recebimentos = caixa.recebidos.length + caixa.contas.length;
   const titulo = dataLonga.format(new Date(`${dia}T12:00:00Z`));
   // "Cartão" só aparece em dia com pedido pago antes de separar crédito e débito.
   const formasNoCaixa = [...FORMAS_DE_PAGAMENTO.map((f) => f.id), ...(caixa.quantidadePorForma.cartao ? ['cartao'] : [])];
@@ -134,18 +176,37 @@ export default function Caixa() {
                 <div key={id} className="rounded-xl border border-[var(--border-subtle)] p-3 min-w-0">
                   <dt className="text-sm font-medium text-[var(--text-secondary)]">{ROTULO_FORMA[id]}</dt>
                   <dd className="text-xl sm:text-2xl font-bold tabular-nums text-[var(--text-primary)]">{formatarMoeda(caixa.porForma[id])}</dd>
-                  <dd className="text-xs tabular-nums text-[var(--text-secondary)]">
-                    {caixa.quantidadePorForma[id] === 1 ? '1 pedido' : `${caixa.quantidadePorForma[id]} pedidos`}
-                  </dd>
+                  <dd className="text-xs tabular-nums text-[var(--text-secondary)]">{vezes(caixa.quantidadePorForma[id])}</dd>
                 </div>
               ))}
+              {caixa.contasSeparadas > 0 && (
+                <div className="col-span-2 lg:col-span-4 rounded-xl border border-[var(--border-subtle)] p-3 min-w-0">
+                  <dt className="text-sm font-medium text-[var(--text-secondary)]">Pago separado, sem detalhe</dt>
+                  <dd className="text-xl sm:text-2xl font-bold tabular-nums text-[var(--text-primary)]">{formatarMoeda(caixa.semDetalhe)}</dd>
+                  <dd className="text-xs text-[var(--text-secondary)]">
+                    {caixa.contasSeparadas === 1 ? '1 conta de mesa' : `${caixa.contasSeparadas} contas de mesa`} em que cada um pagou o seu,
+                    sem anotar a forma
+                  </dd>
+                </div>
+              )}
             </dl>
-            {caixa.recebidos.length > 0 && (
+            {caixa.servico > 0 && (
+              <p className="mt-4 text-sm tabular-nums text-[var(--text-primary)]">
+                <strong>Taxa de serviço: {formatarMoeda(caixa.servico)}</strong>{' '}
+                <span className="text-[var(--text-secondary)]">
+                  (já está no recebido acima). É dos garçons: não entra no total vendido.
+                </span>
+              </p>
+            )}
+            {recebimentos > 0 && (
               <details className="mt-4 rounded-xl border border-[var(--border-subtle)] px-3 py-1">
                 <summary className="min-h-11 flex items-center cursor-pointer text-sm font-semibold text-[var(--text-primary)]">
-                  Ver os pedidos recebidos ({caixa.recebidos.length}) e desfazer um recebimento errado
+                  Ver os recebimentos ({recebimentos}) e desfazer um recebimento errado
                 </summary>
                 <ul className="divide-y divide-[var(--border-subtle)] pb-2">
+                  {caixa.contas.map((c) => (
+                    <ContaRecebida key={c.id} conta={c} onErro={setErro} />
+                  ))}
                   {caixa.recebidos.map((p) => (
                     <Recebido key={p.id} pedido={p} onErro={setErro} />
                   ))}
@@ -183,7 +244,7 @@ export default function Caixa() {
           </section>
 
           <p className="text-sm tabular-nums text-[var(--text-secondary)]">
-            Total vendido no dia (recebido + a receber): {formatarMoeda(caixa.vendido)}
+            Total vendido no dia (recebido + a receber{caixa.servico > 0 ? ', sem a taxa de serviço' : ''}): {formatarMoeda(caixa.vendido)}
           </p>
         </div>
       )}

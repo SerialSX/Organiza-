@@ -1,4 +1,4 @@
-import { numeroDoPedido } from '../../lib/formatadores';
+import { destinoDoPedido, numeroDoPedido } from '../../lib/formatadores';
 
 // Aviso depois de enviar. Balcão: a senha para dizer ao cliente (ele
 // acompanha pelo QR code). Mesa: não tem senha nem QR, quem atende leva o
@@ -17,7 +17,7 @@ export default function PedidoEnviado({ pedido }) {
       {pedido.mesa ? (
         <>
           <p className="text-sm font-semibold">{situacao}</p>
-          <p className="text-5xl font-extrabold tabular-nums mt-1">Mesa {pedido.mesa}</p>
+          <p className="text-5xl font-extrabold tabular-nums mt-1 break-words">{destinoDoPedido(pedido)}</p>
           <p className="text-sm mt-1">{jaPronto ? 'Pode levar até a mesa.' : 'Entrou na conta da mesa.'}</p>
         </>
       ) : (

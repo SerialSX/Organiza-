@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { cadastrarProduto, lancarPedido } from './ajuda';
+import { cadastrarProduto, escolherMesa, lancarPedido } from './ajuda';
 
 test('pedido sai do atendente, passa pela cozinha e é entregue', async ({ page }) => {
   await cadastrarProduto(page, 'Pastel de carne', '8,50');
@@ -36,18 +36,18 @@ test('pedido na mesa: sem o número não sai, e a cozinha vê a mesa', async ({ 
 
   await enviar.click();
   // No celular o erro também aparece na barra de baixo (escondido do leitor de tela).
-  await expect(page.getByText('Digite o número da mesa (de 1 a 999).').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByText('Toque na mesa do pedido, no mapa das mesas.').filter({ visible: true }).first()).toBeVisible();
 
-  await page.getByLabel('Número da mesa').fill('12');
+  await escolherMesa(page, 7);
   await enviar.click();
   // Mesa: não tem senha para falar; quem atende leva até a mesa.
   const aviso = page.getByRole('status').filter({ hasText: 'Entrou na conta da mesa.' });
-  await expect(aviso).toContainText('Mesa 12');
+  await expect(aviso).toContainText('Mesa 7');
   await expect(aviso).not.toContainText('senha');
 
   await page.goto('/cozinha');
-  const cartao = page.getByRole('listitem', { name: 'Pedido 001, mesa 12' });
-  await expect(cartao).toContainText('Mesa 12');
+  const cartao = page.getByRole('listitem', { name: 'Pedido 001, mesa 7' });
+  await expect(cartao).toContainText('Mesa 7');
   await expect(cartao).toContainText('1º');
 });
 

@@ -4,7 +4,7 @@ import Etiqueta from '../ui/Etiqueta';
 import CancelarPedido from '../CancelarPedido';
 import { CheckIcon, PencilIcon, AlertIcon } from '../icons/AppIcons';
 import { atualizarStatusPedido, ROTULO_FORMA } from '../../services/pedidos';
-import { numeroDoPedido } from '../../lib/formatadores';
+import { destinoDoPedido, numeroDoPedido } from '../../lib/formatadores';
 import { STATUS, podeEditar } from '../../lib/pedidoStatus';
 import { descreverFalta, itensQueFaltaram } from '../../lib/fila';
 
@@ -34,12 +34,13 @@ function CartaoPedidoDeHoje({ pedido, editandoEste, semTelaCozinha, onEditar, on
     <li className="rounded-2xl border-2 p-4 bg-[var(--surface-card)] flex flex-col gap-3" style={{ borderColor: borda }}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-2xl font-extrabold tabular-nums text-[var(--text-primary)]">{numeroDoPedido(pedido)}</span>
-        {pedido.mesa && <span className="text-lg font-bold tabular-nums text-[var(--text-primary)]">Mesa {pedido.mesa}</span>}
+        {pedido.mesa && <span className="text-lg font-bold tabular-nums text-[var(--text-primary)] break-words">{destinoDoPedido(pedido)}</span>}
         {pedido.identificacao && (
           <span className="text-lg font-bold text-[var(--text-primary)] break-words">{pedido.identificacao}</span>
         )}
         <Etiqueta cor={STATUS[pedido.status].cor}>{STATUS[pedido.status].rotulo}</Etiqueta>
         {pedido.forma_pagamento && <Etiqueta cor="var(--color-accent-relatorios)">Pago · {ROTULO_FORMA[pedido.forma_pagamento]}</Etiqueta>}
+        {pedido.conta_id && <Etiqueta cor="var(--color-accent-relatorios)">Pago na conta da mesa</Etiqueta>}
         {editandoEste && <span className="text-sm font-semibold text-[var(--text-secondary)]">Você está editando</span>}
       </div>
 

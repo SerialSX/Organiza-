@@ -1,5 +1,16 @@
 import Botao from '../ui/Botao';
 import { WifiOffIcon } from '../icons/AppIcons';
+import { formatarHora, hojeNoNegocio } from '../../lib/formatadores';
+
+const dataCurta = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Fortaleza' });
+
+// "Guardado às 21:40" ou, de outro dia, "Guardado em 06/11 às 23:50".
+function quandoGuardou(guardadoEm) {
+  if (!guardadoEm) return '';
+  const data = new Date(guardadoEm);
+  const hora = formatarHora(data);
+  return hojeNoNegocio(data) === hojeNoNegocio() ? `Guardado às ${hora}` : `Guardado em ${dataCurta.format(data)} às ${hora}`;
+}
 
 // Pedidos guardados porque a internet caiu. Saem sozinhos quando ela volta;
 // o atendente vê o que está esperando e pode forçar ou desistir.
@@ -43,6 +54,7 @@ export default function FilaDeEnvio({ fila, onTentar, onDescartar }) {
               {envio.identificacao ? `${envio.identificacao}: ` : ''}
               {envio.resumo}
             </p>
+            {envio.guardadoEm && <p className="text-xs tabular-nums text-[var(--text-secondary)]">{quandoGuardou(envio.guardadoEm)}</p>}
             {envio.erro && (
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="font-medium text-[var(--texto-cozinha)]">{envio.erro}</span>

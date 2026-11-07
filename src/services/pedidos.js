@@ -12,6 +12,9 @@ const CAMPOS_ITEM = 'id, produto_id, quantidade, observacao, faltou, faltou_ingr
 const PRODUTO_DO_ITEM = 'produtos ( nome, vai_para_cozinha, produto_ingredientes ( ingrediente_id, ingredientes ( nome ) ) )';
 const CAMPOS_ABERTOS = `${CAMPOS_PEDIDO}, itens_pedido ( ${CAMPOS_ITEM}, ${PRODUTO_DO_ITEM} )`;
 const CAMPOS_COM_VALORES = `${CAMPOS_PEDIDO}, itens_pedido ( ${CAMPOS_ITEM}, preco_unitario, custo_unitario, ${PRODUTO_DO_ITEM} )`;
+// Caixa, contas das mesas e relatórios: sem a lista de ingredientes de cada
+// produto (só a Cozinha e a edição usam), que pesa em todo pedido do dia.
+const CAMPOS_DO_PERIODO = `${CAMPOS_PEDIDO}, itens_pedido ( ${CAMPOS_ITEM}, preco_unitario, custo_unitario, produtos ( nome, vai_para_cozinha ) )`;
 
 // O Supabase devolve no máximo 1000 linhas por consulta.
 const TAMANHO_PAGINA = 1000;
@@ -301,8 +304,21 @@ export async function editarPedido(id, itens, versao, mesa = null) {
       anteriores[i.produto_id] = { preco: i.preco_unitario, custo: i.custo_unitario ?? null };
     }
     const novosItens = itensDemo(db, id, itens, anteriores);
+    const somar = (lista) => lista.reduce((s, i) => s + i.quantidade * (i.preco_unitario ?? 0), 0);
+    const mudouValor = Math.round(somar(novosItens) * 100) !== Math.round(somar(db.itens_pedido.filter((i) => i.pedido_id === id)) * 100);
+    const precisaCozinha = novosItens.some((i) => db.produtos.find((p) => p.id === i.produto_id)?.vai_para_cozinha ?? true);
+    const agora = new Date().toISOString();
     const trocados = { ...db, itens_pedido: [...db.itens_pedido.filter((i) => i.pedido_id !== id), ...novosItens] };
-    salvarDemo(atualizarPedidoDemo(trocados, id, { alterado_em: new Date().toISOString(), mesa: mesaDoPedido }));
+    salvarDemo(
+      atualizarPedidoDemo(trocados, id, {
+        alterado_em: agora,
+        mesa: mesaDoPedido,
+        // Mesmas regras do editar_pedido: pago com outro valor volta para "a
+        // receber"; só bebida sai da fila da cozinha.
+        ...(mudouValor ? { forma_pagamento: null, pago_em: null } : {}),
+        ...(precisaCozinha ? {} : { status: 'pronto', pronto_em: agora }),
+      }),
+    );
     return;
   }
 
@@ -494,7 +510,7 @@ export async function listarPedidosDoPeriodo(inicio, fim) {
     const de = pagina * TAMANHO_PAGINA;
     const { data, error } = await supabase
       .from('pedidos')
-      .select(CAMPOS_COM_VALORES)
+      .select(CAMPOS_DO_PERIODO)
       .gte('criado_em', inicio.toISOString())
       .lt('criado_em', fim.toISOString())
       // id desempata pedidos do mesmo instante, para nenhum pular de página

@@ -120,6 +120,22 @@ await ok('pronto, tempo médio e fila andando', async () => {
   igual((await acompanhar(codigo1, p3.numero)).posicao, 2, 'terceiro andou');
 });
 
+await ok('pedido só de bebida (nasce pronto) não baixa o tempo médio', async () => {
+  const [{ id: suco }] = await dono(
+    U1,
+    `insert into public.produtos (negocio_id, nome, preco, vai_para_cozinha) values ($1, 'Suco', 5, false) returning id`,
+    [negocio1],
+  );
+  const [b] = await dono(U1, 'select * from public.criar_pedido($1::jsonb, $2::uuid)', [
+    JSON.stringify([{ produto_id: suco, quantidade: 1 }]),
+    'aaaaaaaa-0000-4000-8000-0000000000b1',
+  ]);
+  igual(b.status, 'pronto', 'bebida já pronta');
+  ip = '200.4.4.4';
+  igual((await acompanhar(codigo1, p1.numero)).tempo_medio_min, 12, 'média sem a bebida');
+  ip = '200.1.1.1';
+});
+
 await ok('aviso de item que faltou', async () => {
   const [{ id: item }] = await db.query('select id from public.itens_pedido where pedido_id = $1', [p2.id]).then((r) => r.rows);
   await dono(U1, 'select public.marcar_item_faltou($1, true)', [item]);
@@ -138,7 +154,7 @@ await ok('resposta não traz itens, valores nem nomes', async () => {
 await ok('número de outro negócio não é encontrado', async () => {
   const [{ negocio_id: negocio2 }] = await dono(U2, 'select negocio_id from public.usuarios');
   const [{ id: pastel }] = await dono(U2, `insert into public.produtos (negocio_id, nome, preco) values ($1, 'P', 8) returning id`, [negocio2]);
-  // O negócio 1 tem as senhas 1 a 3; a senha 5 só existe no negócio 2.
+  // O negócio 1 tem as senhas 1 a 4; a senha 5 só existe no negócio 2.
   let outro;
   for (let i = 1; i <= 5; i++) {
     [outro] = await dono(U2, 'select * from public.criar_pedido($1::jsonb, $2::uuid)', [

@@ -1,14 +1,39 @@
+import { Link, useLocation } from 'react-router-dom';
 import AppNav from '../AppNav';
 import RodapeContato from '../RodapeContato';
 import { useAuth } from '../../context/useAuth';
 import { useOnline } from '../../hooks/useOnline';
 import { useBancoDesatualizado } from '../../hooks/useBancoDesatualizado';
+import { useFilaDeEnvio } from '../../hooks/useFilaDeEnvio';
 import { AlertIcon, WifiOffIcon } from '../icons/AppIcons';
+
+// Pedido guardado sem internet sai sozinho em qualquer tela, não só em
+// Pedidos. Fora de lá, um aviso mostra que ainda tem pedido esperando.
+function PedidosGuardados({ perfil }) {
+  const { pathname } = useLocation();
+  const { fila } = useFilaDeEnvio({ negocioId: perfil.negocio_id, usuarioId: perfil.id });
+  if (!fila.length || pathname === '/pedidos') return null;
+  const esperando = fila.filter((e) => !e.erro).length;
+  return (
+    <p className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm font-bold text-[var(--text-primary)] bg-[color-mix(in_srgb,var(--color-brand-orange)_24%,transparent)]">
+      <span>
+        {esperando === 0
+          ? 'Um pedido guardado sem internet não entrou.'
+          : esperando === 1
+            ? '1 pedido guardado sem internet, esperando para sair.'
+            : `${esperando} pedidos guardados sem internet, esperando para sair.`}
+      </span>
+      <Link to="/pedidos" className="underline underline-offset-2">
+        Ver em Pedidos
+      </Link>
+    </p>
+  );
+}
 
 // reservaNoFim: espaço depois do rodapé para uma barra fixa da tela (ex.: o
 // "Enviar" de Pedidos no celular) não cobrir o contato da equipe.
 export default function AppShell({ children, largura = 'max-w-5xl', reservaNoFim = '' }) {
-  const { modoDemo } = useAuth();
+  const { modoDemo, perfil } = useAuth();
   const online = useOnline();
   const bancoAtrasado = useBancoDesatualizado();
 
@@ -43,6 +68,7 @@ export default function AppShell({ children, largura = 'max-w-5xl', reservaNoFim
           Sem internet. Pedidos não estão sendo enviados nem recebidos.
         </p>
       )}
+      {perfil?.negocio_id && <PedidosGuardados perfil={perfil} />}
       {modoDemo && (
         <p className="text-center text-xs font-medium px-4 py-2 text-[var(--text-primary)] bg-[color-mix(in_srgb,var(--color-brand-orange)_18%,transparent)]">
           Modo demonstração: os dados ficam salvos só neste navegador.

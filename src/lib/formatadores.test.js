@@ -6,6 +6,7 @@ import {
   formatarEspera,
   formatarSenha,
   hojeNoNegocio,
+  viradaMudaODia,
   inicioDoDia,
   lerValor,
   minutosDesde,
@@ -86,6 +87,15 @@ describe('dia de trabalho com virada', () => {
     expect(hojeNoNegocio(new Date('2026-11-21T00:10:00-03:00'), 5)).toBe('2026-11-20');
     expect(hojeNoNegocio(new Date('2026-11-21T05:00:00-03:00'), 5)).toBe('2026-11-21');
     expect(hojeNoNegocio(new Date('2026-11-21T00:10:00-03:00'), 0)).toBe('2026-11-21');
+  });
+
+  it('trocar a virada só é recusado quando muda o dia de trabalho de agora', () => {
+    const tresDaManha = new Date('2026-11-21T03:00:00-03:00');
+    const meioDia = new Date('2026-11-21T12:00:00-03:00');
+    expect(viradaMudaODia(0, 5, tresDaManha)).toBe(true);
+    expect(viradaMudaODia(4, 5, tresDaManha)).toBe(false);
+    expect(viradaMudaODia(0, 5, meioDia)).toBe(false);
+    expect(viradaMudaODia(5, 5, tresDaManha)).toBe(false);
   });
 
   it('início do dia de trabalho às 5h de Fortaleza', () => {

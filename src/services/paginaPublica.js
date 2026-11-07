@@ -68,7 +68,8 @@ export async function acompanharPedido(codigo, numero) {
     const naFila = (p) => ['pendente', 'em_preparo'].includes(p.status);
     const fila = db.pedidos.filter((p) => doDia(p) && naFila(p)).sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
     const prontos = db.pedidos
-      .filter((p) => doDia(p) && p.pronto_em && p.status !== 'cancelado')
+      // Só bebida nasce pronto (0 min) e não passou pela cozinha: fica de fora.
+      .filter((p) => doDia(p) && p.pronto_em && new Date(p.pronto_em) > new Date(p.criado_em) && p.status !== 'cancelado')
       .sort((a, b) => new Date(b.pronto_em) - new Date(a.pronto_em))
       .slice(0, 10);
     const tempos = prontos.map((p) => (new Date(p.pronto_em) - new Date(p.criado_em)) / 60000);

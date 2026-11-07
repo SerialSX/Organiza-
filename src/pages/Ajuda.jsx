@@ -104,7 +104,17 @@ const PERGUNTAS = [
   {
     pergunta: 'O som da cozinha não toca.',
     resposta:
-      'O navegador só libera o som depois de um toque na tela. Abra a Cozinha e toque no aviso laranja "Toque aqui para ligar o som". Lá também dá para escolher o som bem alto, que corta o barulho da chapa. O volume do celular também precisa estar alto e fora do modo silencioso.',
+      'O navegador só libera o som depois de um toque na tela. Abra a Cozinha e toque no aviso laranja "Toque aqui para ligar o som". Lá também dá para escolher o som bem alto, que corta o barulho da chapa. O volume do celular também precisa estar alto e fora do modo silencioso. E deixe o aparelho da cozinha só com o Organiza+ aberto: com outro app na frente, o som não toca.',
+  },
+  {
+    pergunta: 'Por que às vezes o som é forte e às vezes é só um "tic"?',
+    resposta:
+      'Com a fila vazia, o pedido novo toca o som forte: a cozinha pode estar distraída. Se já tem pedido na tela, toca só um "tic" baixo, no máximo um a cada 30 segundos, para não virar barulho na correria. Pedido alterado ou cancelado sempre toca dois bipes. O "Pronto" que você mesmo toca não faz som.',
+  },
+  {
+    pergunta: 'Num celular pequeno, os pedidos novos ficam escondidos embaixo.',
+    resposta:
+      'Quando chega pedido que não está aparecendo na tela, surge em cima a faixa "+2 pedidos novos". Toque nela para ir até eles. Se preferir cartões grandes, escolha em "Pedidos na tela" quantos ver por vez (1, 2 ou 3); o resto aparece como "+5 na fila" e o próximo entra quando você toca em Pronto.',
   },
   {
     pergunta: 'Funciona no meu celular?',

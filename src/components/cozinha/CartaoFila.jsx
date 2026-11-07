@@ -19,7 +19,7 @@ function estiloMarcado(marcado) {
 // Produto com ingredientes cadastrados: "Faltou" abre a lista e a cozinha
 // toca no que não tem ("queijo"). Sem ingredientes cadastrados, "Faltou"
 // avisa o item inteiro.
-function ItemDaFila({ item, onFaltou, onFaltouIngrediente }) {
+function ItemDaFila({ item, grande, onFaltou, onFaltouIngrediente }) {
   const [escolhendo, setEscolhendo] = useState(false);
   const porIngrediente = item.ingredientes.length > 0;
   const faltaram = item.faltou_ingredientes;
@@ -27,7 +27,7 @@ function ItemDaFila({ item, onFaltou, onFaltouIngrediente }) {
   const idLista = `faltou-${item.id}`;
 
   return (
-    <li className="flex flex-col gap-2 text-lg">
+    <li className={`flex flex-col gap-2 ${grande ? 'text-2xl' : 'text-lg'}`}>
       <div className="flex items-start gap-3">
         <span className="font-extrabold min-w-10 tabular-nums text-[var(--text-primary)]" style={{ textDecoration: riscado }}>
           {item.quantidade}×
@@ -37,7 +37,9 @@ function ItemDaFila({ item, onFaltou, onFaltouIngrediente }) {
             {item.nome}
           </span>
           {item.observacao && (
-            <span className="mt-1 inline-block rounded-r-lg border-l-4 border-[var(--color-brand-orange)] px-2.5 py-1 text-base font-bold break-words bg-[color-mix(in_srgb,var(--color-brand-orange)_18%,transparent)] text-[var(--text-primary)]">
+            <span
+              className={`mt-1 inline-block rounded-r-lg border-l-4 border-[var(--color-brand-orange)] px-2.5 py-1 ${grande ? 'text-xl' : 'text-base'} font-bold break-words bg-[color-mix(in_srgb,var(--color-brand-orange)_18%,transparent)] text-[var(--text-primary)]`}
+            >
               {item.observacao}
             </span>
           )}
@@ -112,7 +114,8 @@ function ItemDaFila({ item, onFaltou, onFaltouIngrediente }) {
 }
 
 // posicao: lugar na fila (1 = o mais antigo, o próximo a sair).
-export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou, onFaltouIngrediente }) {
+// grande: modo foco (poucos pedidos por vez, letras maiores).
+export default function CartaoFila({ pedido, posicao, agora, grande = false, onPronto, onFaltou, onFaltouIngrediente }) {
   const [salvando, setSalvando] = useState(false);
   const minutos = minutosDesde(pedido.criado_em, agora);
   const atrasado = minutos >= LIMITE_ATRASO_MINUTOS;
@@ -131,6 +134,7 @@ export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou,
   return (
     <li
       aria-label={`Pedido ${chamadaDoPedido(pedido)}`}
+      data-pedido-id={pedido.id}
       className="rounded-2xl border-2 bg-[var(--surface-card)] p-4 sm:p-5 flex flex-col gap-4"
       style={{ borderColor: borda }}
     >
@@ -141,11 +145,16 @@ export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou,
             {posicao}º
           </span>
         )}
-        <span className="text-3xl font-extrabold tracking-wide tabular-nums text-[var(--text-primary)]" translate="no">
+        <span
+          className={`${grande ? 'text-5xl' : 'text-3xl'} font-extrabold tracking-wide tabular-nums text-[var(--text-primary)]`}
+          translate="no"
+        >
           {numeroDoPedido(pedido)}
         </span>
         {pedido.mesa ? (
-          <span className="rounded-lg px-2.5 py-0.5 text-2xl font-extrabold tabular-nums bg-[var(--text-primary)] text-[var(--surface)]">
+          <span
+            className={`rounded-lg px-2.5 py-0.5 ${grande ? 'text-4xl' : 'text-2xl'} font-extrabold tabular-nums bg-[var(--text-primary)] text-[var(--surface)]`}
+          >
             {destinoDoPedido(pedido)}
           </span>
         ) : (
@@ -173,7 +182,7 @@ export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou,
 
       <ul className="flex flex-col gap-3">
         {paraPreparar.map((item) => (
-          <ItemDaFila key={item.id} item={item} onFaltou={onFaltou} onFaltouIngrediente={onFaltouIngrediente} />
+          <ItemDaFila key={item.id} item={item} grande={grande} onFaltou={onFaltou} onFaltouIngrediente={onFaltouIngrediente} />
         ))}
       </ul>
       {semPreparo.length > 0 && (

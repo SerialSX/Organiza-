@@ -4,6 +4,7 @@ import { lerDemo, salvarDemo, limparDemo } from '../services/demoStore';
 import { AuthContext } from './authContext';
 import { traduzirErroRecuperacao } from '../lib/recuperacaoSenha';
 import { definirViradaDoDia } from '../lib/formatadores';
+import { buscarPerfil } from '../services/perfil';
 
 const PERFIL_DEMO = {
   id: 'demo-usuario',
@@ -39,28 +40,6 @@ function traduzirErro(error) {
   if (!error) return null;
   if (error.code === 'P0001') return error.message;
   return ERROS_AUTH.find(([padrao]) => padrao.test(error.message ?? ''))?.[1] ?? 'Algo deu errado. Tente de novo em instantes.';
-}
-
-async function buscarPerfil(usuario) {
-  const { data, error } = await supabase
-    .from('usuarios')
-    .select('id, nome, papel, negocio_id, negocios ( nome, virada_do_dia, usa_tela_cozinha )')
-    .eq('id', usuario.id)
-    .maybeSingle();
-  // Erro de rede não pode virar "perfil inexistente"; quem chama decide.
-  if (error) throw error;
-  if (!data) return null;
-  const { negocios: negocio, ...resto } = data;
-  definirViradaDoDia(negocio?.virada_do_dia ?? 0);
-  return {
-    ...resto,
-    email: usuario.email,
-    negocio_nome: negocio?.nome ?? '',
-    // Banco ainda sem a migração de 28/10: segue como antes (vira à 0h, com
-    // tela de cozinha) e o aviso de banco desatualizado aparece.
-    virada_do_dia: negocio?.virada_do_dia ?? 0,
-    usa_tela_cozinha: negocio?.usa_tela_cozinha ?? true,
-  };
 }
 
 function enderecoDoApp(caminho) {

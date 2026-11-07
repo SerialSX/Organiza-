@@ -108,7 +108,7 @@ export default function Ajuda() {
           </h2>
           <p className="text-[var(--text-secondary)]">Fale com a equipe do Organiza+.</p>
           <div className="flex flex-wrap gap-3">
-            {autenticado && (
+            {autenticado && GRUPO_WHATSAPP && (
               <a
                 href={GRUPO_WHATSAPP}
                 target="_blank"

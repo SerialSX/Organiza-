@@ -1,0 +1,36 @@
+import { supabase } from '../lib/supabaseClient';
+import { definirViradaDoDia } from '../lib/formatadores';
+
+// Perfil de quem entrou: dados do usuário e do negócio dele.
+const CAMPOS_PERFIL = 'id, nome, papel, negocio_id';
+const CAMPOS_NEGOCIO = 'nome, virada_do_dia, usa_tela_cozinha';
+
+// 42703 / PGRST204: coluna que não existe, ou seja, banco ainda sem a migração.
+function colunaInexistente(error) {
+  return error?.code === '42703' || error?.code === 'PGRST204' || /does not exist/i.test(error?.message ?? '');
+}
+
+export async function buscarPerfil(usuario) {
+  const consulta = (camposDoNegocio) =>
+    supabase.from('usuarios').select(`${CAMPOS_PERFIL}, negocios ( ${camposDoNegocio} )`).eq('id', usuario.id).maybeSingle();
+  let { data, error } = await consulta(CAMPOS_NEGOCIO);
+  // Banco atrás do código (migração ainda não rodou): pede só o que existe
+  // desde sempre. Assim a pessoa entra, vê o aviso de banco desatualizado e
+  // pode sair, em vez de ficar presa em "Sem conexão com o sistema".
+  if (colunaInexistente(error)) ({ data, error } = await consulta('nome'));
+  // Erro de rede não pode virar "perfil inexistente"; quem chama decide.
+  if (error) throw error;
+  if (!data) return null;
+  const { negocios: negocio, ...resto } = data;
+  definirViradaDoDia(negocio?.virada_do_dia ?? 0);
+  return {
+    ...resto,
+    email: usuario.email,
+    negocio_nome: negocio?.nome ?? '',
+    // Só sem a migração 2026-11-08 estes campos faltam (ver a consulta
+    // reserva acima). O login funciona, mas lançar pedido não: o aviso de
+    // banco desatualizado aparece e a migração precisa rodar antes do deploy.
+    virada_do_dia: negocio?.virada_do_dia ?? 0,
+    usa_tela_cozinha: negocio?.usa_tela_cozinha ?? true,
+  };
+}

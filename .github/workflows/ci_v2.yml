@@ -102,19 +102,26 @@ jobs:
               echo "ready=true" >> "$GITHUB_ENV"
               ;;
             UNSTABLE)
-              # UNSTABLE = alguma verificação falhou ou ainda está rodando. Antes
-              # o merge saía mesmo assim; agora espera a Verificação terminar
-              # (jobs "verificar" e "telas") e só segue se as duas passarem.
-              echo "Aguardando a Verificação terminar..."
+              # UNSTABLE = alguma verificação falhou ou ainda está rodando. Espera
+              # a Verificação ("verificar" e "telas") e o "conferir" (Banco em
+              # dia), que só roda em PR que mexe no versaoDoBanco.js: se ele
+              # existir, também precisa terminar sem falha. Mais de uma execução
+              # da Verificação no mesmo commit não trava a espera (unique).
+              # Sem --paginate: com --jq, o gh aplicaria o jq em cada página.
+              echo "Aguardando as verificações terminarem..."
               for espera in $(seq 1 60); do
-                RESULTADO=$(gh api "repos/$GH_REPO/commits/$HEAD_SHA/check-runs" --paginate                   --jq '[.check_runs[] | select(.name == "verificar" or .name == "telas") | .status + ":" + (.conclusion // "")] | join(" ")')
-                echo "Verificação: ${RESULTADO:-ainda não começou}"
-                if [[ "$RESULTADO" == *":failure"* || "$RESULTADO" == *":cancelled"* || "$RESULTADO" == *":timed_out"* ]]; then
-                  echo "::error::A Verificação falhou. Corrija e aprove a PR de novo."
+                ESTADO=$(gh api "repos/$GH_REPO/commits/$HEAD_SHA/check-runs?per_page=100" --jq '
+                  [.check_runs[] | select(.name == "verificar" or .name == "telas" or .name == "conferir")] as $c
+                  | if any($c[]; .conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") then "falhou"
+                    elif all($c[]; .status == "completed")
+                         and ([$c[] | select(.name != "conferir" and .conclusion == "success") | .name] | unique | length) == 2 then "verde"
+                    else "esperando" end')
+                echo "Verificações: $ESTADO"
+                if [[ "$ESTADO" == "falhou" ]]; then
+                  echo "::error::Uma verificação falhou (Verificação ou Banco em dia). Corrija e aprove a PR de novo."
                   exit 1
                 fi
-                if [[ "$RESULTADO" == "completed:success completed:success" ]]; then
-                  echo "Verificação verde."
+                if [[ "$ESTADO" == "verde" ]]; then
                   echo "ready=true" >> "$GITHUB_ENV"
                   break
                 fi

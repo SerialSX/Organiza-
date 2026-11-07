@@ -31,7 +31,7 @@ Se o banco já estava no ar, não rode o `schema.sql` de novo: rode só os arqui
 
 Em produção, sem as variáveis do Supabase o sistema mostra "fora do ar" em vez de cair no modo demonstração. Para publicar uma demonstração de propósito, defina `VITE_MODO_DEMO=true`.
 
-Contato da equipe (e-mail e grupo de ajuda no WhatsApp): `src/lib/contato.js`.
+E-mail da equipe: `src/lib/contato.js`. O link do grupo de ajuda no WhatsApp fica só na Vercel, na variável `VITE_GRUPO_WHATSAPP` (o repositório é público); sem ela, o botão do grupo não aparece.
 
 O workflow `Saúde do sistema` (`.github/workflows/saude.yml`) confere o site e o banco a cada 6 horas e evita que o Supabase Free pause sozinho. Para ligar, configure no GitHub (Settings → Secrets and variables → Actions) as variáveis `SITE_URL` e `SUPABASE_URL` e o secret `SUPABASE_ANON_KEY`.
 

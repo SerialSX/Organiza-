@@ -5,12 +5,16 @@ const DIA_MS = 24 * 3600000;
 // Cálculo feito no cliente a partir dos pedidos do período. Para o volume de
 // um pequeno negócio isso basta; se crescer, dá para mover para uma view SQL.
 // Cancelados não entram em faturamento, ticket, lucro nem ranking: são contados
-// à parte, por motivo.
+// à parte, por motivo. O que não foi recebido (foram embora sem pagar) também
+// fica fora e é contado à parte, com o valor perdido.
 export function calcularRelatorio(todosOsPedidos, produtos) {
   const custos = Object.fromEntries(produtos.map((p) => [p.id, p.custo]));
   const porProduto = new Map();
-  const pedidos = todosOsPedidos.filter((p) => p.status !== 'cancelado');
+  const pedidos = todosOsPedidos.filter((p) => p.status !== 'cancelado' && !p.nao_recebido_em);
   const cancelados = todosOsPedidos.filter((p) => p.status === 'cancelado');
+  const naoRecebidos = todosOsPedidos.filter((p) => p.status !== 'cancelado' && p.nao_recebido_em);
+  const valorNaoRecebido =
+    Math.round(naoRecebidos.reduce((s, p) => s + p.itens.reduce((t, i) => t + i.quantidade * (i.preco_unitario ?? 0), 0), 0) * 100) / 100;
   const canceladosPorMotivo = {};
   for (const p of cancelados) {
     const motivo = p.motivo_cancelamento ?? 'outro';
@@ -56,6 +60,8 @@ export function calcularRelatorio(todosOsPedidos, produtos) {
     ranking,
     totalCancelados: cancelados.length,
     canceladosPorMotivo,
+    totalNaoRecebidos: naoRecebidos.length,
+    valorNaoRecebido,
   };
 }
 

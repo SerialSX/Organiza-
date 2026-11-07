@@ -162,13 +162,9 @@ test('ajuda responde o que os negócios perguntaram', async ({ page }) => {
   await expect(page.getByText(/fica guardado no aparelho/)).toBeVisible();
 });
 
-test('dono escolhe até que horas vai o dia de trabalho', async ({ page }) => {
+// O dia vira sempre às 5h: para fechar antes, "Encerrar o dia" no Caixa.
+test('a hora em que o dia de trabalho termina não é mais escolhida', async ({ page }) => {
   await page.goto('/minha-conta');
-  const virada = page.getByLabel('O dia de trabalho termina às');
-  await expect(virada).toHaveValue('5');
-  await virada.selectOption('3');
-  await page.getByRole('button', { name: 'Salvar' }).last().click();
-  await expect(page.getByText('Salvo.')).toBeVisible();
-  await page.reload();
-  await expect(page.getByLabel('O dia de trabalho termina às')).toHaveValue('3');
+  await expect(page.getByRole('heading', { name: 'Como você atende' })).toBeVisible();
+  await expect(page.getByLabel('O dia de trabalho termina às')).toHaveCount(0);
 });

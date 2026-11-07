@@ -11,7 +11,7 @@ export function totalDoPedido(pedido) {
 export function contasAbertas(pedidos) {
   const contas = new Map();
   for (const p of pedidos) {
-    if (p.status === 'cancelado' || p.pago_em || !p.mesa) continue;
+    if (p.status === 'cancelado' || p.pago_em || p.nao_recebido_em || !p.mesa) continue;
     const conta = contas.get(p.mesa) ?? { mesa: p.mesa, identificacao: p.nome_mesa || `Mesa ${p.mesa}`, pedidos: [], total: 0 };
     conta.pedidos.push(p);
     conta.total += totalDoPedido(p);
@@ -20,8 +20,9 @@ export function contasAbertas(pedidos) {
   return [...contas.values()].sort((a, b) => a.mesa - b.mesa);
 }
 
-// Fechamento: por forma de pagamento, a receber e o que foi cancelado
-// depois de pago (dinheiro a devolver).
+// Fechamento: por forma de pagamento, a receber, o que não foi recebido
+// (foram embora sem pagar) e o que foi cancelado depois de pago (dinheiro a
+// devolver, até alguém tocar em "Devolvi").
 // contas: contas de mesa fechadas no dia ({ consumo, servico, jeito,
 // pagamentos: [{ forma, valor }] }). O pedido pago numa conta não entra
 // sozinho: o que entrou está nas partes da conta.
@@ -35,14 +36,25 @@ export function fecharCaixa(pedidos, contas = []) {
   const pendentes = [];
   const recebidos = [];
   let devolver = 0;
+  const aDevolver = [];
+  let naoRecebido = 0;
+  const naoRecebidos = [];
 
   for (const p of pedidos) {
     const total = totalDoPedido(p);
     if (p.status === 'cancelado') {
-      if (p.pago_em && !p.conta_id) devolver += total;
+      if (p.pago_em && !p.conta_id && p.devolucao !== 'devolvido') {
+        devolver += total;
+        aDevolver.push(p);
+      }
       continue;
     }
     if (p.conta_id) continue;
+    if (p.nao_recebido_em) {
+      naoRecebido += total;
+      naoRecebidos.push(p);
+      continue;
+    }
     if (p.pago_em && p.forma_pagamento in porForma) {
       porForma[p.forma_pagamento] += total;
       quantidadePorForma[p.forma_pagamento] += 1;
@@ -86,6 +98,9 @@ export function fecharCaixa(pedidos, contas = []) {
     contasSeparadas,
     servico,
     devolver,
+    aDevolver,
+    naoRecebido,
+    naoRecebidos,
     vendido: Math.round((recebido + aReceber - servico) * 100) / 100,
   };
 }

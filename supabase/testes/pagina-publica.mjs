@@ -1,6 +1,7 @@
 // Testa a página pública (QR) contra supabase/schema.sql num Postgres local,
 // como visitante sem conta (role anon) e como dono (authenticated).
 import { PGlite } from '@electric-sql/pglite';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import { readFileSync } from 'node:fs';
 
 // Uso: npm run test:banco (ou node pagina-publica.mjs caminho/do/schema.sql)
@@ -10,7 +11,8 @@ process.on('unhandledRejection', (e) => {
 });
 
 const schema = readFileSync(process.argv[2] ?? new URL('../schema.sql', import.meta.url), 'utf8').replace(/create extension if not exists pgcrypto;/, '');
-const db = new PGlite();
+// No Supabase o pgcrypto fica no schema extensions (senha de auth.users).
+const db = new PGlite({ extensions: { pgcrypto } });
 let falhas = 0;
 
 async function ok(nome, fn) {
@@ -43,7 +45,9 @@ await db.exec(`
   create role anon; create role authenticated;
   create schema auth;
   grant usage on schema auth to anon, authenticated;
-  create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb);
+  create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb, encrypted_password text);
+  create schema extensions;
+  create extension pgcrypto schema extensions;
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant execute on function auth.uid() to anon, authenticated;

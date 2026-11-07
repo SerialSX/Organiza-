@@ -72,7 +72,7 @@ function CartaoPedidoDeHoje({ pedido, editandoEste, semTelaCozinha, onEditar, on
             Editar
           </Botao>
         )}
-        <CancelarPedido pedidoId={pedido.id} onErro={onErro} />
+        <CancelarPedido pedidoId={pedido.id} pago={Boolean(pedido.pago_em) && !pedido.conta_id} onErro={onErro} />
       </div>
     </li>
   );

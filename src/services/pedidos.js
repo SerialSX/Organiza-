@@ -3,11 +3,22 @@ import { CANCELADO_VISIVEL_MINUTOS, MOTIVOS_CANCELAMENTO, STATUS_ABERTOS, STATUS
 import { hojeNoNegocio } from '../lib/formatadores';
 import { lerDemo, salvarDemo, assinarDemo, novoId } from './demoStore';
 import { limparNomeMesa } from '../lib/mesas';
+import { emAberto } from '../lib/fimDoDia';
 
 const CAMPOS_PEDIDO_BASE =
   'id, numero, mesa, dia, status, criado_em, alterado_em, pronto_em, cancelado_em, motivo_cancelamento, identificacao, forma_pagamento, pago_em';
 // Migração 2026-11-11 (mesas): nome da mesa extra e a conta em que foi pago.
 const CAMPOS_DAS_MESAS = ', nome_mesa, conta_id';
+// Migração 2026-11-12 (fim do dia): "foi embora sem pagar" e a devolução do
+// dinheiro de pedido pago e cancelado.
+const CAMPOS_DO_FIM_DO_DIA = ', nao_recebido_em, devolucao, devolvido_em';
+// Do banco mais novo para o mais antigo: cada nível tem as colunas de uma
+// migração a menos.
+const NIVEIS_DE_CAMPOS = [
+  CAMPOS_PEDIDO_BASE + CAMPOS_DAS_MESAS + CAMPOS_DO_FIM_DO_DIA,
+  CAMPOS_PEDIDO_BASE + CAMPOS_DAS_MESAS,
+  CAMPOS_PEDIDO_BASE,
+];
 
 // Pedidos abertos aparecem na Cozinha: só o que é preciso para preparar,
 // sem preço nem custo. Os ingredientes do produto são as opções do "Faltou".
@@ -19,10 +30,10 @@ const ITENS_COM_VALORES = `itens_pedido ( ${CAMPOS_ITEM}, preco_unitario, custo_
 // produto (só a Cozinha e a edição usam), que pesa em todo pedido do dia.
 const ITENS_DO_PERIODO = `itens_pedido ( ${CAMPOS_ITEM}, preco_unitario, custo_unitario, produtos ( nome, vai_para_cozinha ) )`;
 
-// Banco ainda sem a migração das mesas: pede só as colunas antigas, para a
-// fila, a cozinha e o caixa continuarem funcionando (o aviso de banco
-// desatualizado aparece para a equipe).
-let bancoTemMesas = true;
+// Banco ainda sem uma migração: pede só as colunas que ele tem, para a fila,
+// a cozinha e o caixa continuarem funcionando (o aviso de banco desatualizado
+// aparece para a equipe).
+let nivelDoBanco = 0;
 
 // 42703 / PGRST204: coluna que não existe, ou seja, banco ainda sem a migração.
 export function colunaInexistente(error) {
@@ -30,12 +41,16 @@ export function colunaInexistente(error) {
 }
 
 async function consultarPedidos(montar, itens) {
-  if (bancoTemMesas) {
-    const resposta = await montar(`${CAMPOS_PEDIDO_BASE}${CAMPOS_DAS_MESAS}, ${itens}`);
-    if (!colunaInexistente(resposta.error)) return resposta;
-    bancoTemMesas = false;
+  for (;;) {
+    const resposta = await montar(`${NIVEIS_DE_CAMPOS[nivelDoBanco]}, ${itens}`);
+    if (!colunaInexistente(resposta.error) || nivelDoBanco === NIVEIS_DE_CAMPOS.length - 1) return resposta;
+    nivelDoBanco++;
   }
-  return montar(`${CAMPOS_PEDIDO_BASE}, ${itens}`);
+}
+
+// Função do banco que não existe com esses parâmetros: banco ainda sem a migração.
+export function funcaoInexistente(error) {
+  return error?.code === 'PGRST202' || error?.code === '42883';
 }
 
 // O Supabase devolve no máximo 1000 linhas por consulta.
@@ -50,6 +65,10 @@ export const FORMAS_DE_PAGAMENTO = [
   { id: 'debito', rotulo: 'Débito' },
 ];
 
+const FORMAS = new Set(FORMAS_DE_PAGAMENTO.map((f) => f.id));
+// Mesmo texto do banco: pagamento novo em "cartão" não é mais aceito.
+const ERRO_CARTAO = 'Cartão agora é anotado como crédito ou débito. Lance o pedido de novo escolhendo um dos dois.';
+
 // 'cartao' só existe em pedidos pagos antes de separar crédito e débito.
 export const ROTULO_FORMA = { ...Object.fromEntries(FORMAS_DE_PAGAMENTO.map((f) => [f.id, f.rotulo])), cartao: 'Cartão' };
 
@@ -60,6 +79,7 @@ const ERRO_PAGO_NA_CONTA_VALOR =
   'Este pedido já foi pago na conta da mesa. Para mudar o valor, desfaça o recebimento da conta no Caixa.';
 const ERRO_PAGO_NA_CONTA_CANCELAR =
   'Este pedido já foi pago na conta da mesa. Para cancelar, desfaça o recebimento da conta no Caixa.';
+const ERRO_NAO_RECEBIDO_CANCELAR = 'Este pedido está como não recebido. Para cancelar, desfaça o "não recebido" no Caixa.';
 
 export function limparIdentificacao(texto) {
   const limpo = (texto ?? '').trim().replace(/\s+/g, ' ');
@@ -145,6 +165,9 @@ function normalizarPedido(p, itens) {
     pago_em: p.pago_em ?? null,
     nome_mesa: p.nome_mesa ?? null,
     conta_id: p.conta_id ?? null,
+    nao_recebido_em: p.nao_recebido_em ?? null,
+    devolucao: p.devolucao ?? null,
+    devolvido_em: p.devolvido_em ?? null,
     itens,
   };
 }
@@ -268,11 +291,10 @@ export async function criarPedido({
   if (!itens.length) throw new Error('Adicione pelo menos um produto ao pedido.');
   const mesaDoPedido = conferirMesa(mesa);
   const nomeDaMesaExtra = mesaDoPedido ? limparNomeMesa(nomeMesa) : null;
-  // Valida pelo ROTULO_FORMA (inclui 'cartao'): pedido guardado sem internet
-  // na versão anterior do site ainda pode chegar com "Cartão".
-  if (formaPagamento && !(formaPagamento in ROTULO_FORMA)) {
-    throw new Error('Forma de pagamento inválida.');
-  }
+  // Pedido guardado sem internet numa versão antiga do site pode chegar com
+  // "Cartão": a fila de envio mostra o erro para lançar de novo.
+  if (formaPagamento === 'cartao') throw new Error(ERRO_CARTAO);
+  if (formaPagamento && !FORMAS.has(formaPagamento)) throw new Error('Forma de pagamento inválida.');
   const nomeOuMesa = limparIdentificacao(identificacao);
 
   if (!isSupabaseConfigured) {
@@ -396,25 +418,47 @@ export async function editarPedido(id, itens, versao, mesa = null, nomeMesa = nu
   if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível salvar as alterações.'));
 }
 
-export async function cancelarPedido(id, motivo) {
+export const DEVOLUCOES = ['devolvido', 'a_devolver'];
+
+// devolucao: pedido já pago, o dinheiro voltou para o cliente ('devolvido') ou
+// ainda vai voltar ('a_devolver', fica no Caixa até tocar em "Devolvi").
+// Mesmas regras de cancelar_pedido no banco.
+export async function cancelarPedido(id, motivo, devolucao = null) {
   if (!MOTIVOS_CANCELAMENTO.some((m) => m.id === motivo)) throw new Error('Escolha o motivo do cancelamento.');
+  if (devolucao && !DEVOLUCOES.includes(devolucao)) throw new Error('Diga se você já devolveu o dinheiro ao cliente.');
 
   if (!isSupabaseConfigured) {
     const db = lerDemo();
     const pedido = pedidoDemo(db, id);
     if (pedido.conta_id) falhaDemo(ERRO_PAGO_NA_CONTA_CANCELAR);
-    if (['entregue', 'cancelado'].includes(pedido.status)) falhaDemo('Este pedido já foi encerrado.');
+    if (pedido.nao_recebido_em) falhaDemo(ERRO_NAO_RECEBIDO_CANCELAR);
+    if (pedido.status === 'cancelado' || (pedido.status === 'entregue' && pedido.pago_em)) falhaDemo('Este pedido já foi encerrado.');
+    const agora = new Date().toISOString();
+    const comoFica = pedido.pago_em ? (devolucao ?? 'a_devolver') : null;
     salvarDemo(
       atualizarPedidoDemo(db, id, {
         status: 'cancelado',
-        cancelado_em: new Date().toISOString(),
+        cancelado_em: agora,
         motivo_cancelamento: motivo,
+        devolucao: comoFica,
+        devolvido_em: comoFica === 'devolvido' ? agora : null,
       }),
     );
     return;
   }
 
-  const { error } = await supabase.rpc('cancelar_pedido', { p_pedido_id: id, p_motivo: motivo });
+  const { error } = await supabase.rpc('cancelar_pedido', {
+    p_pedido_id: id,
+    p_motivo: motivo,
+    ...(devolucao ? { p_devolucao: devolucao } : {}),
+  });
+  // Banco ainda sem a pergunta da devolução: cancela como antes (o Caixa
+  // mostra o valor a devolver).
+  if (error && devolucao && funcaoInexistente(error)) {
+    const { error: deNovo } = await supabase.rpc('cancelar_pedido', { p_pedido_id: id, p_motivo: motivo });
+    if (deNovo) throw new Error(mensagemDoBanco(deNovo, 'Não foi possível cancelar o pedido.'));
+    return;
+  }
   if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível cancelar o pedido.'));
 }
 
@@ -501,14 +545,15 @@ export async function marcarIngredienteFaltou(itemId, ingredienteId, faltou) {
 // Recebe um ou mais pedidos de uma vez (a conta da mesa). forma null desfaz.
 export async function registrarPagamento(ids, forma) {
   if (!ids.length) return 0;
-  if (forma && !(forma in ROTULO_FORMA)) throw new Error('Forma de pagamento inválida.');
+  if (forma === 'cartao') throw new Error('Cartão agora é anotado como crédito ou débito. Escolha um dos dois.');
+  if (forma && !FORMAS.has(forma)) throw new Error('Forma de pagamento inválida.');
 
   if (!isSupabaseConfigured) {
     const db = lerDemo();
     const agora = new Date().toISOString();
     let quantos = 0;
     const pedidos = db.pedidos.map((p) => {
-      if (!ids.includes(p.id) || p.status === 'cancelado' || p.conta_id || (forma && p.pago_em)) return p;
+      if (!ids.includes(p.id) || p.status === 'cancelado' || p.conta_id || p.nao_recebido_em || (forma && p.pago_em)) return p;
       quantos++;
       return { ...p, forma_pagamento: forma, pago_em: forma ? agora : null, atualizado_em: agora };
     });
@@ -547,6 +592,41 @@ export async function listarPedidosAbertos() {
     ITENS_ABERTOS,
   );
   if (error) throw new Error('Não foi possível carregar os pedidos.');
+  return data.map(normalizarSupabase);
+}
+
+// Pendências do dia anterior: pedidos de dias antes de hoje (até 60 dias) que
+// ainda não foram entregues ou recebidos. Nada é cancelado sozinho na virada
+// do dia: o dono resolve cada um.
+const DIAS_DE_PENDENCIAS = 60;
+
+export async function listarPendenciasAnteriores() {
+  const hoje = hojeNoNegocio();
+  if (!isSupabaseConfigured) {
+    return montarDemo(lerDemo(), (p) => p.dia && p.dia < hoje && emAberto(p), { comValores: true });
+  }
+
+  const inicio = new Date(`${hoje}T12:00:00Z`);
+  inicio.setUTCDate(inicio.getUTCDate() - DIAS_DE_PENDENCIAS);
+  const { data, error } = await consultarPedidos(
+    (campos) =>
+      supabase
+        .from('pedidos')
+        .select(campos)
+        .lt('dia', hoje)
+        .gte('dia', inicio.toISOString().slice(0, 10))
+        .neq('status', 'cancelado')
+        // Banco sem a migração do fim do dia não tem o "não recebido".
+        .or(
+          campos.includes('nao_recebido_em')
+            ? `status.in.(${STATUS_ABERTOS.join(',')}),and(pago_em.is.null,nao_recebido_em.is.null)`
+            : `status.in.(${STATUS_ABERTOS.join(',')}),pago_em.is.null`,
+        )
+        .order('criado_em', { ascending: true })
+        .limit(500),
+    ITENS_DO_PERIODO,
+  );
+  if (error) throw new Error('Não foi possível carregar as pendências.');
   return data.map(normalizarSupabase);
 }
 

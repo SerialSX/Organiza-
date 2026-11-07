@@ -13,7 +13,7 @@ const CONFIRMACAO = 'EXCLUIR';
 
 export default function ExcluirConta() {
   const navigate = useNavigate();
-  const { excluirConta, confirmarSenhaAtual, perfil, modoDemo } = useAuth();
+  const { excluirConta, perfil, modoDemo } = useAuth();
   const [texto, setTexto] = useState('');
   const [senha, setSenha] = useState('');
   const [excluindo, setExcluindo] = useState(false);
@@ -27,15 +27,9 @@ export default function ExcluirConta() {
     if (!confirmado || excluindo) return;
     setErro('');
     setExcluindo(true);
-    // Todos os aparelhos do negócio usam a mesma conta: a senha confirma que é
-    // o dono, e não alguém com o celular do balcão na mão.
-    const conferida = await confirmarSenhaAtual(senha);
-    if (conferida.erro) {
-      setErro(conferida.erro);
-      setExcluindo(false);
-      return;
-    }
-    const { erro: falha } = await excluirConta();
+    // Todos os aparelhos do negócio usam a mesma conta: a senha (conferida no
+    // banco) confirma que é o dono, e não alguém com o celular do balcão na mão.
+    const { erro: falha } = await excluirConta(senha);
     if (falha) {
       setErro(falha);
       setExcluindo(false);

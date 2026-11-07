@@ -29,9 +29,20 @@ export function emReais(centavos) {
   return centavos / 100;
 }
 
+// Depois de abrir mesa extra em NOITES_PARA_SUGERIR noites diferentes, o mapa
+// sugere ter mais mesas: a quantidade de hoje mais as extras da noite mais cheia.
+export const NOITES_PARA_SUGERIR = 3;
+
+// noites: [{ dia, extras }]. Devolve { noites, quantidade } ou null.
+export function sugestaoDeMesas(noites, quantidade) {
+  if (!Number.isInteger(quantidade) || noites.length < NOITES_PARA_SUGERIR) return null;
+  const nova = Math.min(MAXIMO_DE_MESAS, quantidade + Math.max(...noites.map((n) => n.extras)));
+  return nova > quantidade ? { noites: noites.length, quantidade: nova } : null;
+}
+
 // Pedido que ainda soma na conta da mesa: na mesa, não cancelado, não pago.
 export function abertoNaMesa(pedido) {
-  return Boolean(pedido.mesa) && pedido.status !== 'cancelado' && !pedido.pago_em;
+  return Boolean(pedido.mesa) && pedido.status !== 'cancelado' && !pedido.pago_em && !pedido.nao_recebido_em;
 }
 
 // Mesas de 1 até quantidade, mais as mesas extras (ou fora do mapa) que

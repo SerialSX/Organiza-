@@ -11,9 +11,11 @@ import { usePedidosDoDia } from '../hooks/usePedidosDoDia';
 import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
 import { registrarPagamento, FORMAS_DE_PAGAMENTO, ROTULO_FORMA } from '../services/pedidos';
 import { desfazerContaMesa } from '../services/mesas';
+import { desfazerNaoRecebido, marcarDevolvido } from '../services/fimDoDia';
+import EncerrarDia from '../components/fimDoDia/EncerrarDia';
 import { nomeDaMesa } from '../lib/mesas';
 import { fecharCaixa, totalDoPedido } from '../lib/caixa';
-import { formatarHora, formatarMoeda, hojeNoNegocio, numeroDoPedido } from '../lib/formatadores';
+import { destinoDoPedido, formatarHora, formatarMoeda, hojeNoNegocio, numeroDoPedido } from '../lib/formatadores';
 
 const ACCENT = 'var(--color-accent-relatorios)';
 const DIAS = [
@@ -137,12 +139,86 @@ function ContaRecebida({ conta, onErro }) {
   );
 }
 
+// Pedido pago e cancelado: o dinheiro ainda vai voltar para o cliente.
+function ADevolver({ pedido, onErro }) {
+  const [salvando, setSalvando] = useState(false);
+  const forma = ROTULO_FORMA[pedido.forma_pagamento] ?? pedido.forma_pagamento;
+
+  async function devolvi() {
+    setSalvando(true);
+    onErro('');
+    try {
+      await marcarDevolvido(pedido.id);
+    } catch (e) {
+      onErro(e.message);
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+      <span className="font-bold tabular-nums text-[var(--text-primary)]">{numeroDoPedido(pedido)}</span>
+      {pedido.identificacao && <span className="font-medium text-[var(--text-primary)] break-words">{pedido.identificacao}</span>}
+      <span className="text-sm tabular-nums text-[var(--text-secondary)]">
+        pago{forma ? ` em ${forma}` : ''}, cancelado às {formatarHora(pedido.cancelado_em)}
+      </span>
+      <span className="ml-auto font-semibold tabular-nums text-[var(--text-primary)]">{formatarMoeda(totalDoPedido(pedido))}</span>
+      <Botao variante="secundaria" onClick={devolvi} disabled={salvando} aria-label={`Devolvi o dinheiro do pedido ${numeroDoPedido(pedido)}`}>
+        Devolvi
+      </Botao>
+    </li>
+  );
+}
+
+// Foram embora sem pagar: a mesa inteira (ou o pedido do balcão) junta.
+function agruparNaoRecebidos(pedidos) {
+  const grupos = new Map();
+  for (const p of pedidos) {
+    const chave = p.mesa ? `mesa:${p.mesa}` : p.id;
+    const grupo = grupos.get(chave) ?? { chave, pedidos: [], total: 0 };
+    grupo.pedidos.push(p);
+    grupo.total += totalDoPedido(p);
+    grupos.set(chave, grupo);
+  }
+  return [...grupos.values()];
+}
+
+function NaoRecebido({ grupo, onErro }) {
+  const [salvando, setSalvando] = useState(false);
+  const primeiro = grupo.pedidos[0];
+  const nome = primeiro.mesa ? destinoDoPedido(primeiro) : `Pedido ${numeroDoPedido(primeiro)}`;
+
+  async function desfazer() {
+    setSalvando(true);
+    onErro('');
+    try {
+      await desfazerNaoRecebido(grupo.pedidos.map((p) => p.id));
+    } catch (e) {
+      onErro(e.message);
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+      <span className="font-bold text-[var(--text-primary)] break-words">{nome}</span>
+      <span className="text-sm tabular-nums text-[var(--text-secondary)]">
+        {grupo.pedidos.length === 1 ? '1 pedido' : `${grupo.pedidos.length} pedidos`}, marcado às {formatarHora(primeiro.nao_recebido_em)}
+      </span>
+      <span className="ml-auto font-semibold tabular-nums text-[var(--text-primary)]">{formatarMoeda(grupo.total)}</span>
+      <Botao variante="texto" onClick={desfazer} disabled={salvando} aria-label={`Desfazer: ${nome} não foi embora sem pagar`}>
+        Desfazer
+      </Botao>
+    </li>
+  );
+}
+
 // Fechamento do caixa: quanto entrou em Pix, dinheiro, crédito e débito, o que ainda
-// falta receber e o que foi cancelado depois de pago (a devolver).
+// falta receber, o que não foi recebido e o que foi cancelado depois de pago (a devolver).
 export default function Caixa() {
   const [aba, setAba] = useAbaNoEndereco('dia', DIAS, 'hoje');
   const dia = diaEscolhido(aba);
-  const { pedidos, contas, carregando, erro: erroCarga } = usePedidosDoDia(dia);
+  const { pedidos, contas, encerramento, carregando, erro: erroCarga, recarregar } = usePedidosDoDia(dia);
   const [erro, setErro] = useState('');
   const caixa = fecharCaixa(pedidos, contas);
   const recebimentos = caixa.recebidos.length + caixa.contas.length;
@@ -159,6 +235,12 @@ export default function Caixa() {
       </div>
 
       {(erro || erroCarga) && <Aviso className="mb-4">{erro || erroCarga}</Aviso>}
+
+      {!carregando && (aba !== 'ontem' || pedidos.length > 0) && (
+        <div className="mb-6">
+          <EncerrarDia key={dia} dia={dia} pedidos={pedidos} encerramento={encerramento} ehHoje={aba !== 'ontem'} onEncerrado={recarregar} />
+        </div>
+      )}
 
       {carregando ? (
         <Carregando texto="Somando o caixa…" />
@@ -213,11 +295,6 @@ export default function Caixa() {
                 </ul>
               </details>
             )}
-            {caixa.devolver > 0 && (
-              <p className="mt-4 text-sm font-semibold text-[var(--texto-cozinha)]">
-                Cancelados depois de pagos: {formatarMoeda(caixa.devolver)} a devolver ao cliente (fora do total).
-              </p>
-            )}
           </section>
 
           <section aria-labelledby="titulo-a-receber">
@@ -242,6 +319,46 @@ export default function Caixa() {
               </>
             )}
           </section>
+
+          {caixa.aDevolver.length > 0 && (
+            <section aria-labelledby="titulo-a-devolver">
+              <div className="flex flex-wrap items-baseline gap-3 mb-1">
+                <h2 id="titulo-a-devolver" className="text-lg font-semibold text-[var(--text-primary)]">
+                  A devolver
+                </h2>
+                <span className="text-lg font-bold tabular-nums text-[var(--texto-cozinha)]">{formatarMoeda(caixa.devolver)}</span>
+              </div>
+              <p className="text-sm text-[var(--text-secondary)] mb-2">
+                Pedidos pagos e depois cancelados. O dinheiro ainda está com você e fica fora do total. Toque em “Devolvi” quando
+                entregar ao cliente.
+              </p>
+              <ul className="divide-y divide-[var(--border-subtle)] rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] px-4">
+                {caixa.aDevolver.map((p) => (
+                  <ADevolver key={p.id} pedido={p} onErro={setErro} />
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {caixa.naoRecebidos.length > 0 && (
+            <section aria-labelledby="titulo-nao-recebido">
+              <div className="flex flex-wrap items-baseline gap-3 mb-1">
+                <h2 id="titulo-nao-recebido" className="text-lg font-semibold text-[var(--text-primary)]">
+                  Não recebido
+                </h2>
+                <span className="text-lg font-bold tabular-nums text-[var(--texto-cozinha)]">{formatarMoeda(caixa.naoRecebido)}</span>
+              </div>
+              <p className="text-sm text-[var(--text-secondary)] mb-2">
+                Foram embora sem pagar. Fica fora do total vendido e aparece nos relatórios. O cliente voltou para pagar? Toque em
+                “Desfazer” e receba a conta.
+              </p>
+              <ul className="divide-y divide-[var(--border-subtle)] rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] px-4">
+                {agruparNaoRecebidos(caixa.naoRecebidos).map((g) => (
+                  <NaoRecebido key={g.chave} grupo={g} onErro={setErro} />
+                ))}
+              </ul>
+            </section>
+          )}
 
           <p className="text-sm tabular-nums text-[var(--text-secondary)]">
             Total vendido no dia (recebido + a receber{caixa.servico > 0 ? ', sem a taxa de serviço' : ''}): {formatarMoeda(caixa.vendido)}

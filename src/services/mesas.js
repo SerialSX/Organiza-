@@ -40,7 +40,7 @@ export async function passarMesa(ids, mesa, nomeMesa = null) {
     const agora = new Date().toISOString();
     let quantos = 0;
     const pedidos = db.pedidos.map((p) => {
-      if (!ids.includes(p.id) || !p.mesa || p.status === 'cancelado' || p.pago_em) return p;
+      if (!ids.includes(p.id) || !p.mesa || p.status === 'cancelado' || p.pago_em || p.nao_recebido_em) return p;
       quantos++;
       return { ...p, mesa, nome_mesa: nome, alterado_em: agora, atualizado_em: agora };
     });
@@ -69,7 +69,7 @@ export async function fecharContaMesa(ids, { jeito, cobrarServico, pagamentos = 
     const db = lerDemo();
     const pedidos = db.pedidos.filter((p) => ids.includes(p.id));
     if (pedidos.length !== new Set(ids).size) falha('Um dos pedidos não foi encontrado. Atualize a tela.');
-    if (pedidos.some((p) => !p.mesa || p.status === 'cancelado' || p.pago_em)) {
+    if (pedidos.some((p) => !p.mesa || p.status === 'cancelado' || p.pago_em || p.nao_recebido_em)) {
       falha('Esta conta mudou: algum pedido já foi recebido ou cancelado. Atualize a tela.');
     }
     if (new Set(pedidos.map((p) => p.mesa)).size !== 1) falha('Os pedidos precisam ser da mesma mesa.');
@@ -105,7 +105,18 @@ export async function fecharContaMesa(ids, { jeito, cobrarServico, pagamentos = 
         ...partes.filter((p) => p.valor > 0).map((p) => ({ id: novoId(), conta_id: conta.id, ...p })),
       ],
       pedidos: db.pedidos.map((p) =>
-        ids.includes(p.id) ? { ...p, conta_id: conta.id, pago_em: agora, forma_pagamento: null, atualizado_em: agora } : p,
+        ids.includes(p.id)
+          ? {
+              ...p,
+              conta_id: conta.id,
+              pago_em: agora,
+              forma_pagamento: null,
+              // Mesma regra do banco: a mesa pagou e foi embora, o que estava
+              // pronto já foi levado.
+              ...(p.status === 'pronto' ? { status: 'entregue', entregue_em: agora } : {}),
+              atualizado_em: agora,
+            }
+          : p,
       ),
     });
     return conta.id;
@@ -175,4 +186,37 @@ export async function listarContasDoDia(dia) {
   if (tabelaInexistente(error)) return [];
   if (error) throw new Error('Não foi possível carregar as contas das mesas.');
   return data.map((c) => normalizarConta(c, c.pagamentos_conta ?? []));
+}
+
+// Noites (antes de hoje, nos últimos `dias`) em que abriram mesa extra, e
+// quantas extras cada uma teve: [{ dia, extras }]. Serve para sugerir mais
+// mesas no mapa.
+export async function noitesComMesaExtra(dias = 14) {
+  const hoje = hojeNoNegocio();
+  const inicio = new Date(`${hoje}T12:00:00Z`);
+  inicio.setUTCDate(inicio.getUTCDate() - dias);
+  const desde = inicio.toISOString().slice(0, 10);
+
+  let linhas;
+  if (!isSupabaseConfigured) {
+    linhas = lerDemo().pedidos.filter((p) => p.nome_mesa && p.dia && p.dia >= desde && p.dia < hoje);
+  } else {
+    const { data, error } = await supabase
+      .from('pedidos')
+      .select('dia, mesa')
+      .not('nome_mesa', 'is', null)
+      .gte('dia', desde)
+      .lt('dia', hoje)
+      .limit(2000);
+    if (tabelaInexistente(error)) return [];
+    if (error) throw new Error('Não foi possível ver as mesas extras.');
+    linhas = data;
+  }
+  const porDia = new Map();
+  for (const l of linhas) {
+    const mesas = porDia.get(l.dia) ?? new Set();
+    mesas.add(l.mesa);
+    porDia.set(l.dia, mesas);
+  }
+  return [...porDia.entries()].map(([dia, mesas]) => ({ dia, extras: mesas.size })).sort((a, b) => a.dia.localeCompare(b.dia));
 }

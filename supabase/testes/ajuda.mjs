@@ -2,6 +2,7 @@
 // Supabase "de mentira" (schema auth, papéis anon/authenticated), o
 // schema.sql aplicado e dois donos de negócio cadastrados.
 import { PGlite } from '@electric-sql/pglite';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import { readFileSync } from 'node:fs';
 
 export const U1 = '11111111-1111-4111-8111-111111111111';
@@ -17,12 +18,15 @@ export async function prepararBanco(caminhoDoSchema) {
     /create extension if not exists pgcrypto;/,
     '',
   );
-  const db = new PGlite();
+  // No Supabase o pgcrypto fica no schema extensions (senha de auth.users).
+  const db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(`
     create role anon; create role authenticated;
     create schema auth;
     grant usage on schema auth to anon, authenticated;
-    create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb);
+    create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb, encrypted_password text);
+    create schema extensions;
+    create extension pgcrypto schema extensions;
     create function auth.uid() returns uuid language sql stable as
       $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     grant execute on function auth.uid() to anon, authenticated;
@@ -34,6 +38,7 @@ export async function prepararBanco(caminhoDoSchema) {
   await db.exec(`
     insert into auth.users values ('${U1}', 'a@a.com', '{"nome":"Ana","nome_negocio":"Lanche da Ana"}');
     insert into auth.users values ('${U2}', 'b@b.com', '{"nome":"Bia","nome_negocio":"Pastel da Bia"}');
+    update auth.users set encrypted_password = extensions.crypt('senha-da-' || split_part(email, '@', 1), extensions.gen_salt('bf'));
   `);
 
   let falhas = 0;

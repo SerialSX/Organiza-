@@ -118,6 +118,9 @@ export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou,
   const atrasado = minutos >= LIMITE_ATRASO_MINUTOS;
   const alterado = Boolean(pedido.alterado_em);
   const borda = atrasado ? VERMELHO : alterado ? 'var(--color-brand-orange)' : 'var(--color-accent-pedidos)';
+  // Bebida e o que já sai pronto não são trabalho da cozinha: só um lembrete.
+  const paraPreparar = pedido.itens.filter((i) => i.vai_para_cozinha !== false);
+  const semPreparo = pedido.itens.filter((i) => i.vai_para_cozinha === false);
 
   async function marcarPronto() {
     setSalvando(true);
@@ -148,6 +151,9 @@ export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou,
         ) : (
           <span className="text-base font-bold text-[var(--text-secondary)]">Balcão</span>
         )}
+        {pedido.identificacao && (
+          <span className="text-xl font-bold text-[var(--text-primary)] break-words">{pedido.identificacao}</span>
+        )}
         {alterado && <Etiqueta cor="var(--color-brand-orange)">Alterado às {formatarHora(pedido.alterado_em)}</Etiqueta>}
         <span
           className="ml-auto inline-flex items-center gap-1.5 font-bold tabular-nums"
@@ -166,10 +172,15 @@ export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou,
       )}
 
       <ul className="flex flex-col gap-3">
-        {pedido.itens.map((item) => (
+        {paraPreparar.map((item) => (
           <ItemDaFila key={item.id} item={item} onFaltou={onFaltou} onFaltouIngrediente={onFaltouIngrediente} />
         ))}
       </ul>
+      {semPreparo.length > 0 && (
+        <p className="text-sm text-[var(--text-secondary)] break-words">
+          Sai junto, sem preparo: {semPreparo.map((i) => `${i.quantidade}× ${i.nome}`).join(', ')}
+        </p>
+      )}
 
       <Botao cor={VERDE} tamanho="grande" larguraTotal className="mt-auto text-lg font-bold" onClick={marcarPronto} disabled={salvando}>
         <CheckIcon className="w-6 h-6" />

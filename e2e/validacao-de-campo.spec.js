@@ -1,0 +1,162 @@
+import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import { enviar, lancarPedido, montarEspetaria } from './ajuda';
+
+// O que os três negócios da validação de campo pediram (Batata Delas,
+// Império do Sabor e Espetaria VIP), do jeito que eles usariam.
+
+async function semProblemasDeAcessibilidade(page) {
+  const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+  expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(', ')}`)).toEqual([]);
+}
+
+async function adicionar(page, nome) {
+  await page.getByRole('button', { name: new RegExp(`^Adicionar ${nome},`) }).click();
+}
+
+test('bebida sai pronta e não ocupa a fila da cozinha (espetaria)', async ({ page }) => {
+  await montarEspetaria(page);
+  await expect(page.getByRole('listitem').filter({ hasText: 'Cerveja lata' }).getByText('Sem cozinha')).toBeVisible();
+
+  await page.goto('/pedidos');
+  await adicionar(page, 'Refrigerante lata');
+  await enviar(page);
+  await expect(page.getByRole('status').filter({ hasText: 'Pronto para entregar.' })).toBeVisible();
+
+  await adicionar(page, 'Espeto de carne');
+  await adicionar(page, 'Cerveja lata');
+  await enviar(page);
+  const aviso = page.getByRole('status').filter({ hasText: 'Diga ao cliente a senha' });
+  const senha = (await aviso.locator('p').nth(1).innerText()).trim();
+
+  await page.goto('/cozinha');
+  const cartoes = page.getByRole('list', { name: 'Fila de pedidos' }).getByRole('listitem', { name: /^Pedido / });
+  await expect(cartoes).toHaveCount(1);
+  const cartao = page.getByRole('listitem', { name: `Pedido ${senha}` });
+  await expect(cartao).toContainText('Espeto de carne');
+  await expect(cartao).toContainText('Sai junto, sem preparo: 1× Cerveja lata');
+});
+
+test('a mesa pede aos poucos, soma tudo e fecha a conta de uma vez; o caixa bate (espetaria e hamburgueria)', async ({ page }) => {
+  await montarEspetaria(page);
+  await page.goto('/pedidos');
+
+  await adicionar(page, 'Espeto de carne');
+  await page.getByText('Consumo no salão').click();
+  await page.getByLabel('Número da mesa').fill('4');
+  await enviar(page);
+  await expect(page.getByRole('status').filter({ hasText: 'Mesa 4' })).toBeVisible();
+
+  // Segundo pedido da mesma mesa: continua em Mesa, só o número volta em branco.
+  await adicionar(page, 'Cerveja lata');
+  await expect(page.getByLabel('Número da mesa')).toHaveValue('');
+  await page.getByLabel('Número da mesa').fill('4');
+  await enviar(page);
+
+  const contas = page.getByRole('region', { name: 'Contas abertas' });
+  const mesa = contas.getByRole('listitem').filter({ hasText: 'Mesa 4' });
+  await expect(mesa).toContainText('R$ 16,00');
+  await expect(mesa).toContainText('2 pedidos');
+  await semProblemasDeAcessibilidade(page);
+
+  await mesa.getByRole('button', { name: 'Fechar a conta' }).click();
+  await mesa.getByRole('button', { name: 'Pix' }).click();
+  await expect(contas).toBeHidden();
+
+  // No balcão: pago na hora em dinheiro, e um que fica para depois.
+  await page.getByText('Retira pela senha').click();
+  await adicionar(page, 'Espeto de frango');
+  await page.getByRole('group', { name: 'Pagamento' }).getByRole('button', { name: 'Dinheiro' }).click();
+  await enviar(page);
+  await expect(page.getByRole('status').filter({ hasText: 'Diga ao cliente a senha' })).toBeVisible();
+  await adicionar(page, 'Espeto de linguiça');
+  await enviar(page);
+  await expect(page.getByRole('status').filter({ hasText: 'Diga ao cliente a senha' })).toBeVisible();
+
+  await page.goto('/caixa');
+  const recebido = page.getByRole('region', { name: 'Recebido' });
+  await expect(recebido).toContainText('R$ 24,00');
+  await expect(recebido.getByText('R$ 16,00')).toBeVisible();
+  await expect(recebido.getByText('R$ 8,00')).toBeVisible();
+  const aReceber = page.getByRole('region', { name: 'A receber' });
+  await expect(aReceber).toContainText('R$ 8,00');
+  await semProblemasDeAcessibilidade(page);
+
+  await aReceber.getByRole('button', { name: 'Cartão' }).click();
+  await expect(page.getByText('Tudo recebido. O caixa fechou certinho.')).toBeVisible();
+  await expect(recebido).toContainText('R$ 32,00');
+});
+
+test('cozinha do lado do balcão: o "Pronto" fica na tela de pedidos (pastelaria)', async ({ page }) => {
+  await page.goto('/produtos');
+  await page.getByRole('button', { name: 'Pastelaria' }).click();
+  await expect(page.getByText('Pastel de carne', { exact: true })).toBeVisible();
+
+  await page.goto('/minha-conta');
+  await page.getByText('Do lado do balcão, sem outra tela').click();
+  await page.getByRole('button', { name: 'Salvar' }).last().click();
+  await expect(page.getByText('Salvo.')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Principal' }).first().getByRole('link', { name: 'Cozinha' })).toHaveCount(0);
+
+  const senha = await lancarPedido(page, ['Pastel de carne']);
+  const preparando = page.getByRole('region', { name: 'Preparando' });
+  await preparando.getByRole('listitem').filter({ hasText: senha }).getByRole('button', { name: 'Pronto' }).click();
+  await expect(page.getByRole('region', { name: 'Prontos para entregar' }).getByText(senha)).toBeVisible();
+});
+
+test('a internet cai: o pedido fica guardado e sai sozinho quando ela volta (hamburgueria)', async ({ page, context }) => {
+  await montarEspetaria(page);
+  await page.goto('/pedidos');
+  // A tela já aberta segue funcionando sem internet; abrir uma tela nova sem
+  // internet ainda não dá (precisaria do app instalável, PWA).
+  await expect(page.getByRole('button', { name: /^Adicionar Espeto de carne,/ })).toBeVisible();
+  await context.setOffline(true);
+  await adicionar(page, 'Espeto de carne');
+  await page.getByLabel('Nome do cliente (opcional)').fill('Carlos');
+  await enviar(page);
+  const fila = page.getByRole('region', { name: '1 pedido esperando a internet' });
+  await expect(fila).toBeVisible();
+  await expect(fila).toContainText('Carlos: 1× Espeto de carne');
+
+  await context.setOffline(false);
+  await expect(page.getByRole('status').filter({ hasText: 'Diga ao cliente a senha' })).toBeVisible({ timeout: 15000 });
+  await expect(fila).toBeHidden();
+  await expect(page.getByRole('region', { name: 'Na cozinha' }).getByText('Carlos')).toBeVisible();
+});
+
+test('tocar num produto esgotado avisa o atendente', async ({ page }) => {
+  await montarEspetaria(page);
+  await page.goto('/cozinha?aba=esgotados');
+  await page.getByRole('button', { name: 'Espeto de carne, tem. Tocar marca como esgotado' }).click();
+  await page.goto('/pedidos');
+  // O Playwright não clica em aria-disabled; uma pessoa tocando na tela consegue.
+  await page.getByRole('button', { name: 'Espeto de carne, esgotado' }).click({ force: true });
+  await expect(page.getByText('Espeto de carne está esgotado. Ofereça outra opção ao cliente.')).toBeVisible();
+});
+
+test('ajuda responde o que os negócios perguntaram', async ({ page }) => {
+  await page.goto('/ajuda');
+  await expect(page.getByRole('heading', { name: 'Ajuda', level: 1 })).toBeVisible();
+  for (const pergunta of [
+    'Quem cadastra o cardápio?',
+    'A internet caiu. Perco o pedido?',
+    'Fecho depois da meia-noite. O dia vira certo?',
+    'Bebida também entra?',
+    'Quanto custa?',
+  ]) {
+    await expect(page.getByText(pergunta)).toBeVisible();
+  }
+  await page.getByText('A internet caiu. Perco o pedido?').click();
+  await expect(page.getByText(/fica guardado no aparelho/)).toBeVisible();
+});
+
+test('dono escolhe até que horas vai o dia de trabalho', async ({ page }) => {
+  await page.goto('/minha-conta');
+  const virada = page.getByLabel('O dia de trabalho termina às');
+  await expect(virada).toHaveValue('5');
+  await virada.selectOption('3');
+  await page.getByRole('button', { name: 'Salvar' }).last().click();
+  await expect(page.getByText('Salvo.')).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel('O dia de trabalho termina às')).toHaveValue('3');
+});

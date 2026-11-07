@@ -30,12 +30,25 @@ const SONS = {
   pronto: { notas: [1318.51, 1760], repeticoes: 1 },
 };
 
-export function tocarAlerta(tipo = 'novo') {
+function vibrar(padrao) {
+  try {
+    navigator.vibrate?.(padrao);
+  } catch {
+    // aparelho sem vibração
+  }
+}
+
+// alto: som "bem alto" escolhido pela cozinha. Onda quadrada, que corta
+// melhor o barulho da chapa e do exaustor, no volume máximo.
+// Pedido novo e aviso também vibram o celular (só no Android).
+export function tocarAlerta(tipo = 'novo', { alto = false } = {}) {
+  if (tipo === 'novo') vibrar(alto ? [250, 120, 250, 120, 250] : [250, 120, 250]);
+  else if (tipo === 'aviso') vibrar(200);
   if (contexto?.state !== 'running') return false;
   const { notas, repeticoes } = SONS[tipo];
 
   const volume = contexto.createGain();
-  volume.gain.value = 0.8;
+  volume.gain.value = alto ? 1 : 0.8;
   volume.connect(contexto.destination);
 
   const inicio = contexto.currentTime + 0.02;
@@ -44,6 +57,7 @@ export function tocarAlerta(tipo = 'novo') {
       const t = inicio + vez * 0.6 + i * 0.13;
       const oscilador = contexto.createOscillator();
       const envelope = contexto.createGain();
+      oscilador.type = alto ? 'square' : 'sine';
       oscilador.frequency.value = frequencia;
       envelope.gain.setValueAtTime(0.0001, t);
       envelope.gain.exponentialRampToValueAtTime(0.6, t + 0.015);

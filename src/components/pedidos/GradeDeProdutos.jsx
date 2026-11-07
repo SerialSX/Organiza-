@@ -11,7 +11,8 @@ function semAcento(texto) {
   return texto.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 }
 
-export default function GradeDeProdutos({ produtos, quantidadePorProduto, onAdicionar }) {
+// onEsgotado: tocaram num produto esgotado (a venda que teria saído errada).
+export default function GradeDeProdutos({ produtos, quantidadePorProduto, onAdicionar, onEsgotado }) {
   const [busca, setBusca] = useState('');
   const termo = semAcento(busca.trim());
   const visiveis = termo ? produtos.filter((p) => semAcento(p.nome).includes(termo)) : produtos;
@@ -56,14 +57,16 @@ export default function GradeDeProdutos({ produtos, quantidadePorProduto, onAdic
               <li key={p.id}>
                 <button
                   type="button"
-                  disabled={!p.disponivel}
-                  onClick={() => onAdicionar(p)}
+                  // aria-disabled em vez de disabled: o toque ainda chega, para
+                  // avisar que esgotou e contar a venda evitada.
+                  aria-disabled={!p.disponivel || undefined}
+                  onClick={() => (p.disponivel ? onAdicionar(p) : onEsgotado?.(p))}
                   aria-label={
                     p.disponivel
                       ? `Adicionar ${p.nome}, ${formatarMoeda(p.preco)}${qtd ? `, ${qtd} no pedido` : ''}`
                       : `${p.nome}, esgotado`
                   }
-                  className="relative w-full h-full min-h-28 text-left rounded-2xl border-2 bg-[var(--surface-card)] p-4 flex flex-col justify-between gap-2 transition-[transform,border-color] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="relative w-full h-full min-h-28 text-left rounded-2xl border-2 bg-[var(--surface-card)] p-4 flex flex-col justify-between gap-2 transition-[transform,border-color] active:scale-[0.98] aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:active:scale-100"
                   style={{ borderColor: qtd ? ACCENT : 'var(--border-subtle)' }}
                 >
                   <span className="font-semibold text-[var(--text-primary)] leading-tight break-words pr-9">{p.nome}</span>

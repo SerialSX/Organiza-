@@ -3,12 +3,13 @@ import { CANCELADO_VISIVEL_MINUTOS, MOTIVOS_CANCELAMENTO, STATUS_ABERTOS, STATUS
 import { hojeNoNegocio } from '../lib/formatadores';
 import { lerDemo, salvarDemo, assinarDemo, novoId } from './demoStore';
 
-const CAMPOS_PEDIDO = 'id, numero, mesa, dia, status, criado_em, alterado_em, pronto_em, cancelado_em, motivo_cancelamento';
+const CAMPOS_PEDIDO =
+  'id, numero, mesa, dia, status, criado_em, alterado_em, pronto_em, cancelado_em, motivo_cancelamento, identificacao, forma_pagamento, pago_em';
 
 // Pedidos abertos aparecem na Cozinha: só o que é preciso para preparar,
 // sem preço nem custo. Os ingredientes do produto são as opções do "Faltou".
 const CAMPOS_ITEM = 'id, produto_id, quantidade, observacao, faltou, faltou_ingredientes';
-const PRODUTO_DO_ITEM = 'produtos ( nome, produto_ingredientes ( ingrediente_id, ingredientes ( nome ) ) )';
+const PRODUTO_DO_ITEM = 'produtos ( nome, vai_para_cozinha, produto_ingredientes ( ingrediente_id, ingredientes ( nome ) ) )';
 const CAMPOS_ABERTOS = `${CAMPOS_PEDIDO}, itens_pedido ( ${CAMPOS_ITEM}, ${PRODUTO_DO_ITEM} )`;
 const CAMPOS_COM_VALORES = `${CAMPOS_PEDIDO}, itens_pedido ( ${CAMPOS_ITEM}, preco_unitario, custo_unitario, ${PRODUTO_DO_ITEM} )`;
 
@@ -16,9 +17,37 @@ const CAMPOS_COM_VALORES = `${CAMPOS_PEDIDO}, itens_pedido ( ${CAMPOS_ITEM}, pre
 const TAMANHO_PAGINA = 1000;
 const LIMITE_OBSERVACAO = 140;
 
+export const FORMAS_DE_PAGAMENTO = [
+  { id: 'pix', rotulo: 'Pix' },
+  { id: 'dinheiro', rotulo: 'Dinheiro' },
+  { id: 'cartao', rotulo: 'Cartão' },
+];
+
+const LIMITE_IDENTIFICACAO = 30;
+
+export function limparIdentificacao(texto) {
+  const limpo = (texto ?? '').trim().replace(/\s+/g, ' ');
+  return limpo ? limpo.slice(0, LIMITE_IDENTIFICACAO) : null;
+}
+
 // Erros lançados pelas funções do banco (código P0001) já vêm escritos para o usuário.
 function mensagemDoBanco(error, padrao) {
   return error.code === 'P0001' ? error.message : padrao;
+}
+
+// A internet caiu no meio do envio: o pedido não chegou ao banco (ou não deu
+// para saber). Quem chama guarda o pedido para mandar de novo com a mesma
+// chave, que não duplica.
+export class SemInternet extends Error {
+  constructor() {
+    super('Sem internet. O pedido foi guardado e sai sozinho quando a conexão voltar.');
+    this.semInternet = true;
+  }
+}
+
+function ehFalhaDeRede(error) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  return !error?.code && /fetch|network|load failed|timeout/i.test(error?.message ?? '');
 }
 
 function numeroOuNull(valor) {
@@ -52,6 +81,8 @@ function normalizarItem(i, nome, ingredientes = []) {
     observacao: i.observacao ?? null,
     faltou: Boolean(i.faltou),
     faltou_ingredientes: i.faltou_ingredientes ?? [],
+    // Bebida e o que já sai pronto não aparecem na fila da cozinha.
+    vai_para_cozinha: i.vai_para_cozinha ?? true,
     ingredientes: [...ingredientes].sort(porNome),
     preco_unitario: numeroOuNull(i.preco_unitario),
     // undefined = item antigo do modo demonstração, sem custo gravado; o
@@ -73,6 +104,9 @@ function normalizarPedido(p, itens) {
     pronto_em: p.pronto_em ?? null,
     cancelado_em: p.cancelado_em ?? null,
     motivo_cancelamento: p.motivo_cancelamento ?? null,
+    identificacao: p.identificacao ?? null,
+    forma_pagamento: p.forma_pagamento ?? null,
+    pago_em: p.pago_em ?? null,
     itens,
   };
 }
@@ -82,7 +116,7 @@ function normalizarSupabase(p) {
     p,
     (p.itens_pedido ?? []).map((i) =>
       normalizarItem(
-        i,
+        { ...i, vai_para_cozinha: i.produtos?.vai_para_cozinha },
         i.produtos?.nome ?? 'Produto removido',
         (i.produtos?.produto_ingredientes ?? []).map((pi) => ({ id: pi.ingrediente_id, nome: pi.ingredientes?.nome ?? '' })),
       ),
@@ -100,6 +134,7 @@ function canceladoRecente(p, agora) {
 
 function montarDemo(db, filtro, { comValores }) {
   const nomes = Object.fromEntries(db.produtos.map((p) => [p.id, p.nome]));
+  const paraCozinha = Object.fromEntries(db.produtos.map((p) => [p.id, p.vai_para_cozinha ?? true]));
   const nomesIngredientes = Object.fromEntries((db.ingredientes ?? []).map((i) => [i.id, i.nome]));
   const ingredientesDo = (produtoId) =>
     (db.produto_ingredientes ?? [])
@@ -114,7 +149,11 @@ function montarDemo(db, filtro, { comValores }) {
         db.itens_pedido
           .filter((i) => i.pedido_id === p.id)
           .map((i) => {
-            const item = normalizarItem(i, nomes[i.produto_id] ?? 'Produto removido', ingredientesDo(i.produto_id));
+            const item = normalizarItem(
+              { ...i, vai_para_cozinha: paraCozinha[i.produto_id] },
+              nomes[i.produto_id] ?? 'Produto removido',
+              ingredientesDo(i.produto_id),
+            );
             return comValores ? item : { ...item, preco_unitario: null, custo_unitario: null };
           }),
       ),
@@ -175,11 +214,20 @@ function itensParaEnvio(itens) {
 // cadastro do produto, nunca de quem lança o pedido. chaveEnvio identifica
 // este envio: mandar de novo com a mesma chave devolve o mesmo pedido.
 // mesa: número da mesa, ou null para retirada no balcão.
-export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio, mesa = null }) {
+// identificacao: nome do cliente para chamar (opcional).
+// formaPagamento: já pago na hora (opcional).
+export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio, mesa = null, identificacao = null, formaPagamento = null }) {
   if (!itens.length) throw new Error('Adicione pelo menos um produto ao pedido.');
   const mesaDoPedido = conferirMesa(mesa);
+  if (formaPagamento && !FORMAS_DE_PAGAMENTO.some((f) => f.id === formaPagamento)) {
+    throw new Error('Forma de pagamento inválida.');
+  }
+  const nomeOuMesa = limparIdentificacao(identificacao);
 
   if (!isSupabaseConfigured) {
+    // Na demonstração os dados ficam no navegador, mas o pedido respeita o
+    // "sem internet" do aparelho: dá para mostrar a fila de envio ao vivo.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new SemInternet();
     const db = lerDemo();
     const repetido = db.pedidos.find((p) => p.chave_envio === chaveEnvio);
     if (repetido) return normalizarPedido(repetido, []);
@@ -201,19 +249,33 @@ export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio, mes
       criado_em: new Date().toISOString(),
       criado_por: usuarioId,
       chave_envio: chaveEnvio,
+      identificacao: nomeOuMesa,
+      forma_pagamento: formaPagamento,
+      pago_em: formaPagamento ? new Date().toISOString() : null,
     };
     const novosItens = itensDemo(db, pedido.id, itens);
+    // Mesma regra do banco: só bebida (o que não vai para a cozinha) já nasce pronto.
+    const precisaCozinha = novosItens.some((i) => db.produtos.find((p) => p.id === i.produto_id)?.vai_para_cozinha ?? true);
+    if (!precisaCozinha) Object.assign(pedido, { status: 'pronto', pronto_em: pedido.criado_em });
     salvarDemo({ ...db, pedidos: [...db.pedidos, pedido], itens_pedido: [...db.itens_pedido, ...novosItens] });
     return normalizarPedido(pedido, []);
   }
 
-  const { data, error } = await supabase.rpc('criar_pedido', {
-    p_itens: itensParaEnvio(itens),
-    p_chave_envio: chaveEnvio,
-    // Só manda a mesa quando há: pedido de balcão continua funcionando num
-    // banco que ainda não rodou a migração da mesa.
-    ...(mesaDoPedido ? { p_mesa: mesaDoPedido } : {}),
-  });
+  let resposta;
+  try {
+    resposta = await supabase.rpc('criar_pedido', {
+      p_itens: itensParaEnvio(itens),
+      p_chave_envio: chaveEnvio,
+      p_mesa: mesaDoPedido,
+      p_identificacao: nomeOuMesa,
+      p_forma_pagamento: formaPagamento,
+    });
+  } catch (e) {
+    if (ehFalhaDeRede(e)) throw new SemInternet();
+    throw e;
+  }
+  const { data, error } = resposta;
+  if (error && ehFalhaDeRede(error)) throw new SemInternet();
   if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível enviar o pedido. Tente de novo.'));
   return normalizarPedido(data, []);
 }
@@ -354,6 +416,29 @@ export async function marcarIngredienteFaltou(itemId, ingredienteId, faltou) {
   if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível avisar o atendente.'));
 }
 
+// Recebe um ou mais pedidos de uma vez (a conta da mesa). forma null desfaz.
+export async function registrarPagamento(ids, forma) {
+  if (!ids.length) return 0;
+  if (forma && !FORMAS_DE_PAGAMENTO.some((f) => f.id === forma)) throw new Error('Forma de pagamento inválida.');
+
+  if (!isSupabaseConfigured) {
+    const db = lerDemo();
+    const agora = new Date().toISOString();
+    let quantos = 0;
+    const pedidos = db.pedidos.map((p) => {
+      if (!ids.includes(p.id) || p.status === 'cancelado' || (forma && p.pago_em)) return p;
+      quantos++;
+      return { ...p, forma_pagamento: forma, pago_em: forma ? agora : null, atualizado_em: agora };
+    });
+    salvarDemo({ ...db, pedidos });
+    return quantos;
+  }
+
+  const { data, error } = await supabase.rpc('registrar_pagamento', { p_pedido_ids: ids, p_forma: forma });
+  if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível registrar o pagamento.'));
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Leitura
 // ---------------------------------------------------------------------------
@@ -423,11 +508,14 @@ export async function listarPedidosDoPeriodo(inicio, fim) {
   return todos.map(normalizarSupabase);
 }
 
-export function assinarPedidos(negocioId, callback) {
+// aoMudarConexao(true|false): o tempo real caiu ou voltou. Sem ele, a tela não
+// sabe que parou de receber pedidos novos.
+export function assinarPedidos(negocioId, callback, aoMudarConexao) {
   if (!isSupabaseConfigured) return assinarDemo(callback);
 
-  // Toda mudança de pedido (edição de itens, "faltou", status) também atualiza
-  // a linha em pedidos, então essa tabela basta para avisar as telas.
+  // Toda mudança de pedido (criação, edição de itens, "faltou", status,
+  // pagamento) termina atualizando a linha em pedidos depois dos itens, então
+  // essa tabela basta para avisar as telas.
   const canal = supabase
     .channel(`pedidos-${negocioId}-${novoId()}`)
     .on(
@@ -435,9 +523,15 @@ export function assinarPedidos(negocioId, callback) {
       { event: '*', schema: 'public', table: 'pedidos', filter: `negocio_id=eq.${negocioId}` },
       callback,
     )
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'itens_pedido' }, callback)
     // Ao conectar e a cada reconexão: eventos de quando a internet caiu não
     // são reenviados, então recarrega a lista.
-    .subscribe((status) => status === 'SUBSCRIBED' && callback());
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        aoMudarConexao?.(true);
+        callback();
+      } else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
+        aoMudarConexao?.(false);
+      }
+    });
   return () => supabase.removeChannel(canal);
 }

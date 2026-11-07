@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { CheckIcon, AlertIcon, ClockIcon } from '../components/icons/AppIcons';
 import Carregando from '../components/ui/Carregando';
 import { acompanharPedido, buscarPaginaPublica, ErroPaginaPublica } from '../services/paginaPublica';
-import { formatarSenha, hojeNoNegocio } from '../lib/formatadores';
+import { definirViradaDoDia, formatarSenha, hojeNoNegocio } from '../lib/formatadores';
 
 // Página aberta pelo QR code, sem cadastro. É do estabelecimento: mostra o nome
 // dele e nada do Organiza+.
@@ -17,7 +17,8 @@ function chaveSalva(codigo) {
   return `organiza-acompanhar:${codigo}`;
 }
 
-// O número fica guardado só neste aparelho e só vale para hoje.
+// O número fica guardado só neste aparelho e só vale para o dia de trabalho
+// do negócio (que pode virar às 5h: quem pediu à 1h ainda está no mesmo dia).
 function lerNumeroSalvo(codigo) {
   try {
     const salvo = JSON.parse(localStorage.getItem(chaveSalva(codigo)));
@@ -25,6 +26,10 @@ function lerNumeroSalvo(codigo) {
   } catch {
     return null;
   }
+}
+
+function esperar(ms) {
+  return new Promise((resolver) => setTimeout(resolver, ms));
 }
 
 function salvarNumero(codigo, numero) {
@@ -104,7 +109,7 @@ function FormularioNumero({ erro, onEnviar }) {
           spellCheck={false}
           enterKeyHint="go"
           translate="no"
-          className="w-full text-center text-5xl font-extrabold tracking-[0.3em] tabular-nums rounded-2xl border-2 border-[var(--border-subtle)] bg-[var(--surface-card)] py-5 focus:border-[var(--color-brand-orange)] placeholder:text-[var(--border-subtle)]"
+          className="w-full text-center text-5xl font-extrabold tracking-[0.3em] tabular-nums rounded-2xl border-2 border-[var(--borda-campo)] bg-[var(--surface-card)] py-5 focus:border-[var(--color-brand-orange)] placeholder:text-[var(--border-subtle)]"
         />
       </label>
       {erro && (
@@ -225,17 +230,42 @@ export default function Acompanhar() {
   const { codigo } = useParams();
   const [pagina, setPagina] = useState(undefined); // undefined = carregando, null = não existe
   const [erroPagina, setErroPagina] = useState('');
-  const [numero, setNumero] = useState(() => lerNumeroSalvo(codigo));
+  // Só lê a senha guardada depois de saber a hora de virada do negócio.
+  const [numero, setNumero] = useState(null);
+  const [tentando, setTentando] = useState(false);
   const [situacao, setSituacao] = useState(null);
   const [aviso, setAviso] = useState(''); // sem internet ou limite de consultas
   const [erroNumero, setErroNumero] = useState('');
   const statusAntes = useRef(null);
 
+  // 4G ruim na calçada: se a primeira consulta falha, tenta de novo sozinha
+  // (2 s, 4 s, 8 s e depois a cada 10 s) em vez de parar numa tela de erro.
   useEffect(() => {
     let ativo = true;
-    buscarPaginaPublica(codigo)
-      .then((p) => ativo && setPagina(p))
-      .catch((e) => ativo && setErroPagina(e.message));
+    (async () => {
+      for (let tentativa = 0; ativo; tentativa++) {
+        try {
+          const p = await buscarPaginaPublica(codigo);
+          if (!ativo) return;
+          if (p) {
+            definirViradaDoDia(p.virada_do_dia ?? 0);
+            setNumero(lerNumeroSalvo(codigo));
+          }
+          setTentando(false);
+          setPagina(p);
+          return;
+        } catch (e) {
+          if (!ativo) return;
+          // Limite de consultas: esperar não resolve, mostra a mensagem.
+          if (e instanceof ErroPaginaPublica && e.tipo === 'limite') {
+            setErroPagina(e.message);
+            return;
+          }
+          setTentando(true);
+          await esperar(Math.min(2000 * 2 ** tentativa, 10000));
+        }
+      }
+    })();
     return () => {
       ativo = false;
     };
@@ -305,7 +335,7 @@ export default function Acompanhar() {
   if (pagina === undefined) {
     return (
       <Moldura nome="">
-        <Carregando texto="Abrindo…" />
+        <Carregando texto={tentando ? 'Sem conexão. Tentando de novo…' : 'Abrindo…'} />
       </Moldura>
     );
   }

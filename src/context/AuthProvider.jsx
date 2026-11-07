@@ -3,6 +3,8 @@ import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { lerDemo, salvarDemo, limparDemo } from '../services/demoStore';
 import { AuthContext } from './authContext';
 import { traduzirErroRecuperacao } from '../lib/recuperacaoSenha';
+import { definirViradaDoDia } from '../lib/formatadores';
+import { buscarPerfil } from '../services/perfil';
 
 const PERFIL_DEMO = {
   id: 'demo-usuario',
@@ -11,10 +13,15 @@ const PERFIL_DEMO = {
   papel: 'admin',
   negocio_id: 'demo-negocio',
   negocio_nome: 'Meu negócio (demonstração)',
+  virada_do_dia: 5,
+  usa_tela_cozinha: true,
 };
 
 function perfilDemo() {
-  return { ...PERFIL_DEMO, ...lerDemo().perfil };
+  const perfil = { ...PERFIL_DEMO, ...lerDemo().perfil };
+  // Já na primeira tela, antes de qualquer efeito rodar.
+  definirViradaDoDia(perfil.virada_do_dia);
+  return perfil;
 }
 
 // Mensagens do Supabase Auth em português, sempre dizendo o que fazer.
@@ -35,18 +42,6 @@ function traduzirErro(error) {
   return ERROS_AUTH.find(([padrao]) => padrao.test(error.message ?? ''))?.[1] ?? 'Algo deu errado. Tente de novo em instantes.';
 }
 
-async function buscarPerfil(usuario) {
-  const { data, error } = await supabase
-    .from('usuarios')
-    .select('id, nome, papel, negocio_id, negocios ( nome )')
-    .eq('id', usuario.id)
-    .maybeSingle();
-  // Erro de rede não pode virar "perfil inexistente"; quem chama decide.
-  if (error) throw error;
-  if (!data) return null;
-  return { ...data, email: usuario.email, negocio_nome: data.negocios?.nome ?? '' };
-}
-
 function enderecoDoApp(caminho) {
   return `${window.location.origin}${caminho}`;
 }
@@ -56,6 +51,11 @@ export function AuthProvider({ children }) {
   const [perfil, setPerfil] = useState(() => (isSupabaseConfigured ? null : perfilDemo()));
   const [carregando, setCarregando] = useState(isSupabaseConfigured);
   const [semConexao, setSemConexao] = useState(false);
+
+  // Todas as telas contam o "dia" a partir da virada do negócio.
+  useEffect(() => {
+    definirViradaDoDia(perfil?.virada_do_dia ?? 0);
+  }, [perfil?.virada_do_dia]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return undefined;
@@ -152,8 +152,40 @@ export function AuthProvider({ children }) {
     return { erro: traduzirErroRecuperacao(error) };
   }, []);
 
+  // Confere a senha antes de algo que não dá para desfazer. Todos os aparelhos
+  // do negócio usam a mesma conta: sem isso, qualquer um com o celular do
+  // balcão na mão poderia excluir o negócio ou trocar a senha do dono.
+  const confirmarSenhaAtual = useCallback(
+    async (senha) => {
+      if (!isSupabaseConfigured) return { erro: null };
+      if (!senha) return { erro: 'Digite sua senha atual.' };
+      const { error } = await supabase.auth.signInWithPassword({ email: perfil?.email ?? '', password: senha });
+      if (!error) return { erro: null };
+      return { erro: /invalid login credentials/i.test(error.message ?? '') ? 'Senha atual incorreta.' : traduzirErro(error) };
+    },
+    [perfil?.email],
+  );
+
+  // Só neste aparelho: o tablet da cozinha continua conectado.
   const sair = useCallback(async () => {
-    if (isSupabaseConfigured) await supabase.auth.signOut();
+    if (isSupabaseConfigured) await supabase.auth.signOut({ scope: 'local' });
+  }, []);
+
+  // Hora em que o dia vira e se a cozinha tem tela própria (só o dono).
+  const configurarOperacao = useCallback(async ({ viradaDoDia, usaTelaCozinha }) => {
+    if (!isSupabaseConfigured) {
+      const db = lerDemo();
+      salvarDemo({ ...db, perfil: { ...db.perfil, virada_do_dia: viradaDoDia, usa_tela_cozinha: usaTelaCozinha } });
+      setPerfil(perfilDemo());
+      return { erro: null };
+    }
+    const { error } = await supabase.rpc('configurar_operacao', {
+      p_virada_do_dia: viradaDoDia,
+      p_usa_tela_cozinha: usaTelaCozinha,
+    });
+    if (error) return { erro: traduzirErro(error) };
+    setPerfil((p) => ({ ...p, virada_do_dia: viradaDoDia, usa_tela_cozinha: usaTelaCozinha }));
+    return { erro: null };
   }, []);
 
   // Para quando um aparelho foi perdido ou um funcionário saiu com a senha.
@@ -191,6 +223,8 @@ export function AuthProvider({ children }) {
       pedirCodigoSenha,
       confirmarCodigoSenha,
       trocarSenha,
+      confirmarSenhaAtual,
+      configurarOperacao,
       sair,
       sairDeTodosOsAparelhos,
       excluirConta,
@@ -206,6 +240,8 @@ export function AuthProvider({ children }) {
       pedirCodigoSenha,
       confirmarCodigoSenha,
       trocarSenha,
+      confirmarSenhaAtual,
+      configurarOperacao,
       sair,
       sairDeTodosOsAparelhos,
       excluirConta,

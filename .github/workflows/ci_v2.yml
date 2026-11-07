@@ -30,6 +30,7 @@ jobs:
       # como variável de ambiente, e não interpolado direto no código
       HEAD_REF: ${{ github.event.pull_request.head.ref }}
       BASE_REF: ${{ github.event.pull_request.base.ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
     steps:
       - name: Verificar tipo da branch
@@ -96,9 +97,40 @@ jobs:
           fi
 
           case "$MERGE_STATE" in
-            CLEAN|HAS_HOOKS|UNSTABLE)
+            CLEAN|HAS_HOOKS)
               echo "Nenhum conflito encontrado."
               echo "ready=true" >> "$GITHUB_ENV"
+              ;;
+            UNSTABLE)
+              # UNSTABLE = alguma verificação falhou ou ainda está rodando. Espera
+              # a Verificação ("verificar" e "telas") e o "conferir" (Banco em
+              # dia), que só roda em PR que mexe no versaoDoBanco.js: se ele
+              # existir, também precisa terminar sem falha. Mais de uma execução
+              # da Verificação no mesmo commit não trava a espera (unique).
+              # Sem --paginate: com --jq, o gh aplicaria o jq em cada página.
+              echo "Aguardando as verificações terminarem..."
+              for espera in $(seq 1 60); do
+                ESTADO=$(gh api "repos/$GH_REPO/commits/$HEAD_SHA/check-runs?per_page=100" --jq '
+                  [.check_runs[] | select(.name == "verificar" or .name == "telas" or .name == "conferir")] as $c
+                  | if any($c[]; .conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") then "falhou"
+                    elif all($c[]; .status == "completed")
+                         and ([$c[] | select(.name != "conferir" and .conclusion == "success") | .name] | unique | length) == 2 then "verde"
+                    else "esperando" end')
+                echo "Verificações: $ESTADO"
+                if [[ "$ESTADO" == "falhou" ]]; then
+                  echo "::error::Uma verificação falhou (Verificação ou Banco em dia). Corrija e aprove a PR de novo."
+                  exit 1
+                fi
+                if [[ "$ESTADO" == "verde" ]]; then
+                  echo "ready=true" >> "$GITHUB_ENV"
+                  break
+                fi
+                sleep 20
+              done
+              if ! grep -q '^ready=true' "$GITHUB_ENV"; then
+                echo "::error::A Verificação não terminou em 20 minutos. Aprove a PR de novo quando ela terminar."
+                exit 1
+              fi
               ;;
             BLOCKED)
               # Ex.: a main exige um número mínimo de aprovações antes do merge

@@ -6,7 +6,7 @@ import Abas from '../components/ui/Abas';
 import Botao from '../components/ui/Botao';
 import Carregando from '../components/ui/Carregando';
 import EstadoVazio from '../components/ui/EstadoVazio';
-import { ReportsIcon, MoneyIcon, OrdersIcon, TrendIcon, TrophyIcon, BoxIcon, DownloadIcon } from '../components/icons/AppIcons';
+import { ReportsIcon, MoneyIcon, OrdersIcon, TrendIcon, TrophyIcon, BoxIcon, DownloadIcon, ClockIcon } from '../components/icons/AppIcons';
 import { useProdutos } from '../hooks/useProdutos';
 import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
 import { listarPedidosDoPeriodo } from '../services/pedidos';
@@ -17,6 +17,7 @@ import {
   intervaloDoPeriodo,
   pedidosPorHora,
   rankingParaCsv,
+  tempoAtePronto,
 } from '../services/relatorios';
 import { formatarMoeda } from '../lib/formatadores';
 import { rotuloDoMotivo } from '../lib/pedidoStatus';
@@ -286,6 +287,7 @@ export default function Relatorios() {
   const { inicio, fim } = intervaloDoPeriodo(periodo);
   const horas = periodo === 'hoje' ? pedidosPorHora(dados.pedidos) : [];
   const faltas = faltasNoPeriodo(dados.pedidos);
+  const tempo = tempoAtePronto(dados.pedidos);
 
   return (
     <AppShell largura="max-w-6xl">
@@ -293,8 +295,12 @@ export default function Relatorios() {
 
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <Abas opcoes={PERIODOS} valor={periodo} onMudar={setPeriodo} cor={ACCENT} rotulo="Período" />
+        <Botao para="/caixa" cor={ACCENT} className="ml-auto">
+          <MoneyIcon className="w-5 h-5" />
+          Fechar o caixa
+        </Botao>
         {!carregando && relatorio.ranking.length > 0 && (
-          <Botao variante="secundaria" className="ml-auto" onClick={() => baixarCsv(relatorio.ranking, periodo)}>
+          <Botao variante="secundaria" onClick={() => baixarCsv(relatorio.ranking, periodo)}>
             <DownloadIcon className="w-5 h-5" />
             Baixar planilha
           </Botao>
@@ -336,6 +342,16 @@ export default function Relatorios() {
               }
             />
           </div>
+
+          {tempo && (
+            <Indicador
+              icon={ClockIcon}
+              cor="var(--color-accent-cozinha)"
+              rotulo="Tempo até ficar pronto"
+              valor={`${tempo.medianaMin} min`}
+              detalhe={`Metade dos pedidos fica pronta em até ${tempo.medianaMin} min. ${tempo.acimaDe15}% passaram de 15 min (${tempo.quantos} ${tempo.quantos === 1 ? 'pedido' : 'pedidos'}).`}
+            />
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Destaque

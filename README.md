@@ -17,7 +17,7 @@ npm run dev
 
 Abra o link mostrado no terminal (geralmente `http://localhost:5173`).
 
-**Sem configurar nada, o sistema abre em modo demonstração**: os dados ficam salvos só no seu navegador e não há login real. Dá para testar o fluxo inteiro: cadastrar produtos, lançar, editar e cancelar pedidos, ver a cozinha, os relatórios e a página do cliente via QR code. Abra Pedidos e Cozinha em duas abas para ver o pedido chegar na hora.
+**Sem configurar nada, o sistema abre em modo demonstração**: os dados ficam salvos só no seu navegador e não há login real. Dá para testar o fluxo inteiro: começar com um cardápio pronto, lançar, editar e cancelar pedidos (com nome ou mesa e forma de pagamento), ver a cozinha, fechar o caixa, os relatórios e a página do cliente via QR code. Abra Pedidos e Cozinha em duas abas para ver o pedido chegar na hora. Desligue a internet do aparelho para ver o pedido ficar guardado e sair sozinho quando ela volta.
 
 Para usar o banco de verdade:
 
@@ -30,6 +30,10 @@ No SQL Editor do Supabase, rode o arquivo [`supabase/schema.sql`](./supabase/sch
 Se o banco já estava no ar, não rode o `schema.sql` de novo: rode só os arquivos de [`supabase/migracoes`](./supabase/migracoes) que ainda não rodaram, em ordem de data. Se faltar alguma, o sistema mostra um aviso vermelho para a equipe em todas as telas.
 
 Em produção, sem as variáveis do Supabase o sistema mostra "fora do ar" em vez de cair no modo demonstração. Para publicar uma demonstração de propósito, defina `VITE_MODO_DEMO=true`.
+
+E-mail da equipe: `src/lib/contato.js`. O link do grupo de ajuda no WhatsApp fica só na Vercel, na variável `VITE_GRUPO_WHATSAPP` (o repositório é público); sem ela, o botão do grupo não aparece.
+
+O workflow `Saúde do sistema` (`.github/workflows/saude.yml`) confere o site e o banco a cada 6 horas e evita que o Supabase Free pause sozinho. Para ligar, configure no GitHub (Settings → Secrets and variables → Actions) as variáveis `SITE_URL` e `SUPABASE_URL` e o secret `SUPABASE_ANON_KEY`.
 
 ### Importar o cardápio por foto
 
@@ -74,7 +78,7 @@ Detalhes da arquitetura, modelo de dados e plano de fases em [`ARQUITETURA.md`](
 
 ## Identidade visual
 
-Fundo escuro (`#0A192F`) com laranja (`#EE9448`) como cor de destaque. As telas seguem WCAG 2.1 AA (contraste, foco visível, leitor de tela).
+Fundo escuro (`#0A192F`) com laranja (`#EE9448`) como cor de destaque. As telas buscam seguir a WCAG 2.1 AA (contraste, foco visível, leitor de tela), com auditoria automática (axe) a cada pull request.
 
 ## Equipe
 
@@ -88,4 +92,4 @@ Fundo escuro (`#0A192F`) com laranja (`#EE9448`) como cor de destaque. As telas 
 
 ## Licença
 
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](./LICENSE) para mais detalhes.
+A licença ainda está em definição pela equipe. Até lá, todos os direitos são reservados aos autores.

@@ -5,7 +5,9 @@ import { useOnline } from '../../hooks/useOnline';
 import { useBancoDesatualizado } from '../../hooks/useBancoDesatualizado';
 import { AlertIcon, WifiOffIcon } from '../icons/AppIcons';
 
-export default function AppShell({ children, largura = 'max-w-5xl' }) {
+// reservaNoFim: espaço depois do rodapé para uma barra fixa da tela (ex.: o
+// "Enviar" de Pedidos no celular) não cobrir o contato da equipe.
+export default function AppShell({ children, largura = 'max-w-5xl', reservaNoFim = '' }) {
   const { modoDemo } = useAuth();
   const online = useOnline();
   const bancoAtrasado = useBancoDesatualizado();
@@ -53,6 +55,7 @@ export default function AppShell({ children, largura = 'max-w-5xl' }) {
       <footer className="border-t border-[var(--border-subtle)] px-4 py-6">
         <RodapeContato />
       </footer>
+      {reservaNoFim && <div className={reservaNoFim} aria-hidden="true" />}
     </div>
   );
 }

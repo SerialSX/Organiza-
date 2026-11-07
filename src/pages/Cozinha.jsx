@@ -12,14 +12,14 @@ import CartaoCancelado from '../components/cozinha/CartaoCancelado';
 import BarraDesfazer from '../components/cozinha/BarraDesfazer';
 import ListaEsgotados from '../components/cozinha/ListaEsgotados';
 import MolduraMonitor from '../components/cozinha/MolduraMonitor';
-import { KitchenIcon, BoxIcon, MonitorIcon } from '../components/icons/AppIcons';
+import { KitchenIcon, BoxIcon, MonitorIcon, WifiOffIcon } from '../components/icons/AppIcons';
 import { usePedidosAbertos } from '../hooks/usePedidosAbertos';
 import { useAgora } from '../hooks/useAgora';
 import { useTelaAcesa } from '../hooks/useTelaAcesa';
 import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
 import { useAlertaSonoro } from '../hooks/useAlertaSonoro';
 import { atualizarStatusPedido, marcarIngredienteFaltou, marcarItemFaltou } from '../services/pedidos';
-import { tocarAlerta } from '../lib/alertaSonoro';
+import { liberarAudio, tocarAlerta } from '../lib/alertaSonoro';
 import { chamadaDoPedido, minutosDesde } from '../lib/formatadores';
 import { DESFAZER_PRONTO_SEGUNDOS, LIMITE_ATRASO_MINUTOS } from '../lib/pedidoStatus';
 import { separarPedidos } from '../lib/fila';
@@ -31,6 +31,44 @@ const ABAS = [
   { id: 'esgotados', rotulo: 'Esgotados', Icone: BoxIcon },
 ];
 
+const CHAVE_SOM_ALTO = 'organiza-som-alto';
+
+function lerSomAlto() {
+  try {
+    return localStorage.getItem(CHAVE_SOM_ALTO) === 'sim';
+  } catch {
+    return false;
+  }
+}
+
+// Som da cozinha: o navegador só libera depois de um toque na tela. Até lá,
+// um botão grande pede o toque (sem ele o aviso ficaria mudo sem ninguém
+// saber). Depois, a cozinha escolhe entre som normal e bem alto.
+function ControleDeSom({ bloqueado, alto, onLigar, onAlternarAlto }) {
+  if (bloqueado) {
+    return (
+      <button
+        type="button"
+        onClick={onLigar}
+        className="w-full mb-4 min-h-14 rounded-2xl px-4 text-lg font-bold text-[var(--sobre-destaque)]"
+        style={{ backgroundColor: 'var(--color-brand-orange)' }}
+      >
+        Toque aqui para ligar o som dos pedidos novos
+      </button>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-4 text-sm">
+      <span className="font-semibold text-[var(--text-secondary)]">Som ligado</span>
+      <Botao variante="secundaria" onClick={onAlternarAlto} aria-pressed={alto}>
+        {alto ? 'Som bem alto' : 'Som normal'}
+      </Botao>
+      <Botao variante="texto" onClick={() => tocarAlerta('novo', { alto })}>
+        Testar som
+      </Botao>
+    </div>
+  );
+}
 // O que mudou desde a última lista: pedido novo, pedido alterado e pedido
 // cancelado merecem som e anúncio para leitor de tela. novo: chegou pedido
 // novo, que tem o som mais chamativo.
@@ -60,7 +98,8 @@ function retrato(fila, cancelados, vistosAntes = []) {
 }
 
 export default function Cozinha() {
-  const { pedidos, carregando, erro: erroCarga } = usePedidosAbertos();
+  const { pedidos, carregando, erro: erroCarga, recarregar, conectado } = usePedidosAbertos();
+  const [somAlto, setSomAlto] = useState(lerSomAlto);
   const agora = useAgora();
   useTelaAcesa();
   const som = useAlertaSonoro();
@@ -74,6 +113,28 @@ export default function Cozinha() {
   const [ultimoPronto, setUltimoPronto] = useState(null);
   const [anuncio, setAnuncio] = useState('');
   const ultimoRetrato = useRef(null);
+  const somAltoRef = useRef(somAlto);
+
+  useEffect(() => {
+    somAltoRef.current = somAlto;
+  }, [somAlto]);
+
+  function alternarSomAlto() {
+    const novo = !somAlto;
+    setSomAlto(novo);
+    try {
+      localStorage.setItem(CHAVE_SOM_ALTO, novo ? 'sim' : 'nao');
+    } catch {
+      // fica só nesta tela
+    }
+    tocarAlerta('novo', { alto: novo });
+  }
+
+  // O toque no botão já libera o som (useAlertaSonoro escuta os toques);
+  // o teste confirma para a cozinha que está funcionando.
+  async function ligarSom() {
+    if (await liberarAudio()) tocarAlerta('novo', { alto: somAlto });
+  }
 
   const { fila, cancelados } = separarPedidos(pedidos, new Date(agora));
   const canceladosParaVer = cancelados.filter((p) => !ciente.has(p.id));
@@ -88,7 +149,7 @@ export default function Cozinha() {
     if (!antes) return;
     const { frases, novo } = novidades(antes, atual.fila, atual.cancelados);
     if (frases.length) {
-      tocarAlerta(novo ? 'novo' : 'aviso');
+      tocarAlerta(novo ? 'novo' : 'aviso', { alto: somAltoRef.current });
       setAnuncio(frases.join('. '));
     }
   }, [pedidos, carregando]);
@@ -113,6 +174,7 @@ export default function Cozinha() {
       await atualizarStatusPedido(pedido.id, 'pronto');
       tocarAlerta('pronto');
       setUltimoPronto(pedido);
+      recarregar();
       return true;
     } catch (e) {
       setErro(e.message);
@@ -124,6 +186,7 @@ export default function Cozinha() {
     setErro('');
     try {
       await atualizarStatusPedido(pedido.id, 'pendente');
+      recarregar();
     } catch (e) {
       setErro(e.message);
     }
@@ -134,6 +197,7 @@ export default function Cozinha() {
     setErro('');
     try {
       await marcarItemFaltou(item.id, !item.faltou);
+      recarregar();
     } catch (e) {
       setErro(e.message);
     }
@@ -143,6 +207,7 @@ export default function Cozinha() {
     setErro('');
     try {
       await marcarIngredienteFaltou(item.id, ingrediente.id, !item.faltou_ingredientes.includes(ingrediente.nome));
+      recarregar();
     } catch (e) {
       setErro(e.message);
     }
@@ -156,10 +221,16 @@ export default function Cozinha() {
 
   const avisos = (
     <>
-      {som.bloqueado && (
-        <Aviso tipo="info" className="mb-4">
-          Toque em qualquer lugar da tela para ativar o som dos pedidos.
-        </Aviso>
+      <ControleDeSom bloqueado={som.bloqueado} alto={somAlto} onLigar={ligarSom} onAlternarAlto={alternarSomAlto} />
+      {!conectado && (
+        <p
+          role="status"
+          className="mb-4 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-[var(--text-primary)]"
+          style={{ borderColor: 'var(--color-brand-orange)' }}
+        >
+          <WifiOffIcon className="w-5 h-5 shrink-0 text-[var(--texto-laranja)]" />
+          Reconectando. Enquanto isso, a fila é conferida a cada 8 segundos.
+        </p>
       )}
       {(erro || erroCarga) && <Aviso className="mb-4">{erro || erroCarga}</Aviso>}
     </>
@@ -206,7 +277,8 @@ export default function Cozinha() {
 
       {ultimoPronto && (
         <>
-          <div className="h-20" aria-hidden="true" />
+          {/* No monitor não há rodapé: o espaço fica aqui. Fora dele, o AppShell reserva. */}
+          {monitor && <div className="h-20" aria-hidden="true" />}
           <BarraDesfazer key={ultimoPronto.id} pedido={ultimoPronto} onDesfazer={desfazer} />
         </>
       )}
@@ -224,18 +296,20 @@ export default function Cozinha() {
   }
 
   return (
-    <AppShell largura="max-w-6xl">
-      <PageHeader icon={KitchenIcon} accent={ACCENT} title="Cozinha" subtitle="Do mais antigo para o mais novo">
-        <Botao variante="secundaria" para="/cozinha?modo=monitor">
-          <MonitorIcon className="w-5 h-5" />
-          Modo monitor
-        </Botao>
-      </PageHeader>
+    <AppShell largura="max-w-6xl" reservaNoFim={ultimoPronto ? 'h-20' : ''}>
+      {/* Tablet deitado (1024×600): sem o cabeçalho grande, o "Pronto" cabe sem rolar. */}
+      <div className="[@media(max-height:700px)]:hidden">
+        <PageHeader icon={KitchenIcon} accent={ACCENT} title="Cozinha" subtitle="Do mais antigo para o mais novo" />
+      </div>
 
       {anuncioParaLeitor}
 
-      <div className="mb-6">
+      <div className="mb-4 flex flex-wrap items-center gap-3 [@media(max-height:700px)]:mb-3">
         <Abas opcoes={ABAS} valor={aba} onMudar={setAba} cor={ACCENT} rotulo="O que mostrar" />
+        <Botao variante="secundaria" para="/cozinha?modo=monitor" className="ml-auto">
+          <MonitorIcon className="w-5 h-5" />
+          Modo monitor
+        </Botao>
       </div>
 
       {avisos}
@@ -245,7 +319,7 @@ export default function Cozinha() {
       ) : (
         <>
           {!carregando && (
-            <dl className="grid grid-cols-2 gap-3 mb-6">
+            <dl className="grid grid-cols-2 gap-3 mb-6 [@media(max-height:700px)]:hidden">
               {[
                 { rotulo: 'Na fila', valor: fila.length, cor: 'var(--texto-pedidos)' },
                 { rotulo: 'Atrasados', valor: atrasados, cor: 'var(--texto-cozinha)' },

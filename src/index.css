@@ -17,6 +17,11 @@
   --text-primary: #FFFFFF;
   --text-secondary: rgba(255, 255, 255, 0.65);
   --border-subtle: rgba(255, 255, 255, 0.1);
+  /* Borda de campo (input, select): precisa ser vista para ser usada, então
+     passa de 3:1 contra o fundo (WCAG 1.4.11). As de cartão seguem suaves. */
+  --borda-campo: #64748B;
+  /* Contorno de foco do teclado: 7,5:1 no escuro. */
+  --cor-foco: #EE9448;
 
   /* Cor de destaque usada como texto. No escuro é a própria cor; no claro,
      um tom mais escuro para manter contraste de pelo menos 4,5:1. */
@@ -44,6 +49,9 @@
   --text-primary: #1A1A1A;
   --text-secondary: rgba(26, 26, 26, 0.68);
   --border-subtle: rgba(0, 0, 0, 0.08);
+  --borda-campo: #878279;
+  /* O laranja da marca fica em 2,15:1 no fundo claro; este tom passa de 5:1. */
+  --cor-foco: #A84F0C;
 
   --texto-laranja: #A84F0C;
   --texto-produtos: #A84F0C;
@@ -119,7 +127,7 @@ input[inputmode='decimal'] {
 
 /* Foco visível em tudo, inclusive campos de texto */
 :focus-visible {
-  outline: 3px solid var(--color-brand-orange);
+  outline: 3px solid var(--cor-foco);
   outline-offset: 2px;
 }
 

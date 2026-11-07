@@ -1,3 +1,7 @@
+import { hojeNoNegocio, inicioDoDia } from '../lib/formatadores';
+
+const DIA_MS = 24 * 3600000;
+
 // Cálculo feito no cliente a partir dos pedidos do período. Para o volume de
 // um pequeno negócio isso basta; se crescer, dá para mover para uma view SQL.
 // Cancelados não entram em faturamento, ticket, lucro nem ranking: são contados
@@ -73,29 +77,50 @@ export function rankingParaCsv(ranking) {
   return linhas.map((linha) => linha.map(celulaCsv).join(';')).join('\r\n');
 }
 
-function chaveDoDia(data) {
-  const d = new Date(data);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+// O dia de trabalho do pedido (pedidos.dia, que já respeita a virada).
+function diaDoPedido(pedido) {
+  return pedido.dia ?? hojeNoNegocio(new Date(pedido.criado_em));
 }
 
 // Faturamento e número de pedidos (senhas usadas) de cada dia do período.
+// inicio e fim: instantes de início de dia de trabalho (intervaloDoPeriodo).
 export function faturamentoPorDia(pedidos, inicio, fim) {
   const totais = new Map();
   for (const pedido of pedidos) {
     // Cancelado não é venda: fica fora, como nos totais.
     if (pedido.status === 'cancelado') continue;
-    const chave = chaveDoDia(pedido.criado_em);
+    const chave = diaDoPedido(pedido);
     const valor = pedido.itens.reduce((s, i) => s + i.quantidade * i.preco_unitario, 0);
     const atual = totais.get(chave) ?? { valor: 0, pedidos: 0 };
     totais.set(chave, { valor: atual.valor + valor, pedidos: atual.pedidos + 1 });
   }
 
   const dias = [];
-  for (const d = new Date(inicio); d < fim; d.setDate(d.getDate() + 1)) {
-    const { valor, pedidos: quantos } = totais.get(chaveDoDia(d)) ?? { valor: 0, pedidos: 0 };
-    dias.push({ data: new Date(d), valor, pedidos: quantos });
+  for (let t = new Date(inicio).getTime(); t < new Date(fim).getTime(); t += DIA_MS) {
+    const dia = hojeNoNegocio(new Date(t));
+    const { valor, pedidos: quantos } = totais.get(dia) ?? { valor: 0, pedidos: 0 };
+    // Meio-dia de Fortaleza: o rótulo "24/09" sai certo em qualquer fuso.
+    dias.push({ data: new Date(`${dia}T12:00:00-03:00`), valor, pedidos: quantos });
   }
   return dias;
+}
+
+// Do envio até o "Pronto": mediana e quantos passaram de 15 minutos. Fora os
+// cancelados e os acima de 3 horas (esquecidos, não espera de verdade).
+export function tempoAtePronto(pedidos) {
+  const minutos = pedidos
+    .filter((p) => p.status !== 'cancelado' && p.pronto_em)
+    .map((p) => (new Date(p.pronto_em) - new Date(p.criado_em)) / 60000)
+    .filter((m) => m >= 0 && m < 180)
+    .sort((a, b) => a - b);
+  if (!minutos.length) return null;
+  const meio = Math.floor(minutos.length / 2);
+  const mediana = minutos.length % 2 ? minutos[meio] : (minutos[meio - 1] + minutos[meio]) / 2;
+  return {
+    quantos: minutos.length,
+    medianaMin: Math.round(mediana),
+    acimaDe15: Math.round((100 * minutos.filter((m) => m >= 15).length) / minutos.length),
+  };
 }
 
 const horaEmFortaleza = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', hourCycle: 'h23', timeZone: 'America/Fortaleza' });
@@ -131,12 +156,11 @@ export function faltasNoPeriodo(pedidos) {
   return [...vezes].map(([nome, n]) => ({ nome, vezes: n })).sort((a, b) => b.vezes - a.vezes || a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
+// Do início do dia de trabalho (com a virada do negócio) de N dias atrás até
+// o fim do dia de trabalho de hoje.
 export function intervaloDoPeriodo(periodo, agora = new Date()) {
-  const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
-  const fim = new Date(inicioHoje);
-  fim.setDate(fim.getDate() + 1);
+  const fim = new Date(inicioDoDia(hojeNoNegocio(agora)).getTime() + DIA_MS);
   const dias = { hoje: 1, semana: 7, mes: 30 }[periodo] ?? 1;
-  const inicio = new Date(fim);
-  inicio.setDate(inicio.getDate() - dias);
+  const inicio = new Date(fim.getTime() - dias * DIA_MS);
   return { inicio, fim };
 }

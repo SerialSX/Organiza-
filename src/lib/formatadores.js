@@ -87,12 +87,6 @@ export function hojeNoNegocio(agora = new Date(), virada = viradaDoDia) {
   return diaEmFortaleza.format(new Date(new Date(agora).getTime() - virada * 3600000));
 }
 
-// Trocar a virada agora mudaria o dia de trabalho em andamento (entre 0h e
-// 8h)? Aí a senha recomeçaria no meio do turno. Mesma regra do
-// configurar_operacao no banco.
-export function viradaMudaODia(nova, atual, agora = new Date()) {
-  return nova !== atual && hojeNoNegocio(agora, nova) !== hojeNoNegocio(agora, atual);
-}
 
 // Início do dia de trabalho (AAAA-MM-DD) como instante: meia-noite de
 // Fortaleza mais a virada.

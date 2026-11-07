@@ -76,6 +76,9 @@ test('cancelar pedido pede o motivo', async ({ page }) => {
   const motivos = page.getByRole('group', { name: 'Motivo do cancelamento' });
   await expect(motivos).toBeVisible();
   await motivos.getByRole('button').first().click();
+  // Balcão paga na hora: depois do motivo, pergunta se o dinheiro voltou.
+  await page.getByRole('group', { name: 'O dinheiro foi devolvido?' }).getByRole('button', { name: 'Sim, devolvi' }).click();
+  await expect(motivos).toHaveCount(0);
 
   await page.goto('/cozinha');
   await expect(page.getByRole('listitem', { name: `Pedido ${senha} cancelado` })).toBeVisible();

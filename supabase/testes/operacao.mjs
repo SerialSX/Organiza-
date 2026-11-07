@@ -20,49 +20,12 @@ await ok('com virada às 5h, 0h10 ainda é o dia anterior', async () => {
   igual(await diaEm('2026-11-21 05:00-03'), '2026-11-21', '5h');
 });
 
-// Meio-dia: trocar a virada não muda o dia de trabalho de agora.
-const MEIO_DIA = "'2026-11-21 12:00-03'::timestamptz";
-const configurar = (u, virada, tela, agora = MEIO_DIA) =>
-  dono(u, `select public.configurar_operacao(${virada}::smallint, ${tela}, ${agora})`);
-
-await ok('dono muda a virada para meia-noite', async () => {
-  await configurar(U1, 0, true);
-  igual(await diaEm('2026-11-21 00:10-03'), '2026-11-21', '0h10 com virada à meia-noite');
-  await configurar(U1, 5, true);
+// A hora da virada não é mais escolhida: sempre 5h.
+await ok('a virada não é mais configurável (configurar_operacao saiu)', async () => {
+  const [{ n }] = await dono(U1, `select count(*)::int as n from pg_proc where proname = 'configurar_operacao'`);
+  igual(n, 0, 'versões');
 });
-
-await erro(
-  'às 3h não dá para trocar a virada de 5h para 0h (a senha recomeçaria no meio do turno)',
-  'Mude depois das 8h',
-  () => configurar(U1, 0, true, "'2026-11-21 03:00-03'::timestamptz"),
-);
-
-await ok('às 3h dá para trocar entre viradas que mantêm o mesmo dia (5h para 4h)', async () => {
-  await configurar(U1, 4, true, "'2026-11-21 03:00-03'::timestamptz");
-  await configurar(U1, 5, true, "'2026-11-21 03:00-03'::timestamptz");
-});
-
-await ok('às 3h dá para mudar só a tela da cozinha, mantendo a virada', async () => {
-  await configurar(U1, 5, false, "'2026-11-21 03:00-03'::timestamptz");
-  await configurar(U1, 5, true, "'2026-11-21 03:00-03'::timestamptz");
-});
-
-await erro('virada fora de 0h a 8h', 'entre 0h e 8h', () => configurar(U1, 12, true));
-await erro('só o dono configura', 'Só o dono', async () => {
-  await db.query(`update public.usuarios set papel = 'atendente' where id = '${U2}'`);
-  try {
-    await configurar(U2, 3, false);
-  } finally {
-    await db.query(`update public.usuarios set papel = 'admin' where id = '${U2}'`);
-  }
-});
-
-await ok('modo sem tela de cozinha fica salvo', async () => {
-  await configurar(U1, 5, false);
-  const [n] = await dono(U1, 'select usa_tela_cozinha from public.negocios');
-  igual(n.usa_tela_cozinha, false, 'usa_tela_cozinha');
-  await configurar(U1, 5, true);
-});
+await erro('ninguém muda a virada direto na tabela', 'permission denied', () => dono(U1, 'update public.negocios set virada_do_dia = 0'));
 
 // ---------------------------------------------------------------------------
 // Perguntas de boas-vindas: como o negócio atende
@@ -169,14 +132,19 @@ await ok('crédito e débito são anotados separados', async () => {
   const debito = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'debito');
   igual([credito.forma_pagamento, debito.forma_pagamento], ['credito', 'debito'], 'formas');
 });
-// Transição: aparelho ainda com a versão anterior do site (botão "Cartão" ou
-// pedido guardado sem internet) não pode dar erro.
-await ok('"cartão" do site anterior continua aceito na transição', async () => {
-  const p = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'cartao');
-  igual(p.forma_pagamento, 'cartao', 'forma');
+// Fim da transição: "cartão" ficou só nos pedidos antigos.
+await erro('pedido novo pago em "cartão" é recusado', 'crédito ou débito', () =>
+  pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'cartao'),
+);
+await erro('receber em "cartão" é recusado', 'crédito ou débito', async () => {
   const q = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }]);
-  const [{ n }] = await dono(U1, `select public.registrar_pagamento($1::uuid[], 'cartao') as n`, [[q.id]]);
-  igual(n, 1, 'recebido em cartão');
+  await dono(U1, `select public.registrar_pagamento($1::uuid[], 'cartao')`, [[q.id]]);
+});
+await ok('pedido antigo pago em "cartão" continua válido', async () => {
+  const q = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }]);
+  await db.query(`update public.pedidos set forma_pagamento = 'cartao', pago_em = now() where id = $1`, [q.id]);
+  const [p] = await dono(U1, 'select forma_pagamento from public.pedidos where id = $1', [q.id]);
+  igual(p.forma_pagamento, 'cartao', 'forma');
 });
 await erro('forma de pagamento inventada', 'Forma de pagamento inválida', () => pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'fiado'));
 

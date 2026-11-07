@@ -18,8 +18,9 @@ create table if not exists public.negocios (
   -- Nome mostrado ao cliente; sem ele, vale o nome do cadastro.
   nome_publico text check (nome_publico is null or length(nome_publico) between 1 and 60),
   pagina_ativa boolean not null default true,
-  -- Hora em que o dia de trabalho vira. Com 5, um pedido à 1h da manhã ainda
-  -- é do dia anterior: a fila não some e a senha não recomeça no meio do turno.
+  -- Hora em que o dia de trabalho vira: 5h para todos (não é mais escolhida
+  -- pelo dono). Um pedido à 1h da manhã ainda é do dia anterior: a fila não
+  -- some e a senha não recomeça no meio do turno.
   virada_do_dia smallint not null default 5 check (virada_do_dia between 0 and 8),
   -- false: a cozinha fica do lado do balcão e o "Pronto" é marcado na tela de
   -- pedidos, sem uma tela de cozinha separada.
@@ -481,10 +482,11 @@ begin
   if p_mesa is not null and p_mesa not between 1 and 999 then
     raise exception 'O número da mesa precisa ficar entre 1 e 999.';
   end if;
-  -- 'cartao' continua aceito enquanto houver aparelho com a versão anterior
-  -- do site aberta (botão "Cartão" e pedidos guardados sem internet). Sai numa
-  -- migração futura, depois que todos os aparelhos estiverem na versão nova.
-  if p_forma_pagamento is not null and p_forma_pagamento not in ('dinheiro', 'pix', 'credito', 'debito', 'cartao') then
+  -- 'cartao' só existe nos pedidos pagos antes de separar crédito e débito.
+  if p_forma_pagamento = 'cartao' then
+    raise exception 'Cartão agora é anotado como crédito ou débito. Lance o pedido de novo escolhendo um dos dois.';
+  end if;
+  if p_forma_pagamento is not null and p_forma_pagamento not in ('dinheiro', 'pix', 'credito', 'debito') then
     raise exception 'Forma de pagamento inválida.';
   end if;
 
@@ -636,35 +638,53 @@ begin
 end;
 $$;
 
-create or replace function public.cancelar_pedido(p_pedido_id uuid, p_motivo text)
+-- Pedido já pago (na hora, no balcão): p_devolucao diz se o dinheiro já
+-- voltou para o cliente ('devolvido') ou ainda vai voltar ('a_devolver', que
+-- fica no Caixa até alguém tocar em "Devolvi"). Sem resposta (aparelho com a
+-- versão anterior do site), fica a devolver: o dinheiro do cliente não some
+-- de vista.
+-- Pedido entregue só é cancelado se ninguém pagou (cancelar a conta).
+drop function if exists public.cancelar_pedido(uuid, text);
+create or replace function public.cancelar_pedido(p_pedido_id uuid, p_motivo text, p_devolucao text default null)
 returns void
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_status text;
-  v_conta_id uuid;
+  v_pedido public.pedidos;
+  v_devolucao text;
 begin
   if p_motivo is null or p_motivo not in ('cliente_desistiu', 'erro_lancamento', 'faltou_ingrediente', 'outro') then
     raise exception 'Escolha o motivo do cancelamento.';
   end if;
+  if p_devolucao is not null and p_devolucao not in ('devolvido', 'a_devolver') then
+    raise exception 'Diga se você já devolveu o dinheiro ao cliente.';
+  end if;
 
-  select status, conta_id into v_status, v_conta_id from public.pedidos
+  select * into v_pedido from public.pedidos
   where id = p_pedido_id and negocio_id = public.negocio_do_usuario_atual()
   for update;
   if not found then
     raise exception 'Pedido não encontrado.';
   end if;
-  if v_conta_id is not null then
+  if v_pedido.conta_id is not null then
     raise exception 'Este pedido já foi pago na conta da mesa. Para cancelar, desfaça o recebimento da conta no Caixa.';
   end if;
-  if v_status in ('entregue', 'cancelado') then
+  if v_pedido.nao_recebido_em is not null then
+    raise exception 'Este pedido está como não recebido. Para cancelar, desfaça o "não recebido" no Caixa.';
+  end if;
+  if v_pedido.status = 'cancelado' or (v_pedido.status = 'entregue' and v_pedido.pago_em is not null) then
     raise exception 'Este pedido já foi encerrado.';
   end if;
 
+  if v_pedido.pago_em is not null then
+    v_devolucao := coalesce(p_devolucao, 'a_devolver');
+  end if;
   update public.pedidos
-  set status = 'cancelado', cancelado_em = now(), motivo_cancelamento = p_motivo, atualizado_em = now()
+  set status = 'cancelado', cancelado_em = now(), motivo_cancelamento = p_motivo, atualizado_em = now(),
+      devolucao = v_devolucao,
+      devolvido_em = case when v_devolucao = 'devolvido' then now() end
   where id = p_pedido_id;
 end;
 $$;
@@ -756,13 +776,13 @@ revoke all on function public.gravar_itens_pedido(uuid, uuid, jsonb, jsonb) from
 revoke all on function public.limpar_identificacao(text) from public, anon, authenticated;
 revoke all on function public.criar_pedido(jsonb, uuid, int, text, text, text) from public, anon;
 revoke all on function public.editar_pedido(uuid, jsonb, timestamptz, int, text) from public, anon;
-revoke all on function public.cancelar_pedido(uuid, text) from public, anon;
+revoke all on function public.cancelar_pedido(uuid, text, text) from public, anon;
 revoke all on function public.atualizar_status_pedido(uuid, text) from public, anon;
 revoke all on function public.marcar_item_faltou(uuid, boolean) from public, anon;
 grant execute on function public.negocio_do_usuario_atual() to authenticated;
 grant execute on function public.criar_pedido(jsonb, uuid, int, text, text, text) to authenticated;
 grant execute on function public.editar_pedido(uuid, jsonb, timestamptz, int, text) to authenticated;
-grant execute on function public.cancelar_pedido(uuid, text) to authenticated;
+grant execute on function public.cancelar_pedido(uuid, text, text) to authenticated;
 grant execute on function public.atualizar_status_pedido(uuid, text) to authenticated;
 grant execute on function public.marcar_item_faltou(uuid, boolean) to authenticated;
 
@@ -1010,10 +1030,11 @@ declare
   v_negocio_id uuid := public.negocio_do_usuario_atual();
   v_quantos int;
 begin
-  -- 'cartao' continua aceito enquanto houver aparelho com a versão anterior
-  -- do site aberta (botão "Cartão" e pedidos guardados sem internet). Sai numa
-  -- migração futura, depois que todos os aparelhos estiverem na versão nova.
-  if p_forma is not null and p_forma not in ('dinheiro', 'pix', 'credito', 'debito', 'cartao') then
+  -- 'cartao' só existe nos pedidos pagos antes de separar crédito e débito.
+  if p_forma = 'cartao' then
+    raise exception 'Cartão agora é anotado como crédito ou débito. Escolha um dos dois.';
+  end if;
+  if p_forma is not null and p_forma not in ('dinheiro', 'pix', 'credito', 'debito') then
     raise exception 'Forma de pagamento inválida.';
   end if;
   if p_pedido_ids is null or cardinality(p_pedido_ids) not between 1 and 200 then
@@ -1028,54 +1049,17 @@ begin
     and negocio_id = v_negocio_id
     and status <> 'cancelado'
     and conta_id is null
+    and nao_recebido_em is null
     and (p_forma is null or pago_em is null);
   get diagnostics v_quantos = row_count;
   return v_quantos;
 end;
 $$;
 
--- Só o dono: hora da virada do dia e se a cozinha tem tela própria.
--- A virada não muda se isso trocar o dia de trabalho de agora (entre 0h e 8h):
--- a senha voltaria para 001 no meio do turno e se repetiria no mesmo dia, e
--- a página do QR poderia mostrar ao cliente o pedido de outra pessoa.
--- p_agora existe para os testes; no uso normal é o horário do banco.
+-- A hora da virada do dia não é mais escolhida (sempre 5h) e a tela da
+-- cozinha é respondida em configurar_atendimento.
 drop function if exists public.configurar_operacao(smallint, boolean);
-create or replace function public.configurar_operacao(
-  p_virada_do_dia smallint,
-  p_usa_tela_cozinha boolean,
-  p_agora timestamptz default now()
-)
-returns void
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_negocio_id uuid;
-  v_virada_atual smallint;
-begin
-  select u.negocio_id, n.virada_do_dia into v_negocio_id, v_virada_atual
-  from public.usuarios u
-  join public.negocios n on n.id = u.negocio_id
-  where u.id = (select auth.uid()) and u.papel = 'admin';
-  if v_negocio_id is null then
-    raise exception 'Só o dono do negócio pode mudar isso.';
-  end if;
-  if p_virada_do_dia is null or p_virada_do_dia not between 0 and 8 then
-    raise exception 'Escolha uma hora entre 0h e 8h.';
-  end if;
-  if p_virada_do_dia <> v_virada_atual
-    and ((p_agora at time zone 'America/Fortaleza') - make_interval(hours => p_virada_do_dia))::date
-      <> ((p_agora at time zone 'America/Fortaleza') - make_interval(hours => v_virada_atual))::date
-  then
-    raise exception 'Agora não dá para mudar a hora: o dia de trabalho viraria no meio do turno e as senhas se repetiriam. Mude depois das 8h da manhã.';
-  end if;
-  update public.negocios
-  set virada_do_dia = p_virada_do_dia,
-      usa_tela_cozinha = coalesce(p_usa_tela_cozinha, usa_tela_cozinha)
-  where id = v_negocio_id;
-end;
-$$;
+drop function if exists public.configurar_operacao(smallint, boolean, timestamptz);
 
 -- Só o dono: as respostas das perguntas de boas-vindas (como atende e se a
 -- cozinha tem aparelho próprio). Dá para mudar depois em Minha conta.
@@ -1110,10 +1094,8 @@ $$;
 revoke all on function public.ao_mudar_disponivel() from public, anon, authenticated;
 revoke all on function public.registrar_toque_esgotado(uuid) from public, anon;
 revoke all on function public.registrar_pagamento(uuid[], text) from public, anon;
-revoke all on function public.configurar_operacao(smallint, boolean, timestamptz) from public, anon;
 grant execute on function public.registrar_toque_esgotado(uuid) to authenticated;
 grant execute on function public.registrar_pagamento(uuid[], text) to authenticated;
-grant execute on function public.configurar_operacao(smallint, boolean, timestamptz) to authenticated;
 revoke all on function public.configurar_atendimento(text, boolean) from public, anon;
 grant execute on function public.configurar_atendimento(text, boolean) to authenticated;
 
@@ -1263,7 +1245,8 @@ begin
     and negocio_id = v_negocio_id
     and mesa is not null
     and status <> 'cancelado'
-    and pago_em is null;
+    and pago_em is null
+    and nao_recebido_em is null;
   get diagnostics v_quantos = row_count;
   return v_quantos;
 end;
@@ -1331,7 +1314,8 @@ begin
   end if;
   if exists (
     select 1 from public.pedidos
-    where id = any (p_pedido_ids) and (mesa is null or status = 'cancelado' or pago_em is not null)
+    where id = any (p_pedido_ids)
+      and (mesa is null or status = 'cancelado' or pago_em is not null or nao_recebido_em is not null)
   ) then
     raise exception 'Esta conta mudou: algum pedido já foi recebido ou cancelado. Atualize a tela.';
   end if;
@@ -1396,10 +1380,13 @@ begin
   from jsonb_array_elements(coalesce(p_pagamentos, '[]'::jsonb)) e
   where (e ->> 'valor')::numeric > 0;
 
+  -- A mesa pagou e foi embora: o que estava pronto já foi levado.
   update public.pedidos
   set conta_id = v_conta_id,
       pago_em = now(),
       forma_pagamento = null,
+      status = case when status = 'pronto' then 'entregue' else status end,
+      entregue_em = case when status = 'pronto' then now() else entregue_em end,
       atualizado_em = now()
   where id = any (p_pedido_ids);
 
@@ -1443,6 +1430,273 @@ grant execute on function public.configurar_mesas(int, int) to authenticated;
 grant execute on function public.passar_mesa(uuid[], int, text) to authenticated;
 grant execute on function public.fechar_conta_mesa(uuid[], text, boolean, jsonb) to authenticated;
 grant execute on function public.desfazer_conta_mesa(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Fim do dia: encerrar o dia, resolver o que ficou aberto e devolver dinheiro
+-- ---------------------------------------------------------------------------
+-- nao_recebido_em: "Foi embora sem pagar". O pedido sai das contas abertas e
+-- aparece no Caixa e nos relatórios como não recebido.
+-- devolucao: pedido pago e depois cancelado. 'a_devolver' fica no Caixa até
+-- alguém tocar em "Devolvi"; 'devolvido' já voltou para o cliente. Vazio num
+-- pedido pago e cancelado: cancelado antes desta pergunta existir (o Caixa
+-- trata como a devolver).
+alter table public.pedidos
+  add column if not exists nao_recebido_em timestamptz,
+  add column if not exists devolucao text check (devolucao in ('a_devolver', 'devolvido')),
+  add column if not exists devolvido_em timestamptz;
+alter table public.pedidos drop constraint if exists pedidos_fim_do_dia_coerente;
+alter table public.pedidos
+  add constraint pedidos_fim_do_dia_coerente check (
+    (nao_recebido_em is null or (pago_em is null and status <> 'cancelado'))
+    and (devolucao is null or (status = 'cancelado' and pago_em is not null and conta_id is null))
+    and ((devolvido_em is not null) = (devolucao is not distinct from 'devolvido'))
+  );
+-- Pendências: pedidos sem receber de dias anteriores.
+create index if not exists pedidos_sem_receber_idx on public.pedidos (negocio_id, dia)
+  where status <> 'cancelado' and pago_em is null and nao_recebido_em is null;
+
+-- Dia encerrado pelo botão "Encerrar o dia". Lançar ou reabrir um pedido
+-- daquele dia apaga o encerramento (gatilho abaixo) e o dia volta a ficar
+-- aberto. O dia de trabalho vira sozinho às 5h, encerrado ou não.
+create table if not exists public.dias_encerrados (
+  negocio_id uuid not null references public.negocios (id) on delete cascade,
+  dia date not null,
+  encerrado_em timestamptz not null default now(),
+  encerrado_por uuid references public.usuarios (id) on delete set null,
+  primary key (negocio_id, dia)
+);
+
+alter table public.dias_encerrados enable row level security;
+revoke all on public.dias_encerrados from anon, authenticated;
+grant select on public.dias_encerrados to authenticated;
+
+drop policy if exists "dias_encerrados isolados por negocio_id" on public.dias_encerrados;
+create policy "dias_encerrados isolados por negocio_id"
+  on public.dias_encerrados for select to authenticated
+  using (negocio_id = (select public.negocio_do_usuario_atual()));
+
+-- Pedido em aberto: ainda sem entregar, ou sem receber (e ninguém disse que
+-- o cliente foi embora sem pagar). Um pedido assim reabre o dia encerrado.
+create or replace function public.reabrir_dia_do_pedido()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.status <> 'cancelado'
+     and (new.status in ('pendente', 'em_preparo', 'pronto') or (new.pago_em is null and new.nao_recebido_em is null)) then
+    delete from public.dias_encerrados where negocio_id = new.negocio_id and dia = new.dia;
+  end if;
+  return null;
+end;
+$$;
+
+drop trigger if exists reabrir_dia_do_pedido on public.pedidos;
+create trigger reabrir_dia_do_pedido
+  after insert or update on public.pedidos
+  for each row execute function public.reabrir_dia_do_pedido();
+
+-- "Encerrar o dia": só com tudo resolvido, nenhum pedido sem entregar e
+-- nenhuma conta sem receber. Devolve a hora do encerramento.
+create or replace function public.encerrar_dia(p_dia date)
+returns timestamptz
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_negocio_id uuid := public.negocio_do_usuario_atual();
+  v_abertos int;
+  v_quando timestamptz;
+begin
+  if v_negocio_id is null then
+    raise exception 'Sua conta ainda não está ligada a um negócio.';
+  end if;
+  if p_dia is null or p_dia > public.dia_do_negocio(v_negocio_id) then
+    raise exception 'Este dia ainda não começou.';
+  end if;
+
+  select count(*) into v_abertos
+  from public.pedidos
+  where negocio_id = v_negocio_id
+    and dia = p_dia
+    and status <> 'cancelado'
+    and (status in ('pendente', 'em_preparo', 'pronto') or (pago_em is null and nao_recebido_em is null));
+  if v_abertos = 1 then
+    raise exception 'Não dá para encerrar: 1 pedido está em aberto. Resolva antes de encerrar o dia.';
+  elsif v_abertos > 1 then
+    raise exception 'Não dá para encerrar: % pedidos estão em aberto. Resolva antes de encerrar o dia.', v_abertos;
+  end if;
+
+  insert into public.dias_encerrados (negocio_id, dia, encerrado_por)
+  values (v_negocio_id, p_dia, (select auth.uid()))
+  on conflict (negocio_id, dia) do nothing;
+  select encerrado_em into v_quando
+  from public.dias_encerrados
+  where negocio_id = v_negocio_id and dia = p_dia;
+  return v_quando;
+end;
+$$;
+
+-- "Já foi entregue": o pedido saiu e ninguém marcou. Resolve um pedido ou
+-- todos os prontos de uma vez antes de encerrar o dia.
+create or replace function public.marcar_entregues(p_pedido_ids uuid[])
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_quantos int;
+begin
+  if p_pedido_ids is null or cardinality(p_pedido_ids) not between 1 and 200 then
+    raise exception 'Escolha de 1 a 200 pedidos.';
+  end if;
+  update public.pedidos
+  set status = 'entregue',
+      entregue_em = now(),
+      atualizado_em = now()
+  where id = any (p_pedido_ids)
+    and negocio_id = public.negocio_do_usuario_atual()
+    and status in ('pendente', 'em_preparo', 'pronto');
+  get diagnostics v_quantos = row_count;
+  return v_quantos;
+end;
+$$;
+
+-- "Foi embora sem pagar": a conta sai das abertas e fica como não recebida.
+-- Quem foi embora já levou o pedido: o que ainda estava aberto vira entregue.
+create or replace function public.marcar_nao_recebido(p_pedido_ids uuid[])
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_quantos int;
+begin
+  if p_pedido_ids is null or cardinality(p_pedido_ids) not between 1 and 200 then
+    raise exception 'Escolha de 1 a 200 pedidos.';
+  end if;
+  update public.pedidos
+  set nao_recebido_em = now(),
+      status = case when status in ('pendente', 'em_preparo', 'pronto') then 'entregue' else status end,
+      entregue_em = case when status in ('pendente', 'em_preparo', 'pronto') then now() else entregue_em end,
+      atualizado_em = now()
+  where id = any (p_pedido_ids)
+    and negocio_id = public.negocio_do_usuario_atual()
+    and status <> 'cancelado'
+    and pago_em is null
+    and nao_recebido_em is null;
+  get diagnostics v_quantos = row_count;
+  return v_quantos;
+end;
+$$;
+
+-- Marcou "não recebido" por engano, ou o cliente voltou para pagar: a conta
+-- volta a ficar aberta (e o dia, se estava encerrado, reabre).
+create or replace function public.desfazer_nao_recebido(p_pedido_ids uuid[])
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_quantos int;
+begin
+  if p_pedido_ids is null or cardinality(p_pedido_ids) not between 1 and 200 then
+    raise exception 'Escolha de 1 a 200 pedidos.';
+  end if;
+  update public.pedidos
+  set nao_recebido_em = null,
+      atualizado_em = now()
+  where id = any (p_pedido_ids)
+    and negocio_id = public.negocio_do_usuario_atual()
+    and nao_recebido_em is not null;
+  get diagnostics v_quantos = row_count;
+  return v_quantos;
+end;
+$$;
+
+-- "Cancelar a conta": cancela de uma vez os pedidos que ninguém pagou (a mesa
+-- inteira ou o pedido do balcão). Pedido já pago não entra: para ele a
+-- pergunta é se o dinheiro foi devolvido (cancelar_pedido).
+create or replace function public.cancelar_conta(p_pedido_ids uuid[], p_motivo text)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_negocio_id uuid := public.negocio_do_usuario_atual();
+  v_quantos int;
+begin
+  if p_motivo is null or p_motivo not in ('cliente_desistiu', 'erro_lancamento', 'faltou_ingrediente', 'outro') then
+    raise exception 'Escolha o motivo do cancelamento.';
+  end if;
+  if p_pedido_ids is null or cardinality(p_pedido_ids) not between 1 and 200 then
+    raise exception 'Escolha de 1 a 200 pedidos.';
+  end if;
+
+  perform 1 from public.pedidos
+  where id = any (p_pedido_ids) and negocio_id = v_negocio_id
+  for update;
+  if exists (
+    select 1 from public.pedidos
+    where id = any (p_pedido_ids) and negocio_id = v_negocio_id
+      and status <> 'cancelado' and (pago_em is not null or nao_recebido_em is not null)
+  ) then
+    raise exception 'Esta conta mudou: algum pedido já foi recebido. Atualize a tela.';
+  end if;
+
+  update public.pedidos
+  set status = 'cancelado', cancelado_em = now(), motivo_cancelamento = p_motivo, atualizado_em = now()
+  where id = any (p_pedido_ids)
+    and negocio_id = v_negocio_id
+    and status <> 'cancelado';
+  get diagnostics v_quantos = row_count;
+  return v_quantos;
+end;
+$$;
+
+-- "Devolvi": o dinheiro do pedido cancelado voltou para o cliente.
+create or replace function public.marcar_devolvido(p_pedido_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.pedidos
+  set devolucao = 'devolvido',
+      devolvido_em = now(),
+      atualizado_em = now()
+  where id = p_pedido_id
+    and negocio_id = public.negocio_do_usuario_atual()
+    and status = 'cancelado'
+    and pago_em is not null
+    and conta_id is null
+    and devolucao is distinct from 'devolvido';
+  if not found then
+    raise exception 'Este dinheiro já foi marcado como devolvido. Atualize a tela.';
+  end if;
+end;
+$$;
+
+revoke all on function public.reabrir_dia_do_pedido() from public, anon, authenticated;
+revoke all on function public.encerrar_dia(date) from public, anon;
+revoke all on function public.marcar_entregues(uuid[]) from public, anon;
+revoke all on function public.marcar_nao_recebido(uuid[]) from public, anon;
+revoke all on function public.desfazer_nao_recebido(uuid[]) from public, anon;
+revoke all on function public.cancelar_conta(uuid[], text) from public, anon;
+revoke all on function public.marcar_devolvido(uuid) from public, anon;
+grant execute on function public.encerrar_dia(date) to authenticated;
+grant execute on function public.marcar_entregues(uuid[]) to authenticated;
+grant execute on function public.marcar_nao_recebido(uuid[]) to authenticated;
+grant execute on function public.desfazer_nao_recebido(uuid[]) to authenticated;
+grant execute on function public.cancelar_conta(uuid[], text) to authenticated;
+grant execute on function public.marcar_devolvido(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Página pública de acompanhamento (QR code)
@@ -1696,8 +1950,21 @@ grant execute on function public.trocar_codigo_publico() to authenticated;
 -- O dono (admin) apaga o negócio inteiro e as contas ligadas a ele; os
 -- cascades levam usuarios, produtos, pedidos e itens. Um funcionário apaga
 -- só a própria conta.
-create or replace function public.excluir_minha_conta()
-returns void
+-- Senhas erradas ao excluir a conta: 5 em 15 minutos e é preciso esperar.
+create table if not exists public.tentativas_senha (
+  usuario_id uuid not null references auth.users (id) on delete cascade,
+  criado_em timestamptz not null default now()
+);
+create index if not exists tentativas_senha_usuario_idx on public.tentativas_senha (usuario_id, criado_em);
+alter table public.tentativas_senha enable row level security;
+revoke all on public.tentativas_senha from anon, authenticated;
+
+-- Excluir a conta pede a senha atual, conferida aqui: quem pega o celular com
+-- a conta aberta não apaga o negócio sem saber a senha. Devolve 'excluida' ou
+-- 'senha_incorreta' (sem erro, para a tentativa errada ficar gravada).
+drop function if exists public.excluir_minha_conta();
+create or replace function public.excluir_minha_conta(p_senha text)
+returns text
 language plpgsql
 security definer
 set search_path = ''
@@ -1706,9 +1973,25 @@ declare
   v_usuario_id uuid := (select auth.uid());
   v_negocio_id uuid;
   v_papel text;
+  v_hash text;
 begin
   if v_usuario_id is null then
     raise exception 'Entre na sua conta para excluí-la.';
+  end if;
+
+  delete from public.tentativas_senha where criado_em < now() - interval '1 day';
+  if (
+    select count(*) from public.tentativas_senha
+    where usuario_id = v_usuario_id and criado_em > now() - interval '15 minutes'
+  ) >= 5 then
+    raise exception 'Muitas tentativas com a senha errada. Espere 15 minutos e tente de novo.';
+  end if;
+
+  select encrypted_password into v_hash from auth.users where id = v_usuario_id;
+  if coalesce(p_senha, '') = '' or coalesce(v_hash, '') = ''
+     or extensions.crypt(p_senha, v_hash) is distinct from v_hash then
+    insert into public.tentativas_senha (usuario_id) values (v_usuario_id);
+    return 'senha_incorreta';
   end if;
 
   select negocio_id, papel into v_negocio_id, v_papel
@@ -1722,11 +2005,12 @@ begin
   end if;
 
   delete from auth.users where id = v_usuario_id;
+  return 'excluida';
 end;
 $$;
 
-revoke all on function public.excluir_minha_conta() from public, anon;
-grant execute on function public.excluir_minha_conta() to authenticated;
+revoke all on function public.excluir_minha_conta(text) from public, anon;
+grant execute on function public.excluir_minha_conta(text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Minha conta
@@ -1832,7 +2116,7 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select 20261111;
+  select 20261112;
 $$;
 
 revoke all on function public.versao_do_banco() from public;

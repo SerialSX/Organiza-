@@ -259,11 +259,19 @@ function baixarCsv(ranking, periodo) {
 }
 
 function textoCancelados(relatorio) {
-  if (!relatorio.totalCancelados) return null;
-  const motivos = Object.entries(relatorio.canceladosPorMotivo)
-    .map(([motivo, n]) => `${rotuloDoMotivo(motivo)}: ${n}`)
-    .join(', ');
-  return `Fora da conta: ${plural(relatorio.totalCancelados, 'cancelado', 'cancelados')} (${motivos}).`;
+  const partes = [];
+  if (relatorio.totalCancelados) {
+    const motivos = Object.entries(relatorio.canceladosPorMotivo)
+      .map(([motivo, n]) => `${rotuloDoMotivo(motivo)}: ${n}`)
+      .join(', ');
+    partes.push(`${plural(relatorio.totalCancelados, 'cancelado', 'cancelados')} (${motivos})`);
+  }
+  if (relatorio.totalNaoRecebidos) {
+    partes.push(
+      `${plural(relatorio.totalNaoRecebidos, 'não recebido', 'não recebidos')} (foram embora sem pagar ${formatarMoeda(relatorio.valorNaoRecebido)})`,
+    );
+  }
+  return partes.length ? `Fora da conta: ${partes.join('; ')}.` : null;
 }
 
 export default function Relatorios() {
@@ -311,7 +319,7 @@ export default function Relatorios() {
 
       {carregando ? (
         <Carregando texto="Calculando…" />
-      ) : relatorio.totalPedidos + relatorio.totalCancelados === 0 ? (
+      ) : relatorio.totalPedidos + relatorio.totalCancelados + relatorio.totalNaoRecebidos === 0 ? (
         <EstadoVazio
           icon={ReportsIcon}
           accent={ACCENT}

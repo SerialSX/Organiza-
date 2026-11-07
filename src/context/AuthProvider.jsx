@@ -3,7 +3,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { lerDemo, salvarDemo, limparDemo, MESAS_DEMO } from '../services/demoStore';
 import { AuthContext } from './authContext';
 import { traduzirErroRecuperacao } from '../lib/recuperacaoSenha';
-import { definirViradaDoDia, viradaMudaODia } from '../lib/formatadores';
+import { definirViradaDoDia } from '../lib/formatadores';
 import { buscarPerfil } from '../services/perfil';
 
 const PERFIL_DEMO = {
@@ -39,10 +39,6 @@ const ERROS_AUTH = [
   [/password/i, 'A senha precisa ter pelo menos 6 caracteres.'],
   [/(fetch|network)/i, 'Sem conexão. Confira a internet e tente de novo.'],
 ];
-
-// Mesmo texto do configurar_operacao no banco.
-const ERRO_VIRADA_NO_TURNO =
-  'Agora não dá para mudar a hora: o dia de trabalho viraria no meio do turno e as senhas se repetiriam. Mude depois das 8h da manhã.';
 
 function traduzirErro(error) {
   if (!error) return null;
@@ -182,24 +178,6 @@ export function AuthProvider({ children }) {
     if (isSupabaseConfigured) await supabase.auth.signOut({ scope: 'local' });
   }, []);
 
-  // Hora em que o dia vira e se a cozinha tem tela própria (só o dono).
-  const configurarOperacao = useCallback(async ({ viradaDoDia, usaTelaCozinha }) => {
-    if (!isSupabaseConfigured) {
-      const db = lerDemo();
-      if (viradaMudaODia(viradaDoDia, perfilDemo().virada_do_dia)) return { erro: ERRO_VIRADA_NO_TURNO };
-      salvarDemo({ ...db, perfil: { ...db.perfil, virada_do_dia: viradaDoDia, usa_tela_cozinha: usaTelaCozinha } });
-      setPerfil(perfilDemo());
-      return { erro: null };
-    }
-    const { error } = await supabase.rpc('configurar_operacao', {
-      p_virada_do_dia: viradaDoDia,
-      p_usa_tela_cozinha: usaTelaCozinha,
-    });
-    if (error) return { erro: traduzirErro(error) };
-    setPerfil((p) => ({ ...p, virada_do_dia: viradaDoDia, usa_tela_cozinha: usaTelaCozinha }));
-    return { erro: null };
-  }, []);
-
   // Respostas das perguntas de boas-vindas (só o dono). Também usado em
   // Minha conta para mudar depois.
   const configurarAtendimento = useCallback(async ({ modo, usaTelaCozinha }) => {
@@ -236,20 +214,34 @@ export function AuthProvider({ children }) {
     return { erro: traduzirErro(error) };
   }, []);
 
-  const excluirConta = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      limparDemo();
-      setPerfil(perfilDemo());
+  // A senha é conferida no banco: quem pega o celular com a conta aberta não
+  // apaga o negócio sem saber a senha.
+  const excluirConta = useCallback(
+    async (senha) => {
+      if (!isSupabaseConfigured) {
+        limparDemo();
+        setPerfil(perfilDemo());
+        return { erro: null };
+      }
+      if (!senha) return { erro: 'Digite sua senha atual.' };
+      let { data, error } = await supabase.rpc('excluir_minha_conta', { p_senha: senha });
+      // Banco ainda sem a senha no servidor: confere aqui e exclui como antes.
+      if (error && (error.code === 'PGRST202' || error.code === '42883')) {
+        const conferida = await confirmarSenhaAtual(senha);
+        if (conferida.erro) return conferida;
+        ({ error } = await supabase.rpc('excluir_minha_conta'));
+        data = 'excluida';
+      }
+      if (error) {
+        return { erro: error.code === 'P0001' ? error.message : 'Não foi possível excluir a conta. Tente de novo.' };
+      }
+      if (data === 'senha_incorreta') return { erro: 'Senha atual incorreta.' };
+      // O usuário já não existe no Auth: só limpa a sessão guardada neste aparelho.
+      await supabase.auth.signOut({ scope: 'local' });
       return { erro: null };
-    }
-    const { error } = await supabase.rpc('excluir_minha_conta');
-    if (error) {
-      return { erro: error.code === 'P0001' ? error.message : 'Não foi possível excluir a conta. Tente de novo.' };
-    }
-    // O usuário já não existe no Auth: só limpa a sessão guardada neste aparelho.
-    await supabase.auth.signOut({ scope: 'local' });
-    return { erro: null };
-  }, []);
+    },
+    [confirmarSenhaAtual],
+  );
 
   const valor = useMemo(
     () => ({
@@ -265,7 +257,6 @@ export function AuthProvider({ children }) {
       confirmarCodigoSenha,
       trocarSenha,
       confirmarSenhaAtual,
-      configurarOperacao,
       configurarAtendimento,
       configurarMesas,
       sair,
@@ -284,7 +275,6 @@ export function AuthProvider({ children }) {
       confirmarCodigoSenha,
       trocarSenha,
       confirmarSenhaAtual,
-      configurarOperacao,
       configurarAtendimento,
       configurarMesas,
       sair,

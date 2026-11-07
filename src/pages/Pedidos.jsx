@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AppShell from '../components/ui/AppShell';
 import PageHeader from '../components/ui/PageHeader';
 import Aviso from '../components/ui/Aviso';
@@ -15,22 +16,26 @@ import FilaDeEnvio from '../components/pedidos/FilaDeEnvio';
 import ContasAbertas from '../components/pedidos/ContasAbertas';
 import MapaDeMesas, { ID_MAPA } from '../components/mesas/MapaDeMesas';
 import ContaDaMesa from '../components/mesas/ContaDaMesa';
+import SugestaoDeMesas from '../components/mesas/SugestaoDeMesas';
+import ResolverPendencias from '../components/fimDoDia/ResolverPendencias';
 import { OrdersIcon, ProductsIcon, SendIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
 import { useProdutos } from '../hooks/useProdutos';
 import { usePedidosAbertos } from '../hooks/usePedidosAbertos';
 import { usePedidosDoDia } from '../hooks/usePedidosDoDia';
+import { usePendenciasAnteriores } from '../hooks/usePendenciasAnteriores';
 import { useFilaDeEnvio } from '../hooks/useFilaDeEnvio';
 import { useRascunhoDoPedido, novaChaveDeLinha } from '../hooks/useRascunhoDoPedido';
 import { criarPedido, editarPedido, buscarPedidoComValores, ROTULO_FORMA } from '../services/pedidos';
 import { registrarToqueEsgotado } from '../services/produtos';
 import { guardarNaFila } from '../services/filaDeEnvio';
-import { destinoDoPedido, formatarMoeda, numeroDoPedido } from '../lib/formatadores';
+import { destinoDoPedido, formatarMoeda, hojeNoNegocio, numeroDoPedido } from '../lib/formatadores';
 import { podeEditar } from '../lib/pedidoStatus';
 import { separarPedidos } from '../lib/fila';
 import { contasAbertas, totalDoPedido } from '../lib/caixa';
 import { atendeNaMesa, atendeNoBalcao, destinoInicial, modoDoNegocio, taxaDoNegocio, usaMapaDeMesas } from '../lib/atendimento';
 import { montarMapa, proximaMesaExtra } from '../lib/mesas';
+import { pendenciasDoDia, quantosPedidos } from '../lib/fimDoDia';
 
 const ACCENT = 'var(--color-accent-pedidos)';
 // Acima da barra de navegação do celular; no tablet sem essa barra, no rodapé.
@@ -81,7 +86,18 @@ export default function Pedidos() {
   const { perfil } = useAuth();
   const { produtos, carregando, erro: erroCarga } = useProdutos();
   const { pedidos: abertos } = usePedidosAbertos();
-  const { pedidos: doDia } = usePedidosDoDia();
+  const { pedidos: doDia, carregando: carregandoDia } = usePedidosDoDia();
+  const { pedidos: anteriores, carregando: carregandoAnteriores } = usePendenciasAnteriores();
+  // ?resolver=2026-11-07: veio do "Encerrar o dia" do Caixa com coisa em aberto.
+  const [parametros] = useSearchParams();
+  const pedidoResolver = parametros.get('resolver') ?? '';
+  const diaResolver = /^\d{4}-\d{2}-\d{2}$/.test(pedidoResolver) ? pedidoResolver : null;
+  const hoje = hojeNoNegocio();
+  const resolverHoje = diaResolver === hoje;
+  const paraResolver = !diaResolver ? [] : resolverHoje ? doDia : anteriores.filter((p) => p.dia === diaResolver);
+  const carregandoResolver = resolverHoje ? carregandoDia : carregandoAnteriores;
+  const resolvido = Boolean(diaResolver) && !carregandoResolver && pendenciasDoDia(paraResolver).total === 0;
+  const pendentesAnteriores = pendenciasDoDia(anteriores).total;
   const semTelaCozinha = perfil.usa_tela_cozinha === false;
   // Balcão, mesa ou os dois (perguntas de boas-vindas / Minha conta).
   const modo = modoDoNegocio(perfil);
@@ -411,8 +427,39 @@ export default function Pedidos() {
 
       {erroCarga && <Aviso className="mb-4">{erroCarga}</Aviso>}
 
+      {diaResolver && (
+        <ResolverPendencias
+          pedidos={paraResolver}
+          taxa={taxa}
+          titulo="Para encerrar o dia, resolva:"
+          descricao="Diga o que aconteceu com cada pedido. Quando a lista acabar, volte ao Caixa e encerre o dia."
+          idTitulo="titulo-resolver"
+          mostrarDia={!resolverHoje}
+        />
+      )}
+      {resolvido && (
+        <div aria-live="polite" className="mb-6 flex flex-col gap-2">
+          <Aviso tipo="sucesso">Tudo resolvido. Agora dá para encerrar o dia.</Aviso>
+          <Botao para={resolverHoje ? '/caixa' : '/caixa?dia=ontem'} cor="var(--color-accent-relatorios)" className="self-start">
+            Ir para o Caixa e encerrar o dia
+          </Botao>
+        </div>
+      )}
+      {!diaResolver && pendentesAnteriores > 0 && (
+        <div className="mb-6 flex flex-col gap-2">
+          <Aviso>
+            Pendências do dia anterior: {pendentesAnteriores === 1 ? '1 pedido ficou' : `${quantosPedidos(pendentesAnteriores)} ficaram`} em
+            aberto (sem entregar ou sem receber).
+          </Aviso>
+          <Botao para="/home#pendencias" variante="secundaria" className="self-start">
+            Ver e resolver
+          </Botao>
+        </div>
+      )}
+
       <FilaDeEnvio fila={filaDeEnvio} onTentar={tentarAgora} onDescartar={descartar} />
 
+      {mapaAtivo && produtos.length > 0 && <SugestaoDeMesas />}
       {mapaAtivo && produtos.length > 0 && (
         <MapaDeMesas
           mapa={mapa}

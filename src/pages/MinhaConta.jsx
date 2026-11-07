@@ -4,7 +4,7 @@ import AppShell from '../components/ui/AppShell';
 import PageHeader from '../components/ui/PageHeader';
 import Aviso from '../components/ui/Aviso';
 import Botao from '../components/ui/Botao';
-import Campo, { classeCampo } from '../components/ui/Campo';
+import Campo from '../components/ui/Campo';
 import CampoSenha from '../components/ui/CampoSenha';
 import { UserIcon, QrIcon, TrashIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
@@ -13,7 +13,6 @@ import EscolhaDaCozinha from '../components/boasVindas/EscolhaDaCozinha';
 import { QuantasMesas, TaxaDeServico } from '../components/mesas/EscolhaDasMesas';
 import { atendeNaMesa, atendeNoBalcao, modoDoNegocio } from '../lib/atendimento';
 import { MESAS_PADRAO } from '../lib/mesas';
-import { viradaMudaODia } from '../lib/formatadores';
 
 const ACCENT = 'var(--color-brand-orange)';
 const PERIGO = 'var(--color-accent-cozinha)';
@@ -125,16 +124,11 @@ function SeusDados({ perfil }) {
   );
 }
 
-const HORAS_DE_VIRADA = [0, 1, 2, 3, 4, 5, 6, 7, 8];
-
-function rotuloDaHora(h) {
-  return h === 0 ? 'Meia-noite' : `${h}h da manhã`;
-}
-
-// Só o dono: como atende, se a cozinha tem aparelho próprio e até que horas
-// o dia de trabalho vai. As duas primeiras são as perguntas de boas-vindas.
+// Só o dono: como atende, se a cozinha tem aparelho próprio, as mesas e a
+// taxa de serviço (as perguntas de boas-vindas). O dia de trabalho vira
+// sempre às 5h; para fechar antes, "Encerrar o dia" no Caixa.
 function ComoVoceAtende({ perfil }) {
-  const { configurarOperacao, configurarAtendimento, configurarMesas } = useAuth();
+  const { configurarAtendimento, configurarMesas } = useAuth();
   const modoSalvo = modoDoNegocio(perfil);
   const telaSalva = perfil.usa_tela_cozinha !== false;
   const [modo, setModo] = useState(modoSalvo);
@@ -149,35 +143,21 @@ function ComoVoceAtende({ perfil }) {
   const mudouMesas =
     naMesa && (mesas !== perfil.quantidade_mesas || taxa !== perfil.taxa_servico);
   const faltaTaxa = naMesa && taxa === null;
-  const [virada, setVirada] = useState(perfil.virada_do_dia ?? 5);
   const [usaTela, setUsaTela] = useState(telaSalva);
   const [mensagem, setMensagem] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const mudouAtendimento = modo !== modoSalvo || usaTela !== telaSalva;
   const mudouAlgo = mudouAtendimento || mudouMesas;
-  const viradaAtual = perfil.virada_do_dia ?? 5;
-  const mudouVirada = virada !== viradaAtual;
-  // Entre 0h e 8h, trocar a virada pode virar o dia no meio do turno: o banco
-  // recusa, então a tela avisa antes.
-  const viradaNoTurno = viradaMudaODia(virada, viradaAtual);
 
   async function salvar(e) {
     e.preventDefault();
     setMensagem(null);
     setSalvando(true);
-    const trocouVirada = mudouVirada;
     let { erro } = mudouMesas ? await configurarMesas({ quantidade: mesas, taxaServico: taxa }) : { erro: null };
     if (!erro && mudouAtendimento) ({ erro } = await configurarAtendimento({ modo, usaTelaCozinha: usaTela }));
-    if (!erro && mudouVirada) ({ erro } = await configurarOperacao({ viradaDoDia: virada, usaTelaCozinha: usaTela }));
     setSalvando(false);
     if (erro) setMensagem({ tipo: 'erro', texto: erro });
-    else if (trocouVirada) {
-      setMensagem({
-        tipo: 'sucesso',
-        texto:
-          'Salvo. Nos outros aparelhos (cozinha, celulares da equipe), feche e abra o sistema de novo para eles contarem o dia com a nova hora.',
-      });
-    } else setMensagem({ tipo: 'sucesso', texto: 'Salvo.' });
+    else setMensagem({ tipo: 'sucesso', texto: 'Salvo.' });
   }
 
   return (
@@ -198,32 +178,11 @@ function ComoVoceAtende({ perfil }) {
         )}
         <EscolhaDaCozinha valor={usaTela} onMudar={setUsaTela} legendaVisivel colunas="" />
 
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="virada" className="text-sm font-medium text-[var(--text-secondary)]">
-            O dia de trabalho termina às
-          </label>
-          <select id="virada" value={virada} onChange={(e) => setVirada(Number(e.target.value))} className={classeCampo}>
-            {HORAS_DE_VIRADA.map((h) => (
-              <option key={h} value={h}>
-                {rotuloDaHora(h)}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-[var(--text-secondary)]">
-            Pedidos até essa hora contam no dia anterior: a fila não some e a senha não recomeça no meio do turno.
-          </p>
-          {viradaNoTurno && (
-            <p className="text-sm font-semibold text-[var(--texto-cozinha)]">
-              Agora não dá para mudar para essa hora: o dia de trabalho viraria no meio do turno. Mude depois das 8h da manhã.
-            </p>
-          )}
-        </div>
-
         <Botao
           type="submit"
           cor={ACCENT}
           className="self-start"
-          disabled={!(mudouAlgo || mudouVirada) || salvando || viradaNoTurno || faltaTaxa}
+          disabled={!mudouAlgo || salvando || faltaTaxa}
         >
           {salvando ? 'Salvando…' : 'Salvar'}
         </Botao>

@@ -39,7 +39,7 @@ const PERGUNTAS = [
   {
     pergunta: 'Fecho depois da meia-noite. O dia vira certo?',
     resposta:
-      'Vira. O dia de trabalho vai até as 5h da manhã: um pedido à 1h ainda conta no dia anterior, a fila não some e a senha não recomeça no meio do turno. O dono pode mudar essa hora em Minha conta.',
+      'Vira. O dia de trabalho vai até as 5h da manhã: um pedido à 1h ainda conta no dia anterior, a fila não some e a senha não recomeça no meio do turno. Às 5h começa o dia novo e os números voltam para 001. Nada é cancelado sozinho: o que ficou aberto aparece como "Pendências do dia anterior" no Início.',
   },
   {
     pergunta: 'Bebida também entra?',
@@ -69,7 +69,7 @@ const PERGUNTAS = [
   {
     pergunta: 'Encheu e faltou mesa.',
     resposta:
-      'No mapa, toque em "+ Mesa extra" e dê um nome (por exemplo, Varanda). Ela funciona como as outras e some do mapa quando a conta fecha. Se isso acontece toda noite, aumente o número de mesas em Minha conta.',
+      'No mapa, toque em "+ Mesa extra" e dê um nome (por exemplo, Varanda). Ela funciona como as outras e some do mapa quando a conta fecha. Se isso acontecer em 3 noites, o Organiza+ pergunta se você quer mais mesas no mapa. Também dá para mudar em Minha conta.',
   },
   {
     pergunta: 'Fechei a mesa errado (forma ou valor). Dá para desfazer?',
@@ -80,10 +80,26 @@ const PERGUNTAS = [
     pergunta: 'Como fecho o caixa no fim do dia?',
     resposta: (
       <>
-        Em <Link to="/caixa">Caixa</Link>: quanto entrou em Pix, dinheiro, crédito e débito, o que ainda falta receber e o
-        que foi cancelado depois de pago.
+        Em <Link to="/caixa">Caixa</Link>, toque em "Encerrar o dia". Se ainda tiver pedido sem entregar ou conta sem
+        receber, o Organiza+ mostra a lista do que resolver. Com tudo resolvido, o dia encerra e o Caixa mostra o resumo da
+        noite: quanto entrou em Pix, dinheiro, crédito e débito, o que não foi recebido e o que falta devolver.
       </>
     ),
+  },
+  {
+    pergunta: 'O cliente foi embora sem pagar.',
+    resposta:
+      'Na lista do "Encerrar o dia" (ou nas pendências do dia anterior), toque em "Foi embora sem pagar" na conta. Ela sai das contas abertas e fica no Caixa e nos relatórios como não recebido. Se ele voltar para pagar, toque em "Desfazer" no Caixa e receba a conta.',
+  },
+  {
+    pergunta: 'Cancelei um pedido que já estava pago.',
+    resposta:
+      'Depois do motivo, o Organiza+ pergunta se você devolveu o dinheiro. "Sim, devolvi": fica registrado. "Ainda vou devolver": o valor aparece em "A devolver" no Caixa até você tocar em "Devolvi".',
+  },
+  {
+    pergunta: 'Lancei um pedido depois de encerrar o dia.',
+    resposta:
+      'Sem problema: o dia reabre sozinho e o pedido entra no caixa da noite. Quando terminar, encerre o dia de novo.',
   },
   {
     pergunta: 'O som da cozinha não toca.',

@@ -25,7 +25,7 @@ negocios
 - codigo_publico (text, único, 32 caracteres aleatórios)  <- endereço da página do QR code
 - nome_publico (text, opcional)                            <- nome mostrado ao cliente
 - pagina_ativa (boolean)
-- virada_do_dia (0 a 8, padrão 5)                          <- hora em que o dia de trabalho vira (turno depois da meia-noite)
+- virada_do_dia (5 para todos; o dono não muda)            <- hora em que o dia de trabalho vira (turno depois da meia-noite)
 - usa_tela_cozinha (boolean)                               <- false: cozinha do lado do balcão, "Pronto" na tela de pedidos
 
 usuarios  (perfil complementar ao Supabase Auth)
@@ -47,7 +47,12 @@ pedidos
 - chave_envio (uuid, único)                      <- reenviar o mesmo pedido não duplica (fila sem internet)
 - alterado_em, pronto_em, entregue_em, cancelado_em, motivo_cancelamento
 - identificacao (até 30)                         <- "Mesa 4": chamar o cliente e somar a conta da mesa
-- forma_pagamento ("pix" | "dinheiro" | "credito" | "debito"; "cartao" só na transição), pago_em <- fechamento do caixa; sem forma = a receber
+- forma_pagamento ("pix" | "dinheiro" | "credito" | "debito"; "cartao" só nos pedidos antigos), pago_em <- fechamento do caixa; sem forma = a receber
+- nao_recebido_em                                <- foram embora sem pagar: fora do vendido e do a receber, contado à parte
+- devolucao ("a_devolver" | "devolvido"), devolvido_em <- pedido pago e depois cancelado: o dinheiro já voltou ao cliente?
+
+dias_encerrados
+- negocio_id, dia, encerrado_em, encerrado_por   <- "Encerrar o dia"; apagado sozinho (gatilho) quando um pedido do dia volta a ficar em aberto
 
 itens_pedido
 - id, pedido_id, produto_id, quantidade
@@ -86,6 +91,7 @@ limite_consultas   <- consultas da página pública por aparelho (hash do IP, nu
 - **Correções da revisão (migração 2026-11-09):** `editar_pedido` devolve para "a receber" o pedido pago cujo valor mudou e tira da fila da cozinha o que ficou só com bebida; `marcar_item_faltou` e `marcar_ingrediente_faltou` contam a mesma falta uma vez só; o tempo médio da página do cliente ignora os pedidos que nasceram prontos; `configurar_operacao` recusa trocar a virada quando isso mudaria o dia de trabalho em andamento (entre 0h e 8h). No aparelho, os pedidos guardados sem internet são reenviados em qualquer tela (o hook fica no `AppShell`) e os de outro dia param esperando o atendente descartar.
 - **Boas-vindas e pagamento (migração 2026-11-10):** `negocios.modo_atendimento` (`balcao`, `mesa`, `balcao_e_mesa`; vazio = o dono ainda não respondeu) e `configurar_atendimento` (só o dono) salvam as perguntas de boas-vindas. A forma de pagamento passa a ser Pix, dinheiro, crédito ou débito; `cartao` continua aceito durante a transição (aparelho com o site anterior aberto ou pedido guardado sem internet) e sai numa migração futura.
 - **Mesas e conta (migração 2026-11-11):** `negocios.quantidade_mesas` (1 a 200) e `negocios.taxa_servico` (0 a 30%; vazio = o dono ainda não respondeu), salvos por `configurar_mesas` (só o dono). `pedidos.nome_mesa` guarda o nome da mesa extra ("Varanda"); `passar_mesa` muda os pedidos abertos de mesa (ou junta duas contas). `fechar_conta_mesa` calcula no banco o consumo e o serviço, confere que as partes somam o total e grava `contas_mesa` (jeito: `um_pagou`, `dividiram`, `separado`) e `pagamentos_conta` (forma e valor de cada parte); o pedido fica com `conta_id` e `pago_em`, sem forma. Pedido pago numa conta não muda de valor nem é cancelado: antes, `desfazer_conta_mesa` (no Caixa) apaga a conta e reabre a mesa. O Caixa soma as partes por forma, mostra "Pago separado, sem detalhe" e a taxa de serviço à parte (fora do vendido; os relatórios contam só os itens). Banco sem a migração: o front pede só as colunas antigas e volta ao número da mesa digitado.
+- **Fim do dia (migração 2026-11-12):** a virada fica às 5h para todos (`configurar_operacao` saiu) e nada é cancelado sozinho. `encerrar_dia` só encerra o dia sem pedido em aberto (sem entregar, ou entregue sem receber); a lista do que resolver usa `marcar_entregues`, `marcar_nao_recebido` (e `desfazer_nao_recebido` no Caixa), `cancelar_conta` e o fechamento normal da conta. `cancelar_pedido` pergunta se o dinheiro de um pedido pago foi devolvido (`p_devolucao`; sem resposta fica "a devolver") e `marcar_devolvido` tira do "A devolver". O que ficou aberto de dias anteriores aparece como "Pendências do dia anterior" no Início. `criar_pedido` e `registrar_pagamento` recusam "cartao" (só crédito ou débito). `excluir_minha_conta(p_senha)` confere a senha no banco (`extensions.crypt`), com 5 tentativas a cada 15 minutos (`tentativas_senha`). Mesa extra em 3 noites dos últimos 14 dias: o mapa sugere ao dono aumentar o número de mesas. Banco sem a migração: o front pede só as colunas antigas, cancela sem a devolução e confere a senha no aparelho antes de excluir.
 - **Versão do banco:** `versao_do_banco()` precisa bater com `src/lib/versaoDoBanco.js` (um teste confere). Se o banco no ar estiver atrás do código, todas as telas da equipe mostram um aviso vermelho. Toda migração nova sobe os dois números.
 - **Página pública (QR code):** quem não tem conta não lê nenhuma tabela. Só chama `pagina_publica` e `acompanhar_pedido`, que devolvem o mínimo (nome do negócio; posição, status e tempo médio de um pedido) e limitam as consultas por aparelho.
 - **Leitura do cardápio por IA:** o navegador nunca fala com o Google. A Edge Function `ler-cardapio` guarda a chave do Gemini nos Secrets, confere o login (`getClaims`), aceita só JPEG de até 4 MB e chama `registrar_leitura_cardapio()` antes da IA (20 leituras por negócio por dia). A resposta é validada no servidor (até 100 itens, nome de 1 a 120 caracteres, preço até 9.999,99) e a pessoa confere antes de virar produto. A foto não é guardada; `leituras_cardapio` só tem o negócio e a hora.
@@ -164,16 +170,16 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js
 
 ### Fase 5. Relatórios — pronta
 - Hoje, 7 e 30 dias; faturamento, pedidos, ticket médio, lucro, mais vendido × mais lucrativo, gráfico por dia (faturamento e pedidos), pedidos por hora com horário de pico, o que mais faltou na cozinha, aviso de reposição e planilha CSV.
-- Cancelados ficam fora das contas e aparecem à parte, por motivo.
+- Cancelados e não recebidos (foram embora sem pagar) ficam fora das contas e aparecem à parte: cancelados por motivo, não recebidos com o valor perdido.
 - Tempo até ficar pronto (mediana e quantos passaram de 15 min). O "dia" respeita a virada do negócio.
-- Caixa (`/caixa`): recebido por Pix, dinheiro e cartão, o que falta receber e o cancelado depois de pago.
+- Caixa (`/caixa`): "Encerrar o dia" (com a lista do que resolver antes), recebido por Pix, dinheiro, crédito e débito, o que falta receber, o que falta devolver ("Devolvi") e o não recebido ("Desfazer"). O dia de ontem mostra "Caixa não fechado" enquanto tiver pendência.
 
 ### Fase 6. Página do cliente via QR code — pronta
 - O dono escolhe o nome mostrado, imprime o cartaz, desliga a página ou troca o endereço.
 - O cliente digita a senha do pedido e acompanha posição na fila, tempo médio e o aviso de pronto, sem cadastro.
 
 ### Fase 7. Conta e LGPD — pronta
-- Minha conta: nome, nome do negócio, senha (pede a atual), "Como você atende" (balcão, mesa ou os dois; aparelho na cozinha; virada do dia), sair de todos os aparelhos e excluir conta (pede a senha). "Sair" desconecta só o aparelho.
+- Minha conta: nome, nome do negócio, senha (pede a atual), "Como você atende" (balcão, mesa ou os dois; aparelho na cozinha; mesas e taxa de serviço), sair de todos os aparelhos e excluir conta (pede a senha). "Sair" desconecta só o aparelho.
 - Política de privacidade (`/privacidade`) e Ajuda (`/ajuda`) com as dúvidas da validação de campo.
 - Contato da equipe para ajuda (joaoemanuel15@edu.unifor.br, em `src/lib/contato.js`): no rodapé da landing, das telas de acesso e do painel, na Ajuda e na política de privacidade.
 - Tela que se recupera sozinha depois de um deploy (ErroDaTela e recarga) e workflow de saúde a cada 6 h.

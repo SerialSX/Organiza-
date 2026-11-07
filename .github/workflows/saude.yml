@@ -5,10 +5,10 @@ name: Saúde do sistema
 # repositório. A chamada ao banco também evita que o Supabase Free pause
 # sozinho por falta de uso (aconteceu em 14/10).
 #
-# Configurar uma vez em Settings > Secrets and variables > Actions:
-#   Variables: SITE_URL (ex.: https://organizaplus.vercel.app) e SUPABASE_URL
-#   Secrets:   SUPABASE_ANON_KEY (a chave publishable, a mesma do site)
-# Sem elas, o workflow só avisa que falta configurar e termina verde.
+# Usa os mesmos secrets do "Banco em dia" (VITE_SUPABASE_URL e
+# VITE_SUPABASE_ANON_KEY, a chave publishable do site). O endereço do site é o
+# de produção; para outro, crie a variável SITE_URL em Settings > Secrets and
+# variables > Actions. Sem os secrets do banco, só o site é conferido.
 
 on:
   schedule:
@@ -23,9 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      SITE_URL: ${{ vars.SITE_URL }}
-      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SITE_URL: ${{ vars.SITE_URL || 'https://organizaplus-nu.vercel.app' }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
 
     steps:
       - name: Baixar o código
@@ -34,15 +34,14 @@ jobs:
       - name: Conferir configuração
         id: config
         run: |
-          if [[ -z "$SITE_URL" || -z "$SUPABASE_URL" || -z "$SUPABASE_ANON_KEY" ]]; then
-            echo "::notice::Configure SITE_URL, SUPABASE_URL e SUPABASE_ANON_KEY para ligar a verificação de saúde."
-            echo "pronto=nao" >> "$GITHUB_OUTPUT"
+          if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_ANON_KEY" ]]; then
+            echo "::notice::Sem os secrets VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY: só o site é conferido."
+            echo "banco=nao" >> "$GITHUB_OUTPUT"
           else
-            echo "pronto=sim" >> "$GITHUB_OUTPUT"
+            echo "banco=sim" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Site no ar
-        if: steps.config.outputs.pronto == 'sim'
         run: |
           CODIGO=$(curl -s -o pagina.html -w '%{http_code}' --max-time 20 "$SITE_URL/")
           echo "Site respondeu $CODIGO"
@@ -50,7 +49,7 @@ jobs:
           grep -q 'id="root"' pagina.html || { echo "::error::O endereço respondeu, mas não é o Organiza+."; exit 1; }
 
       - name: Banco no ar e na versão certa
-        if: steps.config.outputs.pronto == 'sim'
+        if: steps.config.outputs.banco == 'sim'
         run: |
           ESPERADA=$(grep -oE '[0-9]{8}' src/lib/versaoDoBanco.js | head -1)
           VERSAO=$(curl -s --max-time 20 -X POST "$SUPABASE_URL/rest/v1/rpc/versao_do_banco" \

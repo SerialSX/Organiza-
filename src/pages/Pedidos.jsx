@@ -20,13 +20,13 @@ import { usePedidosAbertos } from '../hooks/usePedidosAbertos';
 import { usePedidosDoDia } from '../hooks/usePedidosDoDia';
 import { useFilaDeEnvio } from '../hooks/useFilaDeEnvio';
 import { useRascunhoDoPedido, novaChaveDeLinha } from '../hooks/useRascunhoDoPedido';
-import { criarPedido, editarPedido, buscarPedidoComValores } from '../services/pedidos';
+import { criarPedido, editarPedido, buscarPedidoComValores, ROTULO_FORMA } from '../services/pedidos';
 import { registrarToqueEsgotado } from '../services/produtos';
 import { guardarNaFila } from '../services/filaDeEnvio';
 import { formatarMoeda, numeroDoPedido } from '../lib/formatadores';
 import { podeEditar } from '../lib/pedidoStatus';
 import { separarPedidos } from '../lib/fila';
-import { contasAbertas } from '../lib/caixa';
+import { contasAbertas, totalDoPedido } from '../lib/caixa';
 import { atendeNaMesa, atendeNoBalcao, destinoInicial, modoDoNegocio } from '../lib/atendimento';
 
 const ACCENT = 'var(--color-accent-pedidos)';
@@ -48,6 +48,14 @@ function MensagemDeEnvio({ enviado }) {
     return (
       <Aviso tipo="info">
         Sem internet. O pedido foi guardado neste aparelho e vai para a cozinha sozinho quando a conexão voltar.
+      </Aviso>
+    );
+  }
+  if (enviado.editado && enviado.voltouAReceber) {
+    return (
+      <Aviso tipo="info">
+        Pedido {numeroDoPedido(enviado)} alterado. Como o valor mudou, ele voltou para “A receber”: registre o pagamento de
+        novo no Caixa.
       </Aviso>
     );
   }
@@ -119,6 +127,9 @@ export default function Pedidos() {
   const foraDoCardapio = carregando ? [] : [...new Set(carrinho.filter((l) => !linhaValida(l)).map((l) => l.nome))];
   const totalItens = itens.reduce((s, i) => s + i.quantidade, 0);
   const total = itens.reduce((s, i) => s + i.quantidade * i.preco, 0);
+  // Em centavos, para a ordem da soma não criar diferença de 0,0000001.
+  const totalPago = edicao ? totalDoPedido(edicao.pedido) : 0;
+  const valorMudou = Math.round(total * 100) !== Math.round(totalPago * 100);
   const quantidadePorProduto = {};
   for (const linha of itens) {
     quantidadePorProduto[linha.produtoId] = (quantidadePorProduto[linha.produtoId] ?? 0) + linha.quantidade;
@@ -259,7 +270,7 @@ export default function Pedidos() {
     try {
       if (edicao) {
         await editarPedido(edicao.pedido.id, paraEnviar, edicao.pedido.alterado_em, mesa);
-        setEnviado({ ...edicao.pedido, editado: true });
+        setEnviado({ ...edicao.pedido, editado: true, voltouAReceber: Boolean(edicao.pedido.pago_em) && valorMudou });
         setEdicao(null);
         setCarrinho(rascunhoGuardado);
         setDestino(destinoGuardado);
@@ -317,6 +328,9 @@ export default function Pedidos() {
   }
 
   const numeroEmEdicao = edicao && numeroDoPedido(edicao.pedido);
+  // Pedido já pago: mudar o valor desfaz o recebimento (mesma regra do banco).
+  const pagoAntes = Boolean(edicao?.pedido.pago_em);
+  const formaPaga = pagoAntes && ROTULO_FORMA[edicao.pedido.forma_pagamento];
   // Celular: espaço no fim da página para a barra fixa de baixo não cobrir
   // o último cartão nem o contato da equipe.
   const barraDeEnvio = itens.length > 0;
@@ -383,6 +397,13 @@ export default function Pedidos() {
                   Lançar estes itens como pedido novo
                 </Botao>
               </div>
+            )}
+            {pagoAntes && !edicaoPerdida && (
+              <Aviso tipo="info">
+                {!valorMudou
+                  ? `Este pedido já foi pago${formaPaga ? ` (${formaPaga})` : ''}: ${formatarMoeda(totalPago)}. Se o valor mudar, ele volta para “A receber” no Caixa.`
+                  : `O cliente pagou ${formatarMoeda(totalPago)}${formaPaga ? ` (${formaPaga})` : ''} e o pedido agora dá ${formatarMoeda(total)}. Ao salvar, ele volta para “A receber” no Caixa.`}
+              </Aviso>
             )}
             {editadoPorOutro && (
               <div className="flex flex-col gap-2">

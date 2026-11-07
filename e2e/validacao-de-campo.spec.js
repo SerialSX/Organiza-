@@ -83,8 +83,8 @@ test('a mesa pede aos poucos, soma tudo e fecha a conta de uma vez; o caixa bate
   await page.goto('/caixa');
   const recebido = page.getByRole('region', { name: 'Recebido' });
   await expect(recebido).toContainText('R$ 24,00');
-  await expect(recebido.getByText('R$ 16,00')).toBeVisible();
-  await expect(recebido.getByText('R$ 8,00')).toBeVisible();
+  await expect(recebido.locator('dl').getByText('R$ 16,00')).toBeVisible();
+  await expect(recebido.locator('dl').getByText('R$ 8,00')).toBeVisible();
   const aReceber = page.getByRole('region', { name: 'A receber' });
   await expect(aReceber).toContainText('R$ 8,00');
   await semProblemasDeAcessibilidade(page);

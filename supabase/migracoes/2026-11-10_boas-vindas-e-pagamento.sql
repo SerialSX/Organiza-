@@ -1,6 +1,6 @@
 -- Migração para o Supabase que já está no ar. Rodar UMA vez no SQL Editor,
--- DEPOIS de 2026-11-08_operacao-de-campo-e-metricas.sql (este arquivo sobe a
--- versão do banco para 20261109).
+-- DEPOIS de 2026-11-09_correcoes-da-revisao.sql (este arquivo sobe a versão do
+-- banco para 20261110).
 -- Quem cria um projeto novo roda só o supabase/schema.sql, que já tem tudo isto.
 --
 -- Perguntas de boas-vindas e pagamento na hora certa:
@@ -17,6 +17,9 @@ begin
     where table_schema = 'public' and table_name = 'pedidos' and column_name = 'forma_pagamento'
   ) then
     raise exception 'Rode antes supabase/migracoes/2026-11-08_operacao-de-campo-e-metricas.sql';
+  end if;
+  if to_regprocedure('public.configurar_operacao(smallint, boolean, timestamptz)') is null then
+    raise exception 'Rode antes supabase/migracoes/2026-11-09_correcoes-da-revisao.sql';
   end if;
 end;
 $$;
@@ -190,7 +193,7 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select 20261109;
+  select 20261110;
 $$;
 
 commit;

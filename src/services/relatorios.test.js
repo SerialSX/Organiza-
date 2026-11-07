@@ -153,6 +153,15 @@ describe('tempoAtePronto', () => {
     expect(r).toEqual({ quantos: 4, medianaMin: 11, acimaDe15: 25 });
     expect(tempoAtePronto([])).toBeNull();
   });
+
+  it('pedido só de bebida (nasce pronto, 0 min) não puxa a mediana para baixo', () => {
+    const pedido = (min) => ({
+      criado_em: '2026-09-23T12:00:00Z',
+      pronto_em: new Date(Date.parse('2026-09-23T12:00:00Z') + min * 60000).toISOString(),
+      status: 'pronto',
+    });
+    expect(tempoAtePronto([pedido(0), pedido(0), pedido(10)])).toEqual({ quantos: 1, medianaMin: 10, acimaDe15: 0 });
+  });
 });
 
 describe('pedidosPorHora', () => {

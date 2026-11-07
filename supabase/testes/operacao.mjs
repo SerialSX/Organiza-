@@ -20,27 +20,48 @@ await ok('com virada às 5h, 0h10 ainda é o dia anterior', async () => {
   igual(await diaEm('2026-11-21 05:00-03'), '2026-11-21', '5h');
 });
 
+// Meio-dia: trocar a virada não muda o dia de trabalho de agora.
+const MEIO_DIA = "'2026-11-21 12:00-03'::timestamptz";
+const configurar = (u, virada, tela, agora = MEIO_DIA) =>
+  dono(u, `select public.configurar_operacao(${virada}::smallint, ${tela}, ${agora})`);
+
 await ok('dono muda a virada para meia-noite', async () => {
-  await dono(U1, 'select public.configurar_operacao(0::smallint, true)');
+  await configurar(U1, 0, true);
   igual(await diaEm('2026-11-21 00:10-03'), '2026-11-21', '0h10 com virada à meia-noite');
-  await dono(U1, 'select public.configurar_operacao(5::smallint, true)');
+  await configurar(U1, 5, true);
 });
 
-await erro('virada fora de 0h a 8h', 'entre 0h e 8h', () => dono(U1, 'select public.configurar_operacao(12::smallint, true)'));
+await erro(
+  'às 3h não dá para trocar a virada de 5h para 0h (a senha recomeçaria no meio do turno)',
+  'Mude depois das 8h',
+  () => configurar(U1, 0, true, "'2026-11-21 03:00-03'::timestamptz"),
+);
+
+await ok('às 3h dá para trocar entre viradas que mantêm o mesmo dia (5h para 4h)', async () => {
+  await configurar(U1, 4, true, "'2026-11-21 03:00-03'::timestamptz");
+  await configurar(U1, 5, true, "'2026-11-21 03:00-03'::timestamptz");
+});
+
+await ok('às 3h dá para mudar só a tela da cozinha, mantendo a virada', async () => {
+  await configurar(U1, 5, false, "'2026-11-21 03:00-03'::timestamptz");
+  await configurar(U1, 5, true, "'2026-11-21 03:00-03'::timestamptz");
+});
+
+await erro('virada fora de 0h a 8h', 'entre 0h e 8h', () => configurar(U1, 12, true));
 await erro('só o dono configura', 'Só o dono', async () => {
   await db.query(`update public.usuarios set papel = 'atendente' where id = '${U2}'`);
   try {
-    await dono(U2, 'select public.configurar_operacao(3::smallint, false)');
+    await configurar(U2, 3, false);
   } finally {
     await db.query(`update public.usuarios set papel = 'admin' where id = '${U2}'`);
   }
 });
 
 await ok('modo sem tela de cozinha fica salvo', async () => {
-  await dono(U1, 'select public.configurar_operacao(5::smallint, false)');
+  await configurar(U1, 5, false);
   const [n] = await dono(U1, 'select usa_tela_cozinha from public.negocios');
   igual(n.usa_tela_cozinha, false, 'usa_tela_cozinha');
-  await dono(U1, 'select public.configurar_operacao(5::smallint, true)');
+  await configurar(U1, 5, true);
 });
 
 // ---------------------------------------------------------------------------
@@ -171,6 +192,39 @@ await ok('desfazer o recebimento', async () => {
   igual([p.forma_pagamento, p.pago_em], [null, null], 'voltou a receber');
 });
 
+await ok('pedido pago e editado com outro valor volta para "a receber"', async () => {
+  const p = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'pix');
+  const [e] = await dono(U1, 'select * from public.editar_pedido($1, $2::jsonb, null)', [p.id, JSON.stringify([{ produto_id: espeto, quantidade: 2 }])]);
+  igual([e.forma_pagamento, e.pago_em], [null, null], 'pagamento desfeito');
+});
+
+await ok('pedido pago e editado com o mesmo valor continua pago', async () => {
+  const p = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }, { produto_id: refri, quantidade: 1 }], null, 'dinheiro');
+  // Troca a ordem e junta numa linha só: o total continua o mesmo.
+  const [e] = await dono(U1, 'select * from public.editar_pedido($1, $2::jsonb, null)', [
+    p.id,
+    JSON.stringify([{ produto_id: refri, quantidade: 1 }, { produto_id: espeto, quantidade: 1 }]),
+  ]);
+  igual(e.forma_pagamento, 'dinheiro', 'forma');
+  if (!e.pago_em) throw new Error('perdeu o pago_em');
+});
+
+await ok('pedido editado para só bebida sai da fila da cozinha', async () => {
+  const p = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }]);
+  const [e] = await dono(U1, 'select * from public.editar_pedido($1, $2::jsonb, null)', [p.id, JSON.stringify([{ produto_id: refri, quantidade: 2 }])]);
+  igual(e.status, 'pronto', 'status');
+  if (!e.pronto_em) throw new Error('sem pronto_em');
+});
+
+await ok('pedido editado que continua com espeto segue na fila', async () => {
+  const p = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }]);
+  const [e] = await dono(U1, 'select * from public.editar_pedido($1, $2::jsonb, null)', [
+    p.id,
+    JSON.stringify([{ produto_id: espeto, quantidade: 1 }, { produto_id: refri, quantidade: 1 }]),
+  ]);
+  igual([e.status, e.pronto_em], ['pendente', null], 'status');
+});
+
 await ok('pedido cancelado não recebe pagamento', async () => {
   const p = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }]);
   await dono(U1, `select public.cancelar_pedido($1, 'cliente_desistiu')`, [p.id]);
@@ -227,13 +281,26 @@ await ok('falta avisada pela cozinha continua contada depois que o pedido é edi
   igual((await eventos('faltou_item')).length, 1, 'falta registrada');
 });
 
+await ok('toque duplo em "faltou" conta uma falta só', async () => {
+  const antes = (await eventos('faltou_item')).length;
+  const p = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }]);
+  const [{ id: item }] = await dono(U1, 'select id from public.itens_pedido where pedido_id = $1', [p.id]);
+  await dono(U1, 'select public.marcar_item_faltou($1, true)', [item]);
+  await dono(U1, 'select public.marcar_item_faltou($1, true)', [item]);
+  await dono(U1, 'select public.marcar_item_faltou($1, false)', [item]);
+  await dono(U1, 'select public.marcar_item_faltou($1, true)', [item]);
+  igual((await eventos('faltou_item')).length, antes + 1, 'faltas');
+});
+
 await ok('falta de ingrediente registrada com o nome', async () => {
   const [{ id: sal }] = await dono(U1, `insert into public.ingredientes (negocio_id, nome, unidade) values ($1, 'Farofa', 'g') returning id`, [negocio1]);
   await dono(U1, 'select public.salvar_ingredientes_do_produto($1, $2::jsonb)', [espeto, JSON.stringify([{ ingrediente_id: sal, quantidade: 30 }])]);
   const p = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }]);
   const [{ id: item }] = await dono(U1, 'select id from public.itens_pedido where pedido_id = $1', [p.id]);
   await dono(U1, 'select public.marcar_ingrediente_faltou($1, $2, true)', [item, sal]);
-  igual((await eventos('faltou_ingrediente')).map((e) => e.detalhe), ['Farofa'], 'detalhe');
+  await dono(U1, 'select public.marcar_ingrediente_faltou($1, $2, false)', [item, sal]);
+  await dono(U1, 'select public.marcar_ingrediente_faltou($1, $2, true)', [item, sal]);
+  igual((await eventos('faltou_ingrediente')).map((e) => e.detalhe), ['Farofa'], 'detalhe (uma vez só)');
 });
 
 await ok('outro negócio não vê meus eventos', async () => {

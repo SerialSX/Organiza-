@@ -27,6 +27,7 @@ export function fecharCaixa(pedidos) {
   const quantidadePorForma = { pix: 0, dinheiro: 0, credito: 0, debito: 0, cartao: 0 };
   let aReceber = 0;
   const pendentes = [];
+  const recebidos = [];
   let devolver = 0;
 
   for (const p of pedidos) {
@@ -38,6 +39,7 @@ export function fecharCaixa(pedidos) {
     if (p.pago_em && p.forma_pagamento in porForma) {
       porForma[p.forma_pagamento] += total;
       quantidadePorForma[p.forma_pagamento] += 1;
+      recebidos.push(p);
     } else {
       aReceber += total;
       pendentes.push(p);
@@ -45,5 +47,5 @@ export function fecharCaixa(pedidos) {
   }
 
   const recebido = Object.values(porForma).reduce((s, v) => s + v, 0);
-  return { porForma, quantidadePorForma, recebido, aReceber, pendentes, devolver, vendido: recebido + aReceber };
+  return { porForma, quantidadePorForma, recebido, aReceber, pendentes, recebidos, devolver, vendido: recebido + aReceber };
 }

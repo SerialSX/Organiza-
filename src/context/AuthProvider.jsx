@@ -3,7 +3,8 @@ import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { lerDemo, salvarDemo, limparDemo } from '../services/demoStore';
 import { AuthContext } from './authContext';
 import { traduzirErroRecuperacao } from '../lib/recuperacaoSenha';
-import { definirViradaDoDia } from '../lib/formatadores';
+import { definirViradaDoDia, viradaMudaODia } from '../lib/formatadores';
+import { buscarPerfil } from '../services/perfil';
 
 const PERFIL_DEMO = {
   id: 'demo-usuario',
@@ -38,45 +39,14 @@ const ERROS_AUTH = [
   [/(fetch|network)/i, 'Sem conexão. Confira a internet e tente de novo.'],
 ];
 
+// Mesmo texto do configurar_operacao no banco.
+const ERRO_VIRADA_NO_TURNO =
+  'Agora não dá para mudar a hora: o dia de trabalho viraria no meio do turno e as senhas se repetiriam. Mude depois das 8h da manhã.';
+
 function traduzirErro(error) {
   if (!error) return null;
   if (error.code === 'P0001') return error.message;
   return ERROS_AUTH.find(([padrao]) => padrao.test(error.message ?? ''))?.[1] ?? 'Algo deu errado. Tente de novo em instantes.';
-}
-
-const CAMPOS_PERFIL = 'id, nome, papel, negocio_id';
-const CAMPOS_NEGOCIO = 'nome, virada_do_dia, usa_tela_cozinha, modo_atendimento';
-
-// 42703 / PGRST204: coluna que não existe, ou seja, banco ainda sem a migração.
-function colunaInexistente(error) {
-  return error?.code === '42703' || error?.code === 'PGRST204' || /does not exist/i.test(error?.message ?? '');
-}
-
-async function buscarPerfil(usuario) {
-  const consulta = (camposDoNegocio) =>
-    supabase.from('usuarios').select(`${CAMPOS_PERFIL}, negocios ( ${camposDoNegocio} )`).eq('id', usuario.id).maybeSingle();
-  let { data, error } = await consulta(CAMPOS_NEGOCIO);
-  // Banco atrás do código: entra mesmo assim (o aviso de banco desatualizado
-  // aparece) em vez de travar todo mundo na tela de "sem conexão".
-  if (colunaInexistente(error)) ({ data, error } = await consulta('nome'));
-  // Erro de rede não pode virar "perfil inexistente"; quem chama decide.
-  if (error) throw error;
-  if (!data) return null;
-  const { negocios: negocio, ...resto } = data;
-  definirViradaDoDia(negocio?.virada_do_dia ?? 0);
-  return {
-    ...resto,
-    email: usuario.email,
-    negocio_nome: negocio?.nome ?? '',
-    // Banco ainda sem a migração de 28/10: segue como antes (vira à 0h, com
-    // tela de cozinha) e o aviso de banco desatualizado aparece.
-    virada_do_dia: negocio?.virada_do_dia ?? 0,
-    usa_tela_cozinha: negocio?.usa_tela_cozinha ?? true,
-    // null: o dono ainda não respondeu as perguntas de boas-vindas. Banco sem
-    // a coluna (undefined): segue com os dois jeitos, como era antes, e não
-    // prende ninguém numa pergunta que não daria para salvar.
-    modo_atendimento: negocio?.modo_atendimento === undefined ? 'balcao_e_mesa' : negocio.modo_atendimento,
-  };
 }
 
 function enderecoDoApp(caminho) {
@@ -183,9 +153,12 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Serve tanto para a recuperação por código quanto para "Minha conta".
-  const trocarSenha = useCallback(async (senha) => {
+  // senhaAtual: na troca pela Minha conta, vai junto para o Supabase conferir
+  // também (com "Secure password change" ligado no painel, ele exige). Na
+  // recuperação por código não existe senha atual.
+  const trocarSenha = useCallback(async (senha, senhaAtual = null) => {
     if (!isSupabaseConfigured) return { erro: null };
-    const { error } = await supabase.auth.updateUser({ password: senha });
+    const { error } = await supabase.auth.updateUser(senhaAtual ? { password: senha, current_password: senhaAtual } : { password: senha });
     return { erro: traduzirErroRecuperacao(error) };
   }, []);
 
@@ -212,6 +185,7 @@ export function AuthProvider({ children }) {
   const configurarOperacao = useCallback(async ({ viradaDoDia, usaTelaCozinha }) => {
     if (!isSupabaseConfigured) {
       const db = lerDemo();
+      if (viradaMudaODia(viradaDoDia, perfilDemo().virada_do_dia)) return { erro: ERRO_VIRADA_NO_TURNO };
       salvarDemo({ ...db, perfil: { ...db.perfil, virada_do_dia: viradaDoDia, usa_tela_cozinha: usaTelaCozinha } });
       setPerfil(perfilDemo());
       return { erro: null };

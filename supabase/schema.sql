@@ -477,7 +477,10 @@ begin
   if p_mesa is not null and p_mesa not between 1 and 999 then
     raise exception 'O número da mesa precisa ficar entre 1 e 999.';
   end if;
-  if p_forma_pagamento is not null and p_forma_pagamento not in ('dinheiro', 'pix', 'credito', 'debito') then
+  -- 'cartao' continua aceito enquanto houver aparelho com a versão anterior
+  -- do site aberta (botão "Cartão" e pedidos guardados sem internet). Sai numa
+  -- migração futura, depois que todos os aparelhos estiverem na versão nova.
+  if p_forma_pagamento is not null and p_forma_pagamento not in ('dinheiro', 'pix', 'credito', 'debito', 'cartao') then
     raise exception 'Forma de pagamento inválida.';
   end if;
 
@@ -977,7 +980,10 @@ declare
   v_negocio_id uuid := public.negocio_do_usuario_atual();
   v_quantos int;
 begin
-  if p_forma is not null and p_forma not in ('dinheiro', 'pix', 'credito', 'debito') then
+  -- 'cartao' continua aceito enquanto houver aparelho com a versão anterior
+  -- do site aberta (botão "Cartão" e pedidos guardados sem internet). Sai numa
+  -- migração futura, depois que todos os aparelhos estiverem na versão nova.
+  if p_forma is not null and p_forma not in ('dinheiro', 'pix', 'credito', 'debito', 'cartao') then
     raise exception 'Forma de pagamento inválida.';
   end if;
   if p_pedido_ids is null or cardinality(p_pedido_ids) not between 1 and 200 then

@@ -169,9 +169,15 @@ await ok('crédito e débito são anotados separados', async () => {
   const debito = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'debito');
   igual([credito.forma_pagamento, debito.forma_pagamento], ['credito', 'debito'], 'formas');
 });
-await erro('"cartão" sem dizer se é crédito ou débito não entra mais', 'Forma de pagamento inválida', () =>
-  pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'cartao'),
-);
+// Transição: aparelho ainda com a versão anterior do site (botão "Cartão" ou
+// pedido guardado sem internet) não pode dar erro.
+await ok('"cartão" do site anterior continua aceito na transição', async () => {
+  const p = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'cartao');
+  igual(p.forma_pagamento, 'cartao', 'forma');
+  const q = await pedir(U1, [{ produto_id: espeto, quantidade: 1 }]);
+  const [{ n }] = await dono(U1, `select public.registrar_pagamento($1::uuid[], 'cartao') as n`, [[q.id]]);
+  igual(n, 1, 'recebido em cartão');
+});
 await erro('forma de pagamento inventada', 'Forma de pagamento inválida', () => pedir(U1, [{ produto_id: espeto, quantidade: 1 }], null, 'fiado'));
 
 await ok('fecha a conta da mesa 4 de uma vez, em dinheiro', async () => {

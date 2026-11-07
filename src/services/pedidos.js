@@ -227,7 +227,9 @@ function itensParaEnvio(itens) {
 export async function criarPedido({ negocioId, usuarioId, itens, chaveEnvio, mesa = null, identificacao = null, formaPagamento = null }) {
   if (!itens.length) throw new Error('Adicione pelo menos um produto ao pedido.');
   const mesaDoPedido = conferirMesa(mesa);
-  if (formaPagamento && !FORMAS_DE_PAGAMENTO.some((f) => f.id === formaPagamento)) {
+  // Valida pelo ROTULO_FORMA (inclui 'cartao'): pedido guardado sem internet
+  // na versão anterior do site ainda pode chegar com "Cartão".
+  if (formaPagamento && !(formaPagamento in ROTULO_FORMA)) {
     throw new Error('Forma de pagamento inválida.');
   }
   const nomeOuMesa = limparIdentificacao(identificacao);
@@ -440,7 +442,7 @@ export async function marcarIngredienteFaltou(itemId, ingredienteId, faltou) {
 // Recebe um ou mais pedidos de uma vez (a conta da mesa). forma null desfaz.
 export async function registrarPagamento(ids, forma) {
   if (!ids.length) return 0;
-  if (forma && !FORMAS_DE_PAGAMENTO.some((f) => f.id === forma)) throw new Error('Forma de pagamento inválida.');
+  if (forma && !(forma in ROTULO_FORMA)) throw new Error('Forma de pagamento inválida.');
 
   if (!isSupabaseConfigured) {
     const db = lerDemo();

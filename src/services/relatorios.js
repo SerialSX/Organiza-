@@ -10,6 +10,9 @@ const DIA_MS = 24 * 3600000;
 // Produto com tamanhos conta junto ("Pizza Calabresa: 30"), com o detalhe de
 // cada tamanho (P 5 · M 10 · G 15); o lucro usa o custo de cada tamanho.
 // Meio a meio: cada sabor conta meia (0,5), com metade do faturamento e do lucro.
+// Combo: cada parte conta no produto dela ("X-Burguer: 12, sendo 5 em combo"),
+// com a parte do preço do combo que coube a ela; e o combo tem a lista dele.
+// Promoção: quantas vendas saíram por ela e quanto de desconto deu.
 export function calcularRelatorio(todosOsPedidos, produtos) {
   const custos = Object.fromEntries(produtos.map((p) => [p.id, p.custo]));
   const custosDosTamanhos = Object.fromEntries(produtos.flatMap((p) => (p.tamanhos ?? []).map((t) => [t.id, t.custo])));
@@ -29,6 +32,10 @@ export function calcularRelatorio(todosOsPedidos, produtos) {
     canceladosPorMotivo[motivo] = (canceladosPorMotivo[motivo] ?? 0) + 1;
   }
   let faturamento = 0;
+  const porCombo = new Map();
+  const porPromocao = new Map();
+  // Cada combo vendido conta uma vez (as partes têm o mesmo combo_grupo).
+  const gruposContados = new Set();
 
   for (const pedido of pedidos) {
     for (const item of pedido.itens) {
@@ -40,6 +47,27 @@ export function calcularRelatorio(todosOsPedidos, produtos) {
       const lucro = custo === null || custo === undefined ? null : item.quantidade * (item.preco_unitario - custo);
 
       faturamento += receita;
+      const primeiraDoGrupo = item.combo_grupo && !gruposContados.has(item.combo_grupo);
+      if (item.combo_grupo) {
+        gruposContados.add(item.combo_grupo);
+        const chave = item.combo_id ?? `nome|${item.combo_nome}`;
+        const combo = porCombo.get(chave) ?? { chave, nome: item.combo_nome, quantidade: 0, faturamento: 0, lucro: 0, semCusto: false };
+        if (primeiraDoGrupo) combo.quantidade += item.quantidade;
+        combo.faturamento += receita;
+        if (lucro === null) combo.semCusto = true;
+        else combo.lucro += lucro;
+        porCombo.set(chave, combo);
+      }
+      if (item.promocao) {
+        const chave = item.promocao_id ?? `nome|${item.promocao}`;
+        const promo = porPromocao.get(chave) ?? { chave, nome: item.promocao, vendas: 0, faturamento: 0, desconto: 0 };
+        if (!item.combo_grupo || primeiraDoGrupo) promo.vendas += item.quantidade;
+        promo.faturamento += receita;
+        if (item.preco_cheio !== null && item.preco_cheio !== undefined) {
+          promo.desconto += item.quantidade * Math.max(0, item.preco_cheio - item.preco_unitario);
+        }
+        porPromocao.set(chave, promo);
+      }
       const partes = item.segundo_produto_id
         ? [
             { produto_id: item.produto_id, nome: item.produto_nome ?? item.nome, fator: 0.5 },
@@ -55,8 +83,10 @@ export function calcularRelatorio(todosOsPedidos, produtos) {
           faturamento: 0,
           lucro: null,
           porTamanho: [],
+          emCombo: 0,
         };
         atual.quantidade += quantidade;
+        if (item.combo_grupo) atual.emCombo += quantidade;
         if (item.tamanho) {
           const doTamanho = atual.porTamanho.find((t) => t.nome.toLowerCase() === item.tamanho.toLowerCase());
           if (doTamanho) doTamanho.quantidade += quantidade;
@@ -78,6 +108,13 @@ export function calcularRelatorio(todosOsPedidos, produtos) {
   const ranking = [...porProduto.values()].sort((a, b) => b.quantidade - a.quantidade);
   const comLucro = ranking.filter((p) => p.lucro !== null);
   const maisLucrativo = [...comLucro].sort((a, b) => b.lucro - a.lucro)[0] ?? null;
+  const centavos = (v) => Math.round(v * 100) / 100;
+  const combos = [...porCombo.values()]
+    .map(({ semCusto, ...c }) => ({ ...c, faturamento: centavos(c.faturamento), lucro: semCusto ? null : centavos(c.lucro) }))
+    .sort((a, b) => b.quantidade - a.quantidade || b.faturamento - a.faturamento);
+  const promocoes = [...porPromocao.values()]
+    .map((p) => ({ ...p, faturamento: centavos(p.faturamento), desconto: centavos(p.desconto) }))
+    .sort((a, b) => b.vendas - a.vendas || b.faturamento - a.faturamento);
 
   return {
     totalPedidos: pedidos.length,
@@ -92,6 +129,9 @@ export function calcularRelatorio(todosOsPedidos, produtos) {
     canceladosPorMotivo,
     totalNaoRecebidos: naoRecebidos.length,
     valorNaoRecebido,
+    combos,
+    promocoes,
+    descontoDasPromocoes: centavos(promocoes.reduce((s, p) => s + p.desconto, 0)),
   };
 }
 
@@ -115,11 +155,28 @@ function numeroCsv(valor) {
 }
 
 // Separador ";" e vírgula decimal: é o que o Excel em português abre direto.
-export function rankingParaCsv(ranking) {
+// Com combos ou promoções no período, vêm mais duas tabelas embaixo.
+export function rankingParaCsv(ranking, combos = [], promocoes = []) {
+  const comCombo = ranking.some((p) => p.emCombo);
   const linhas = [
-    ['Produto', 'Quantidade', 'Por tamanho', 'Faturamento (R$)', 'Lucro estimado (R$)'],
-    ...ranking.map((p) => [p.nome, formatarQuantidade(p.quantidade), p.detalheTamanhos ?? '', numeroCsv(p.faturamento), numeroCsv(p.lucro)]),
+    ['Produto', 'Quantidade', 'Por tamanho', 'Faturamento (R$)', 'Lucro estimado (R$)', ...(comCombo ? ['Em combo'] : [])],
+    ...ranking.map((p) => [
+      p.nome,
+      formatarQuantidade(p.quantidade),
+      p.detalheTamanhos ?? '',
+      numeroCsv(p.faturamento),
+      numeroCsv(p.lucro),
+      ...(comCombo ? [p.emCombo ? formatarQuantidade(p.emCombo) : ''] : []),
+    ]),
   ];
+  if (combos.length) {
+    linhas.push([], ['Combo', 'Quantidade', 'Faturamento (R$)', 'Lucro estimado (R$)']);
+    for (const c of combos) linhas.push([c.nome, formatarQuantidade(c.quantidade), numeroCsv(c.faturamento), numeroCsv(c.lucro)]);
+  }
+  if (promocoes.length) {
+    linhas.push([], ['Promoção', 'Vendas', 'Faturamento (R$)', 'Desconto dado (R$)']);
+    for (const p of promocoes) linhas.push([p.nome, formatarQuantidade(p.vendas), numeroCsv(p.faturamento), numeroCsv(p.desconto)]);
+  }
   return linhas.map((linha) => linha.map(celulaCsv).join(';')).join('\r\n');
 }
 

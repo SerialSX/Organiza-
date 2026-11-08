@@ -5,6 +5,8 @@ import { lerDemo, salvarDemo, assinarDemo, novoId } from './demoStore';
 import { limparNomeMesa } from '../lib/mesas';
 import { emAberto } from '../lib/fimDoDia';
 import { custoMeioAMeio, nomeDoItem, precoMeioAMeio, tamanhoQueCombina } from '../lib/meioAMeio';
+import { chaveDoCombo, dividirPreco } from '../lib/combos';
+import { precoEmPromocao } from '../lib/promocoes';
 
 const CAMPOS_PEDIDO_BASE =
   'id, numero, mesa, dia, status, criado_em, alterado_em, pronto_em, cancelado_em, motivo_cancelamento, identificacao, forma_pagamento, pago_em';
@@ -28,8 +30,16 @@ const CAMPOS_ITEM = 'id, produto_id, quantidade, observacao, faltou, faltou_ingr
 const CAMPOS_DO_TAMANHO = ', tamanho_id, tamanho';
 // Migração 2026-11-14 (meio a meio): o segundo sabor (id, tamanho e nome copiado).
 const CAMPOS_DO_MEIO_A_MEIO = ', segundo_produto_id, segundo_tamanho_id, segundo_sabor';
+// Migração 2026-11-15 (combos e promoções): o combo de onde veio o item e a
+// promoção que deu o preço.
+const CAMPOS_DO_COMBO = ', combo_id, combo_nome, combo_grupo, combo_parte, promocao_id, promocao, preco_cheio';
 // Do banco mais novo para o mais antigo, as colunas extras dos itens.
-const NIVEIS_DOS_ITENS = [CAMPOS_DO_TAMANHO + CAMPOS_DO_MEIO_A_MEIO, CAMPOS_DO_TAMANHO, ''];
+const NIVEIS_DOS_ITENS = [
+  CAMPOS_DO_TAMANHO + CAMPOS_DO_MEIO_A_MEIO + CAMPOS_DO_COMBO,
+  CAMPOS_DO_TAMANHO + CAMPOS_DO_MEIO_A_MEIO,
+  CAMPOS_DO_TAMANHO,
+  '',
+];
 const PRODUTO_DO_ITEM = 'produtos ( nome, vai_para_cozinha, produto_ingredientes ( ingrediente_id, ingredientes ( nome ) ) )';
 const ITENS_ABERTOS = (t) => `itens_pedido ( ${CAMPOS_ITEM}${t}, ${PRODUTO_DO_ITEM} )`;
 const ITENS_COM_VALORES = (t) => `itens_pedido ( ${CAMPOS_ITEM}${t}, preco_unitario, custo_unitario, ${PRODUTO_DO_ITEM} )`;
@@ -49,19 +59,21 @@ export function colunaInexistente(error) {
   return error?.code === '42703' || error?.code === 'PGRST204' || /does not exist/i.test(error?.message ?? '');
 }
 
-// itens: função que monta a parte dos itens (com ou sem as colunas do tamanho
-// e do meio a meio). As migrações dos itens são as mais novas: sem elas, tira
-// primeiro o meio a meio, depois o tamanho, e só então desce os níveis das
-// colunas do pedido.
+// itens: função que monta a parte dos itens (com ou sem as colunas do tamanho,
+// do meio a meio e do combo). As migrações dos itens são as mais novas: sem
+// elas, tira primeiro o combo, depois o meio a meio, depois o tamanho, e só
+// então desce os níveis das colunas do pedido.
 async function consultarPedidos(montar, itens) {
   for (;;) {
     const resposta = await montar(`${NIVEIS_DE_CAMPOS[nivelDoBanco]}, ${itens(NIVEIS_DOS_ITENS[nivelDosItens])}`);
     if (!colunaInexistente(resposta.error)) return resposta;
-    // Faltou a coluna do tamanho: o banco também não tem a do meio a meio (que
-    // é mais nova); pula direto para sem as duas.
-    if (nivelDosItens < NIVEIS_DOS_ITENS.length - 1 && /\btamanho/.test(resposta.error?.message ?? '')) {
-      nivelDosItens = NIVEIS_DOS_ITENS.length - 1;
-    } else if (nivelDosItens < NIVEIS_DOS_ITENS.length - 1) nivelDosItens++;
+    const mensagem = resposta.error?.message ?? '';
+    const ultimo = NIVEIS_DOS_ITENS.length - 1;
+    // Faltou a coluna do tamanho: o banco também não tem as mais novas; pula
+    // direto para sem nenhuma. Faltou a do meio a meio: sem ela nem o combo.
+    if (nivelDosItens < ultimo && /\btamanho/.test(mensagem)) nivelDosItens = ultimo;
+    else if (nivelDosItens < ultimo - 1 && /segundo_/.test(mensagem)) nivelDosItens = ultimo - 1;
+    else if (nivelDosItens < ultimo) nivelDosItens++;
     else if (nivelDoBanco < NIVEIS_DE_CAMPOS.length - 1) nivelDoBanco++;
     else return resposta;
   }
@@ -196,6 +208,16 @@ function normalizarItem(i, nome, ingredientes = []) {
     segundo_tamanho_id: i.segundo_tamanho_id ?? null,
     segundo_sabor: segundoSabor,
     nome: nomeDoItem(nome, tamanho, segundoSabor),
+    // Combo: o combo (id e nome gravado), qual combo do pedido (dois "Combo
+    // Casal" são dois grupos) e a posição da parte.
+    combo_id: i.combo_id ?? null,
+    combo_nome: i.combo_nome ?? null,
+    combo_grupo: i.combo_grupo ?? null,
+    combo_parte: i.combo_parte ?? null,
+    // A promoção que deu o preço (nome gravado) e o preço sem ela.
+    promocao_id: i.promocao_id ?? null,
+    promocao: i.promocao ?? null,
+    preco_cheio: numeroOuNull(i.preco_cheio),
     quantidade: i.quantidade,
     observacao: i.observacao ?? null,
     faltou: Boolean(i.faltou),
@@ -318,11 +340,128 @@ function segundoSaborDemo(db, produto, tamanho, segundo) {
   return { regra, tamanho: doSegundo, doCadastro: doSegundo ?? segundo };
 }
 
+// Promoções do modo demonstração, no formato de listarPromocoes.
+function promocoesDemo(db) {
+  return (db.promocoes ?? []).map((p) => ({
+    ...p,
+    itens: (db.promocao_itens ?? []).filter((i) => i.promocao_id === p.id),
+  }));
+}
+
+// Mesma regra de momento_da_promocao: quando o aparelho fez o pedido, até 12
+// horas atrás; senão, agora.
+function momentoDemo(item) {
+  const agora = Date.now();
+  const t = Date.parse(item.promocao_em ?? '');
+  if (Number.isNaN(t) || t < agora - 12 * 3600000 || t > agora + 5 * 60000) return new Date(agora);
+  return new Date(Math.min(t, agora));
+}
+
+const DO_COMBO_VAZIO = { combo_id: null, combo_nome: null, combo_grupo: null, combo_parte: null };
+
+// Um combo do pedido, com as regras (e textos) de gravar_combo_do_pedido.
+function comboDemo(db, pedidoId, item, anteriores) {
+  if (!(item.quantidade >= 1 && item.quantidade <= 999)) falhaDemo('A quantidade precisa ficar entre 1 e 999.');
+  const combo = (db.combos ?? []).find((c) => c.id === item.combo_id);
+  if (!combo) falhaDemo('Um dos combos saiu do cardápio. Lance o pedido de novo.');
+  const escolhas = item.partes.map((p) => ({ produtoId: p.produto_id, tamanhoId: p.tamanho_id ?? null, segundoId: p.segundo_produto_id ?? null }));
+  const grupo = novoId();
+  const base = {
+    pedido_id: pedidoId,
+    quantidade: item.quantidade,
+    observacao: limparObservacao(item.observacao),
+    faltou: false,
+    faltou_ingredientes: [],
+    combo_id: combo.id,
+    combo_grupo: grupo,
+  };
+  const anterior = anteriores[chaveDoCombo(combo.id, escolhas)];
+  if (anterior) {
+    return anterior.linhas.map((l) => ({ ...base, ...l, id: novoId(), combo_nome: anterior.nome }));
+  }
+  if (combo.arquivado) falhaDemo(`O combo ${combo.nome} saiu do cardápio. Lance o pedido de novo.`);
+  if (!combo.disponivel) falhaDemo(`O combo ${combo.nome} esgotou. Revise o pedido.`);
+  const partes = (db.combo_partes ?? []).filter((p) => p.combo_id === combo.id).sort((a, b) => a.ordem - b.ordem);
+  const mudou = () => falhaDemo(`O combo ${combo.nome} mudou no cardápio. Lance o pedido de novo.`);
+  if (partes.length !== escolhas.length) mudou();
+  const tamanhos = db.produto_tamanhos ?? [];
+  const linhas = partes.map((parte, i) => {
+    const e = escolhas[i];
+    const opcoes = (db.combo_opcoes ?? []).filter((o) => o.parte_id === parte.id);
+    const opcao = opcoes.find((o) => o.produto_id === e.produtoId && (o.tamanho_id ?? null) === e.tamanhoId);
+    if (!opcao) mudou();
+    const produto = db.produtos.find((p) => p.id === opcao.produto_id);
+    if (!produto || produto.arquivado) mudou();
+    if (!produto.disponivel) falhaDemo(`No combo ${combo.nome}, ${produto.nome} esgotou. Revise o pedido.`);
+    const tamanho = opcao.tamanho_id ? tamanhos.find((t) => t.id === opcao.tamanho_id) : null;
+    if (opcao.tamanho_id && (!tamanho || tamanho.arquivado)) mudou();
+    if (tamanho && !tamanho.disponivel) falhaDemo(`No combo ${combo.nome}, ${produto.nome} ${tamanho.nome} esgotou. Revise o pedido.`);
+    if (!tamanho && tamanhos.some((t) => t.produto_id === produto.id && !t.arquivado)) mudou();
+    let preco = (tamanho ?? produto).preco;
+    let custo = (tamanho ?? produto).custo ?? null;
+    let acrescimo = opcao.acrescimo ?? 0;
+    let segundo = null;
+    let tamanho2 = null;
+    if (e.segundoId) {
+      if (e.segundoId === produto.id) falhaDemo('Escolha dois sabores diferentes para o meio a meio.');
+      const opcao2 = opcoes.find((o) => {
+        if (o.produto_id !== e.segundoId) return false;
+        const t2 = o.tamanho_id ? tamanhos.find((t) => t.id === o.tamanho_id) : null;
+        return tamanho ? t2?.nome.toLowerCase() === tamanho.nome.toLowerCase() : !o.tamanho_id;
+      });
+      if (!opcao2) falhaDemo(`No combo ${combo.nome}, os dois sabores precisam ser opções da mesma parte e do mesmo tamanho. Revise o pedido.`);
+      segundo = db.produtos.find((p) => p.id === opcao2.produto_id);
+      if (!produto.meio_a_meio) falhaDemo(`${produto.nome} não pode ser meio a meio. Revise o pedido.`);
+      if (!segundo.meio_a_meio) falhaDemo(`${segundo.nome} não pode ser meio a meio. Revise o pedido.`);
+      if (segundo.arquivado) falhaDemo(`O sabor ${segundo.nome} saiu do cardápio. Lance o pedido de novo.`);
+      if (!segundo.disponivel) falhaDemo(`O sabor ${segundo.nome} esgotou. Revise o pedido.`);
+      tamanho2 = opcao2.tamanho_id ? tamanhos.find((t) => t.id === opcao2.tamanho_id) : null;
+      if (tamanho2?.arquivado) mudou();
+      if (tamanho2 && !tamanho2.disponivel) falhaDemo(`O sabor ${segundo.nome} esgotou no tamanho ${tamanho2.nome}. Revise o pedido.`);
+      const doSegundo = tamanho2 ?? segundo;
+      custo = custoMeioAMeio(custo, doSegundo.custo ?? null);
+      preco = precoMeioAMeio('media', preco, doSegundo.preco);
+      acrescimo = Math.max(acrescimo, opcao2.acrescimo ?? 0);
+    }
+    return {
+      base: preco,
+      acrescimo,
+      linha: {
+        produto_id: produto.id,
+        tamanho_id: tamanho?.id ?? null,
+        tamanho: tamanho?.nome ?? null,
+        segundo_produto_id: segundo?.id ?? null,
+        segundo_tamanho_id: tamanho2?.id ?? null,
+        segundo_sabor: segundo?.nome ?? null,
+        custo_unitario: custo,
+        combo_parte: i,
+      },
+    };
+  });
+  const promo = precoEmPromocao(promocoesDemo(db), { comboId: combo.id }, combo.preco, momentoDemo(item));
+  const total = promo ? promo.preco : combo.preco;
+  const bases = linhas.map((l) => l.base);
+  const divisao = dividirPreco(total, bases);
+  const cheia = promo ? dividirPreco(combo.preco, bases) : null;
+  return linhas.map((l, i) => ({
+    ...base,
+    ...l.linha,
+    id: novoId(),
+    combo_nome: combo.nome,
+    preco_unitario: Math.round((divisao[i] + l.acrescimo) * 100) / 100,
+    promocao_id: promo?.promocao.id ?? null,
+    promocao: promo?.promocao.nome ?? null,
+    preco_cheio: cheia ? Math.round((cheia[i] + l.acrescimo) * 100) / 100 : null,
+  }));
+}
+
 // Mesmas regras (e textos) do gravar_itens_pedido no banco.
 function itensDemo(db, pedidoId, itens, anteriores = {}) {
   if (!itens.length || itens.length > 100) falhaDemo('O pedido precisa ter de 1 a 100 itens.');
   const tamanhos = db.produto_tamanhos ?? [];
-  return itens.map((i) => {
+  const promocoes = promocoesDemo(db);
+  return itens.flatMap((i) => {
+    if (i.combo_id) return comboDemo(db, pedidoId, i, anteriores);
     if (!(i.quantidade >= 1 && i.quantidade <= 999)) falhaDemo('A quantidade precisa ficar entre 1 e 999.');
     const produto = db.produtos.find((p) => p.id === i.produto_id);
     if (!produto) falhaDemo('Um dos produtos esgotou. Revise o pedido.');
@@ -344,11 +483,38 @@ function itensDemo(db, pedidoId, itens, anteriores = {}) {
     const meio = segundo && !anterior ? segundoSaborDemo(db, produto, tamanho, segundo) : null;
     let preco = anterior ? anterior.preco : doCadastro.preco;
     let custo = anterior ? anterior.custo : (doCadastro.custo ?? null);
-    if (meio) {
-      preco = precoMeioAMeio(meio.regra, doCadastro.preco, meio.doCadastro.preco);
-      custo = custoMeioAMeio(doCadastro.custo ?? null, meio.doCadastro.custo ?? null);
+    // A promoção que deu o preço: a que já estava no item, ou a que vale agora.
+    let promocao = anterior ? { id: anterior.promocao_id ?? null, nome: anterior.promocao ?? null } : null;
+    let precoCheio = anterior ? (anterior.preco_cheio ?? null) : null;
+    if (!anterior) {
+      const momento = momentoDemo(i);
+      const promo1 = precoEmPromocao(promocoes, { produtoId: produto.id, tamanhoId: tamanho?.id ?? null }, doCadastro.preco, momento);
+      if (meio) {
+        const promo2 = precoEmPromocao(
+          promocoes,
+          { produtoId: segundo.id, tamanhoId: meio.tamanho?.id ?? null },
+          meio.doCadastro.preco,
+          momento,
+        );
+        const cheio = precoMeioAMeio(meio.regra, doCadastro.preco, meio.doCadastro.preco);
+        preco = precoMeioAMeio(meio.regra, promo1?.preco ?? doCadastro.preco, promo2?.preco ?? meio.doCadastro.preco);
+        custo = custoMeioAMeio(doCadastro.custo ?? null, meio.doCadastro.custo ?? null);
+        const usada = promo1 ?? promo2;
+        if (preco < cheio && usada) {
+          precoCheio = cheio;
+          promocao = usada.promocao;
+        }
+      } else if (promo1) {
+        precoCheio = preco;
+        preco = promo1.preco;
+        promocao = promo1.promocao;
+      }
     }
     return {
+      ...DO_COMBO_VAZIO,
+      promocao_id: promocao?.id ?? null,
+      promocao: promocao?.nome ?? null,
+      preco_cheio: precoCheio,
       id: novoId(),
       pedido_id: pedidoId,
       produto_id: produto.id,
@@ -378,15 +544,29 @@ function atualizarPedidoDemo(db, id, alteracoes) {
   return { ...db, pedidos: db.pedidos.map((p) => (p.id === id ? { ...p, ...alteracoes, atualizado_em: agora } : p)) };
 }
 
-// tamanho_id e segundo_produto_id só vão quando existem: o banco sem as
-// migrações não conhece as chaves e segue aceitando os pedidos de sempre.
+// tamanho_id, segundo_produto_id e promocao_em só vão quando existem: o banco
+// sem as migrações não conhece as chaves e segue aceitando os pedidos de
+// sempre. Combo: { combo_id, quantidade, observacao, partes: [{ produto_id,
+// tamanho_id, segundo_produto_id }] }.
 function itensParaEnvio(itens) {
-  return itens.map(({ produto_id, tamanho_id, segundo_produto_id, quantidade, observacao }) => ({
-    produto_id,
-    ...(tamanho_id ? { tamanho_id } : {}),
-    ...(segundo_produto_id ? { segundo_produto_id } : {}),
+  return itens.map(({ produto_id, tamanho_id, segundo_produto_id, combo_id, partes, quantidade, observacao, promocao_em }) => ({
+    ...(combo_id
+      ? {
+          combo_id,
+          partes: partes.map((p) => ({
+            produto_id: p.produto_id,
+            ...(p.tamanho_id ? { tamanho_id: p.tamanho_id } : {}),
+            ...(p.segundo_produto_id ? { segundo_produto_id: p.segundo_produto_id } : {}),
+          })),
+        }
+      : {
+          produto_id,
+          ...(tamanho_id ? { tamanho_id } : {}),
+          ...(segundo_produto_id ? { segundo_produto_id } : {}),
+        }),
     quantidade,
     observacao: limparObservacao(observacao),
+    ...(promocao_em ? { promocao_em } : {}),
   }));
 }
 
@@ -499,14 +679,44 @@ export async function editarPedido(id, itens, versao, mesa = null, nomeMesa = nu
     if ((pedido.alterado_em ?? null) !== (versao ?? null)) {
       falhaDemo('Outra pessoa alterou este pedido agora há pouco. Abra o pedido de novo para ver como ficou.');
     }
+    // Mesmas chaves do editar_pedido: os itens fora de combo por produto,
+    // tamanho e segundo sabor; os combos pelo combo e pelas escolhas.
     const anteriores = {};
-    for (const i of db.itens_pedido.filter((item) => item.pedido_id === id)) {
+    const doPedido = db.itens_pedido.filter((item) => item.pedido_id === id);
+    for (const i of doPedido.filter((item) => !item.combo_grupo)) {
       anteriores[chaveDoItem(i.produto_id, i.tamanho_id, i.segundo_produto_id)] = {
         preco: i.preco_unitario,
         custo: i.custo_unitario ?? null,
         tamanho: i.tamanho ?? null,
         segundo_tamanho_id: i.segundo_tamanho_id ?? null,
         segundo_sabor: i.segundo_sabor ?? null,
+        promocao_id: i.promocao_id ?? null,
+        promocao: i.promocao ?? null,
+        preco_cheio: i.preco_cheio ?? null,
+      };
+    }
+    for (const grupo of new Set(doPedido.filter((i) => i.combo_grupo).map((i) => i.combo_grupo))) {
+      const partes = doPedido.filter((i) => i.combo_grupo === grupo).sort((a, b) => a.combo_parte - b.combo_parte);
+      const chave = chaveDoCombo(
+        partes[0].combo_id,
+        partes.map((p) => ({ produtoId: p.produto_id, tamanhoId: p.tamanho_id, segundoId: p.segundo_produto_id })),
+      );
+      anteriores[chave] = {
+        nome: partes[0].combo_nome,
+        linhas: partes.map((p) => ({
+          produto_id: p.produto_id,
+          tamanho_id: p.tamanho_id ?? null,
+          tamanho: p.tamanho ?? null,
+          segundo_produto_id: p.segundo_produto_id ?? null,
+          segundo_tamanho_id: p.segundo_tamanho_id ?? null,
+          segundo_sabor: p.segundo_sabor ?? null,
+          preco_unitario: p.preco_unitario,
+          custo_unitario: p.custo_unitario ?? null,
+          promocao_id: p.promocao_id ?? null,
+          promocao: p.promocao ?? null,
+          preco_cheio: p.preco_cheio ?? null,
+          combo_parte: p.combo_parte,
+        })),
       };
     }
     const novosItens = itensDemo(db, id, itens, anteriores);

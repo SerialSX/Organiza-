@@ -15,6 +15,7 @@ import { atendeNoBalcao, modoDoNegocio, taxaDoNegocio } from '../lib/atendimento
 import { usePedidosAbertos } from '../hooks/usePedidosAbertos';
 import { usePendenciasAnteriores } from '../hooks/usePendenciasAnteriores';
 import { ProductsIcon, OrdersIcon, KitchenIcon, ReportsIcon, AlertIcon, CheckIcon, QrIcon } from '../components/icons/AppIcons';
+import { resumoDosItens } from '../lib/combos';
 
 function Pendencia({ pedido, onErro }) {
   const [salvando, setSalvando] = useState(false);
@@ -36,7 +37,7 @@ function Pendencia({ pedido, onErro }) {
         <Etiqueta cor={STATUS[pedido.status].cor}>{STATUS[pedido.status].rotulo}</Etiqueta>
       </div>
       <p className="text-sm text-[var(--text-secondary)] break-words">
-        {pedido.itens.map((i) => `${i.quantidade}× ${i.nome}`).join(', ')}
+        {resumoDosItens(pedido.itens)}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Botao cor={STATUS.pronto.cor} onClick={entregue} disabled={salvando}>

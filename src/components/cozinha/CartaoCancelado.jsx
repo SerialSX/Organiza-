@@ -3,6 +3,7 @@ import Etiqueta from '../ui/Etiqueta';
 import { CloseIcon } from '../icons/AppIcons';
 import { chamadaDoPedido, destinoDoPedido, numeroDoPedido } from '../../lib/formatadores';
 import { rotuloDoMotivo } from '../../lib/pedidoStatus';
+import { resumoDosItens } from '../../lib/combos';
 
 const VERMELHO = 'var(--color-accent-cozinha)';
 
@@ -22,7 +23,7 @@ export default function CartaoCancelado({ pedido, onOk }) {
       </div>
       <p className="text-lg font-bold text-[var(--texto-cozinha)]">Não preparar. {rotuloDoMotivo(pedido.motivo_cancelamento)}.</p>
       <p className="text-sm text-[var(--text-secondary)] line-through break-words">
-        {pedido.itens.map((i) => `${i.quantidade}× ${i.nome}`).join(', ')}
+        {resumoDosItens(pedido.itens)}
       </p>
       <Botao variante="secundaria" className="self-start" onClick={onOk}>
         <CloseIcon className="w-4 h-4" />

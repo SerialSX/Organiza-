@@ -8,12 +8,13 @@ import { totalDoPedido } from '../../lib/caixa';
 import { rotuloDaMesa } from '../../lib/mesas';
 import { formatarHora, formatarMoeda, numeroDoPedido } from '../../lib/formatadores';
 import { STATUS } from '../../lib/pedidoStatus';
+import { resumoDosItens as juntarItens } from '../../lib/combos';
 
 const LARANJA = 'var(--color-brand-orange)';
 const VERDE = 'var(--color-accent-relatorios)';
 
 function resumoDosItens(pedido) {
-  return pedido.itens.map((i) => `${i.quantidade}× ${i.nome}`).join(', ');
+  return juntarItens(pedido.itens);
 }
 
 // Conta de uma mesa ocupada: o que já foi pedido e o total, e as três ações

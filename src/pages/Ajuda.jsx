@@ -35,6 +35,16 @@ const PERGUNTAS = [
       'Em Produtos, marque "Pode ser meio a meio" em cada sabor (o cardápio pronto "Pizzaria" já vem marcado). Na primeira vez, o Organiza+ pergunta como você cobra: pelo sabor mais caro ou pela média dos dois. Dá para mudar depois em Minha conta, e vale só para os pedidos novos. No pedido, toque em "½ Meio a meio" no cartão da pizza, escolha o tamanho e a outra metade: só aparecem os sabores marcados do mesmo tamanho (G com G), e o que esgotou fica riscado. A cozinha vê "Meio a meio" com uma linha para cada metade e pode dizer o que faltou de qualquer um dos sabores. No relatório, cada sabor conta meia pizza.',
   },
   {
+    pergunta: 'Como monto um combo (lanche, batata e bebida)?',
+    resposta:
+      'Em Produtos, na aba Combos, toque em "Montar o primeiro combo". Dê o nome e o preço do combo e escolha o produto de cada parte (com o tamanho, quando tem). Parte com uma opção já vem no combo; com "Deixar o cliente escolher" você põe as opções (Refrigerante ou Suco) e, se quiser, quanto uma delas custa a mais. A tela mostra quanto sai separado e quanto o cliente economiza. Em Pedidos, os combos ficam no topo: quem atende toca e escolhe as opções. Acabou um produto que sempre vem no combo? O combo fica esgotado sozinho. Acabou uma das opções? Só ela fica riscada. A cozinha vê o nome do combo com cada parte, e o relatório conta cada produto vendido ("X-Burguer: 12, sendo 5 em combo").',
+  },
+  {
+    pergunta: 'Quero fazer promoção na terça ou no happy hour. Como?',
+    resposta:
+      'Em Produtos, na aba Promoções, crie a promoção: o nome, os dias da semana, o horário (ou o dia todo) e o preço de cada item, que pode ser produto, tamanho ou combo. Ela repete toda semana até você pausar ou apagar. Nos dias e horários dela, o preço muda sozinho em Pedidos, com o normal riscado e "Promoção até 19h" no cartão, e volta ao normal depois. Passando da meia-noite (das 22h às 2h) também dá. Pedido feito durante a promoção mantém o preço, mesmo editado depois. O relatório mostra quanto vendeu em cada promoção e quanto de desconto deu.',
+  },
+  {
     pergunta: 'A internet caiu. Perco o pedido?',
     resposta:
       'Não. O pedido fica guardado no aparelho e vai para a cozinha sozinho quando a internet voltar, sem duplicar. A senha aparece assim que ele sair. Enquanto isso, a tela mostra quantos pedidos estão esperando.',

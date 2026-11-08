@@ -13,6 +13,7 @@ import { MOTIVOS_CANCELAMENTO, STATUS } from '../../lib/pedidoStatus';
 import { totalDoPedido } from '../../lib/caixa';
 import { pendenciasDoDia, quantosPedidos } from '../../lib/fimDoDia';
 import { rotuloDaMesa } from '../../lib/mesas';
+import { resumoDosItens as juntarItens } from '../../lib/combos';
 
 const LARANJA = 'var(--color-brand-orange)';
 const VERDE = 'var(--color-accent-relatorios)';
@@ -27,7 +28,7 @@ function doDia(dia) {
 }
 
 function resumoDosItens(pedido) {
-  return pedido.itens.map((i) => `${i.quantidade}× ${i.nome}`).join(', ');
+  return juntarItens(pedido.itens);
 }
 
 // Pedido pago que ainda não saiu: na cozinha ou pronto sem marcar entregue.

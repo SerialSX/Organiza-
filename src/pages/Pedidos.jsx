@@ -29,6 +29,24 @@ import { useRascunhoDoPedido, novaChaveDeLinha } from '../hooks/useRascunhoDoPed
 import { criarPedido, editarPedido, buscarPedidoComValores, nomeComTamanho, ROTULO_FORMA } from '../services/pedidos';
 import { aceitaMeioAMeio, registrarToqueEsgotado } from '../services/produtos';
 import EscolherMeioAMeio from '../components/pedidos/EscolherMeioAMeio';
+import EscolherCombo from '../components/pedidos/EscolherCombo';
+import { useAgora, useCombos } from '../hooks/useCombos';
+import { aceitaCombos } from '../services/combos';
+import {
+  agruparItens,
+  chaveDoCombo,
+  ehFixa,
+  escolhaDaOpcao,
+  metadesCombinam,
+  opcaoDisponivel,
+  opcaoNoCardapio,
+  opcoesEscolhidas,
+  precoDoCombo,
+  resumoDoCombo,
+  situacaoDoCombo,
+  textoDasEscolhas,
+} from '../lib/combos';
+import { precoEmPromocao } from '../lib/promocoes';
 import { nomeDoItem, precoMeioAMeio, tamanhoQueCombina } from '../lib/meioAMeio';
 import { dispensarSaida, guardarNaFila } from '../services/filaDeEnvio';
 import { destinoDoPedido, formatarMoeda, hojeNoNegocio, numeroDoPedido } from '../lib/formatadores';
@@ -87,6 +105,11 @@ function MensagemDeEnvio({ enviado }) {
 export default function Pedidos() {
   const { perfil } = useAuth();
   const { produtos, carregando, erro: erroCarga } = useProdutos();
+  // Combos e promoções (banco sem a migração 2026-11-15: listas vazias).
+  const { combos, promocoes } = useCombos();
+  // A promoção começa e acaba com a tela aberta.
+  const agora = useAgora();
+  const comCombos = aceitaCombos();
   const { pedidos: abertos } = usePedidosAbertos();
   const { pedidos: doDia, carregando: carregandoDia } = usePedidosDoDia();
   const { pedidos: anteriores, carregando: carregandoAnteriores } = usePendenciasAnteriores();
@@ -117,9 +140,12 @@ export default function Pedidos() {
   const [edicao, setEdicao] = useState(null);
   // Produto cujo meio a meio está sendo escolhido (a janela fica aberta).
   const [meioDe, setMeioDe] = useState(null);
+  // Combo cujas opções estão sendo escolhidas.
+  const [comboDe, setComboDe] = useState(null);
   // Uma linha por produto, tamanho e observação: "X-Burguer" e "X-Burguer sem
   // salada" ficam separados, e a pizza P da G também.
   // [{ chave, produtoId, tamanhoId, segundoId (meio a meio), nome, quantidade, observacao }]
+  // Combo: [{ chave, comboId, escolhas: [{ produtoId, tamanhoId, segundoId }], nome, detalhe, quantidade, observacao }]
   const [carrinho, setCarrinho] = useRascunhoDoPedido(perfil.negocio_id, Boolean(edicao));
   const [rascunhoGuardado, setRascunhoGuardado] = useState([]);
   // Balcão ou mesa. Na edição, o destino do pedido montado fica guardado à parte.
@@ -163,13 +189,34 @@ export default function Pedidos() {
   const porId = Object.fromEntries(produtos.map((p) => [p.id, p]));
   // Mesma chave do banco: produto, tamanho e segundo sabor (meio a meio).
   const chaveDe = (produtoId, tamanhoId, segundoId) => `${produtoId}|${tamanhoId ?? ''}|${segundoId ?? ''}`;
-  const chaveDaLinha = (l) => chaveDe(l.produtoId, l.tamanhoId, l.segundoId);
-  // Na edição, o item que já estava no pedido (produto, tamanho e sabores)
-  // mantém o preço combinado e pode continuar mesmo que tenha esgotado ou
+  const chaveDaLinha = (l) => (l.comboId ? chaveDoCombo(l.comboId, l.escolhas) : chaveDe(l.produtoId, l.tamanhoId, l.segundoId));
+  const comboPorId = Object.fromEntries(combos.map((c) => [c.id, c]));
+  // Na edição, o item que já estava no pedido (produto, tamanho e sabores; o
+  // combo com as mesmas escolhas) mantém o preço combinado, mesmo o da
+  // promoção que já acabou, e pode continuar mesmo que tenha esgotado ou
   // saído do cardápio depois (mesma regra do banco).
-  const precoCombinado = Object.fromEntries(
-    (edicao?.pedido.itens ?? []).map((i) => [chaveDe(i.produto_id, i.tamanho_id, i.segundo_produto_id), i.preco_unitario]),
-  );
+  const precoCombinado = {};
+  const promocaoCombinada = {};
+  for (const l of agruparItens(edicao?.pedido.itens ?? [])) {
+    const chave = l.combo
+      ? chaveDoCombo(
+          l.combo_id,
+          l.itens.map((i) => ({ produtoId: i.produto_id, tamanhoId: i.tamanho_id, segundoId: i.segundo_produto_id })),
+        )
+      : chaveDe(l.item.produto_id, l.item.tamanho_id, l.item.segundo_produto_id);
+    precoCombinado[chave] = l.combo ? l.preco_unitario : l.item.preco_unitario;
+    promocaoCombinada[chave] = (l.combo ? l.itens[0].promocao : l.item.promocao) ?? null;
+  }
+  // O preço de agora: { preco, normal, promocao } com a promoção que vale agora.
+  function precoAgora(produto, tamanho) {
+    const normal = (tamanho ?? produto).preco;
+    const promo = precoEmPromocao(promocoes, { produtoId: produto.id, tamanhoId: tamanho?.id ?? null }, normal, agora);
+    return { preco: promo ? promo.preco : normal, normal, promocao: promo?.promocao ?? null };
+  }
+  function precoDoComboAgora(combo) {
+    const promo = precoEmPromocao(promocoes, { comboId: combo.id }, combo.preco, agora);
+    return { preco: promo ? promo.preco : combo.preco, normal: combo.preco, promocao: promo?.promocao ?? null };
+  }
   const regraMeioAMeio = perfil.regra_meio_a_meio ?? null;
   const tamanhoDa = (linha) => porId[linha.produtoId]?.tamanhos?.find((t) => t.id === linha.tamanhoId);
   // O primeiro sabor (ou o produto inteiro) hoje no cardápio: null quando não pode mais entrar.
@@ -188,23 +235,66 @@ export default function Pedidos() {
     if (doSegundo === undefined || (doSegundo && !doSegundo.disponivel)) return null;
     return doSegundo ?? segundo;
   }
-  // O preço que a linha teria hoje no cardápio: null quando não pode mais entrar.
+  // O combo do jeito que foi montado, hoje: { preco, promocao } ou null quando
+  // não pode mais entrar (esgotou, foi desligado ou mudou no cardápio).
+  function comboNoCardapio(linha) {
+    const combo = comboPorId[linha.comboId];
+    if (!combo || !combo.disponivel || combo.partes.length !== linha.escolhas.length) return null;
+    const escolhidas = opcoesEscolhidas(combo, linha.escolhas, porId);
+    for (const [i, e] of escolhidas.entries()) {
+      if (!e || !opcaoDisponivel(e.opcao, porId)) return null;
+      if (linha.escolhas[i].segundoId && (!e.segunda || !opcaoDisponivel(e.segunda, porId) || !metadesCombinam(e.opcao, e.segunda, porId))) {
+        return null;
+      }
+    }
+    const { preco, promocao } = precoDoComboAgora(combo);
+    return { preco: precoDoCombo(preco, combo, linha.escolhas, porId), promocao };
+  }
+  // O preço que a linha teria hoje no cardápio (com a promoção que vale
+  // agora): { preco, promocao } ou null quando não pode mais entrar.
   function noCardapio(linha) {
+    if (linha.comboId) return comboNoCardapio(linha);
     const primeiro = primeiroNoCardapio(linha);
-    if (!primeiro || !linha.segundoId) return primeiro ? primeiro.preco : null;
+    if (!primeiro) return null;
+    const doPrimeiro = precoAgora(porId[linha.produtoId], linha.tamanhoId ? primeiro : null);
+    if (!linha.segundoId) return { preco: doPrimeiro.preco, promocao: doPrimeiro.promocao };
     const segundo = regraMeioAMeio ? segundoNoCardapio(linha) : null;
-    return segundo ? precoMeioAMeio(regraMeioAMeio, primeiro.preco, segundo.preco) : null;
+    if (!segundo) return null;
+    const produtoSegundo = porId[linha.segundoId];
+    const doSegundo = precoAgora(produtoSegundo, segundo === produtoSegundo ? null : segundo);
+    // Mesma regra do banco: cada metade com a promoção dela, e a regra por cima.
+    const preco = precoMeioAMeio(regraMeioAMeio, doPrimeiro.preco, doSegundo.preco);
+    const cheio = precoMeioAMeio(regraMeioAMeio, doPrimeiro.normal, doSegundo.normal);
+    return { preco, promocao: preco < cheio ? (doPrimeiro.promocao ?? doSegundo.promocao) : null };
   }
   const linhaValida = (linha) => chaveDaLinha(linha) in precoCombinado || noCardapio(linha) !== null;
   const itens = carregando
     ? []
-    : carrinho.filter(linhaValida).map((linha) => ({
-        ...linha,
-        preco: precoCombinado[chaveDaLinha(linha)] ?? noCardapio(linha),
-      }));
+    : carrinho.filter(linhaValida).map((linha) => {
+        const chave = chaveDaLinha(linha);
+        const combinado = chave in precoCombinado;
+        const hoje = combinado ? null : noCardapio(linha);
+        return {
+          ...linha,
+          preco: combinado ? precoCombinado[chave] : hoje.preco,
+          promocao: combinado ? promocaoCombinada[chave] : (hoje.promocao?.nome ?? null),
+        };
+      });
   // Saiu do pedido: esgotou, ou o produto mudou de tamanhos (rascunho antigo),
-  // ou o meio a meio não combina mais (sabor desmarcado ou sem o tamanho).
-  const invalidas = carregando ? [] : carrinho.filter((l) => !linhaValida(l));
+  // ou o meio a meio não combina mais (sabor desmarcado ou sem o tamanho), ou
+  // o combo mudou no cardápio.
+  const todasInvalidas = carregando ? [] : carrinho.filter((l) => !linhaValida(l));
+  const invalidas = todasInvalidas.filter((l) => !l.comboId);
+  const comboMudou = (l) => {
+    const combo = comboPorId[l.comboId];
+    if (!combo) return false;
+    return (
+      combo.partes.length !== l.escolhas.length ||
+      opcoesEscolhidas(combo, l.escolhas, porId).some((e) => !e || !opcaoNoCardapio(e.opcao, porId))
+    );
+  };
+  const combosInvalidos = todasInvalidas.filter((l) => l.comboId);
+  const combosMudaram = [...new Set(combosInvalidos.filter(comboMudou).map((l) => l.nome))];
   const mudouNoCardapio = (l) =>
     porId[l.produtoId]?.disponivel && (l.tamanhoId ? !tamanhoDa(l) : porId[l.produtoId].tamanhos?.length > 0);
   // Meio a meio que não combina mais: um dos sabores foi desmarcado, saiu do
@@ -216,7 +306,12 @@ export default function Pedidos() {
     return tamanhoQueCombina(segundo, tamanhoDa(l)?.nome ?? null) === undefined;
   };
   const meioMudou = [...new Set(invalidas.filter(meioNaoCombina).map((l) => l.nome))];
-  const foraDoCardapio = [...new Set(invalidas.filter((l) => !mudouNoCardapio(l) && !meioNaoCombina(l)).map((l) => l.nome))];
+  const foraDoCardapio = [
+    ...new Set([
+      ...invalidas.filter((l) => !mudouNoCardapio(l) && !meioNaoCombina(l)).map((l) => l.nome),
+      ...combosInvalidos.filter((l) => !comboMudou(l)).map((l) => l.nome),
+    ]),
+  ];
   const tamanhosMudaram = [...new Set(invalidas.filter(mudouNoCardapio).map((l) => l.nome))];
   const totalItens = itens.reduce((s, i) => s + i.quantidade, 0);
   const total = itens.reduce((s, i) => s + i.quantidade * i.preco, 0);
@@ -227,10 +322,29 @@ export default function Pedidos() {
   const quantidadePorProduto = {};
   // O meio a meio conta à parte ("meio|produto"), no botão dele.
   for (const linha of itens) {
+    // O combo conta no cartão dele ("combo|id").
+    if (linha.comboId) {
+      quantidadePorProduto[`combo|${linha.comboId}`] = (quantidadePorProduto[`combo|${linha.comboId}`] ?? 0) + linha.quantidade;
+      continue;
+    }
     quantidadePorProduto[linha.produtoId] = (quantidadePorProduto[linha.produtoId] ?? 0) + linha.quantidade;
     const chave = linha.segundoId ? `meio|${linha.produtoId}` : `${linha.produtoId}|${linha.tamanhoId ?? ''}`;
     quantidadePorProduto[chave] = (quantidadePorProduto[chave] ?? 0) + linha.quantidade;
   }
+
+  // Os combos da grade, com o que impede cada um de sair e o preço de agora.
+  const combosDaGrade = comCombos
+    ? combos.map((combo) => {
+        const situacao = situacaoDoCombo(combo, porId);
+        return {
+          combo,
+          ...situacao,
+          agora: precoDoComboAgora(combo),
+          temEscolha: !combo.partes.every(ehFixa),
+          resumo: resumoDoCombo(combo, porId),
+        };
+      })
+    : [];
 
   const { fila, prontos } = separarPedidos(abertos);
   const contas = mapaAtivo ? [] : contasAbertas(doDia);
@@ -318,6 +432,47 @@ export default function Pedidos() {
     });
   }
 
+  // Combo montado (ou só de partes fixas): soma no que já tem igual.
+  function adicionarCombo(combo, escolhas) {
+    const chave = chaveDoCombo(combo.id, escolhas);
+    mexerNoCarrinho((c) => {
+      const igual = c.find((l) => l.comboId && chaveDoCombo(l.comboId, l.escolhas) === chave && !l.observacao.trim());
+      if (igual) return c.map((l) => (l === igual ? { ...l, quantidade: l.quantidade + 1 } : l));
+      return [
+        ...c,
+        {
+          chave: novaChaveDeLinha(),
+          comboId: combo.id,
+          escolhas,
+          nome: combo.nome,
+          detalhe: textoDasEscolhas(combo, escolhas, porId),
+          quantidade: 1,
+          observacao: '',
+        },
+      ];
+    });
+  }
+
+  // Combo só de partes fixas: um toque adiciona. Com escolha: abre a janela.
+  function tocarCombo(combo) {
+    if (combo.partes.every(ehFixa)) adicionarCombo(combo, combo.partes.map((p) => escolhaDaOpcao(p.opcoes[0])));
+    else setComboDe(combo);
+  }
+
+  // Tocou num combo que não sai: diz por quê e conta a venda evitada.
+  function tocouComboEsgotado({ combo, esgotado, mudou }) {
+    if (esgotado) {
+      setAviso(
+        `${combo.nome} está esgotado: acabou ${nomeComTamanho(esgotado.produto.nome, esgotado.tamanho?.nome)}. Ofereça outra opção ao cliente.`,
+      );
+      registrarToqueEsgotado(esgotado.produto.id);
+    } else if (mudou) {
+      setAviso(`${combo.nome} precisa ser revisto: um dos produtos dele saiu do cardápio. Peça para o dono editar o combo em Produtos.`);
+    } else {
+      setAviso(`${combo.nome} está esgotado. Ofereça outra opção ao cliente.`);
+    }
+  }
+
   // Tocou num esgotado: avisa e conta a venda que teria saído errada.
   function tocouEsgotado(produto, tamanho = null) {
     setAviso(`${nomeComTamanho(produto.nome, tamanho?.nome)} está esgotado. Ofereça outra opção ao cliente.`);
@@ -352,15 +507,27 @@ export default function Pedidos() {
           : { tipo: 'balcao', mesa: '' },
       );
       setCarrinho(
-        completo.itens.map((i) => ({
-          chave: novaChaveDeLinha(),
-          produtoId: i.produto_id,
-          tamanhoId: i.tamanho_id ?? null,
-          segundoId: i.segundo_produto_id ?? null,
-          nome: i.nome,
-          quantidade: i.quantidade,
-          observacao: i.observacao ?? '',
-        })),
+        agruparItens(completo.itens).map((l) =>
+          l.combo
+            ? {
+                chave: novaChaveDeLinha(),
+                comboId: l.combo_id,
+                escolhas: l.itens.map((i) => ({ produtoId: i.produto_id, tamanhoId: i.tamanho_id ?? null, segundoId: i.segundo_produto_id ?? null })),
+                nome: l.nome,
+                detalhe: l.itens.map((i) => i.nome).join(', '),
+                quantidade: l.quantidade,
+                observacao: l.observacao ?? '',
+              }
+            : {
+                chave: novaChaveDeLinha(),
+                produtoId: l.item.produto_id,
+                tamanhoId: l.item.tamanho_id ?? null,
+                segundoId: l.item.segundo_produto_id ?? null,
+                nome: l.item.nome,
+                quantidade: l.item.quantidade,
+                observacao: l.item.observacao ?? '',
+              },
+        ),
       );
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
@@ -426,13 +593,27 @@ export default function Pedidos() {
     setErro('');
     setAviso('');
     setEnviando(true);
-    const paraEnviar = itens.map(({ produtoId, tamanhoId, segundoId, quantidade, observacao }) => ({
-      produto_id: produtoId,
-      tamanho_id: tamanhoId ?? null,
-      segundo_produto_id: segundoId ?? null,
-      quantidade,
-      observacao,
-    }));
+    // O instante dos preços na tela: o banco usa a promoção que valia nele,
+    // mesmo que o pedido saia depois (guardado sem internet).
+    const promocaoEm = comCombos ? agora.toISOString() : null;
+    const paraEnviar = itens.map(({ comboId, escolhas, produtoId, tamanhoId, segundoId, quantidade, observacao }) =>
+      comboId
+        ? {
+            combo_id: comboId,
+            partes: escolhas.map((e) => ({ produto_id: e.produtoId, tamanho_id: e.tamanhoId ?? null, segundo_produto_id: e.segundoId ?? null })),
+            quantidade,
+            observacao,
+            promocao_em: promocaoEm,
+          }
+        : {
+            produto_id: produtoId,
+            tamanho_id: tamanhoId ?? null,
+            segundo_produto_id: segundoId ?? null,
+            quantidade,
+            observacao,
+            promocao_em: promocaoEm,
+          },
+    );
     const linhas = itens.map(({ nome, quantidade, observacao }) => ({ nome, quantidade, observacao }));
     try {
       if (edicao) {
@@ -595,6 +776,10 @@ export default function Pedidos() {
             onEsgotado={tocouEsgotado}
             meioAMeio={aceitaMeioAMeio() && perfil.regra_meio_a_meio !== undefined}
             onMeioAMeio={setMeioDe}
+            precoAgora={precoAgora}
+            combos={combosDaGrade}
+            onCombo={tocarCombo}
+            onComboEsgotado={tocouComboEsgotado}
           />
           </div>
           {meioDe && (
@@ -612,6 +797,20 @@ export default function Pedidos() {
                 setMeioDe(null);
               }}
               onFechar={() => setMeioDe(null)}
+              precoAgora={precoAgora}
+            />
+          )}
+          {comboDe && comboPorId[comboDe.id] && (
+            <EscolherCombo
+              combo={comboPorId[comboDe.id]}
+              porId={porId}
+              precoBase={precoDoComboAgora(comboPorId[comboDe.id]).preco}
+              onEscolher={(escolhas) => {
+                adicionarCombo(comboPorId[comboDe.id], escolhas);
+                setComboDe(null);
+              }}
+              onToqueEsgotado={(produto) => registrarToqueEsgotado(produto.id)}
+              onFechar={() => setComboDe(null)}
             />
           )}
 
@@ -673,6 +872,12 @@ export default function Pedidos() {
                 <Aviso>
                   Os tamanhos de {tamanhosMudaram.join(', ')} mudaram no cardápio e {tamanhosMudaram.length === 1 ? 'ele saiu' : 'eles saíram'}{' '}
                   do pedido. Toque de novo no tamanho certo.
+                </Aviso>
+              )}
+              {combosMudaram.length > 0 && (
+                <Aviso>
+                  {combosMudaram.join(', ')} {combosMudaram.length === 1 ? 'mudou' : 'mudaram'} no cardápio e{' '}
+                  {combosMudaram.length === 1 ? 'saiu' : 'saíram'} do pedido. Adicione de novo.
                 </Aviso>
               )}
               {meioMudou.length > 0 && (

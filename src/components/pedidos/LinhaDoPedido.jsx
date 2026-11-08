@@ -18,8 +18,10 @@ function BotaoQuantidade({ onClick, rotulo, children }) {
   );
 }
 
+// linha.detalhe: as partes do combo ("X-Burguer, Batata, Suco").
+// linha.promocao: o nome da promoção que deu o preço.
 export default function LinhaDoPedido({ linha, onQuantidade, onObservacao }) {
-  const { nome, quantidade, observacao, preco } = linha;
+  const { nome, quantidade, observacao, preco, detalhe, promocao } = linha;
   const [editando, setEditando] = useState(false);
   const mostrarCampo = editando || observacao !== '';
 
@@ -28,7 +30,11 @@ export default function LinhaDoPedido({ linha, onQuantidade, onObservacao }) {
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0">
           <p className="font-medium text-[var(--text-primary)] break-words">{nome}</p>
-          <p className="text-sm tabular-nums text-[var(--text-secondary)]">{formatarMoeda(preco * quantidade)}</p>
+          {detalhe && <p className="text-sm text-[var(--text-secondary)] break-words">{detalhe}</p>}
+          <p className="text-sm tabular-nums text-[var(--text-secondary)]">
+            {formatarMoeda(preco * quantidade)}
+            {promocao && <span className="font-semibold text-[var(--color-brand-orange)]"> · {promocao}</span>}
+          </p>
         </div>
         <BotaoQuantidade onClick={() => onQuantidade(-1)} rotulo={quantidade === 1 ? `Tirar ${nome} do pedido` : `Tirar um ${nome}`}>
           <MinusIcon className="w-5 h-5" />

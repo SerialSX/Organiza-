@@ -27,6 +27,7 @@ const CABECALHO = {
   custo: /^custo/,
   cozinha: /cozinha/,
   tamanho: /^tamanho/,
+  meio: /meio/,
 };
 
 const SIM = new Set(['sim', 's', 'x', 'yes', 'y', '1', 'true', 'verdadeiro', 'vai']);
@@ -70,6 +71,7 @@ function acharCabecalho(linhas) {
     const custo = celulas.findIndex((c) => CABECALHO.custo.test(c));
     const cozinha = celulas.findIndex((c) => CABECALHO.cozinha.test(c));
     const tamanho = celulas.findIndex((c, j) => j !== nome && CABECALHO.tamanho.test(c));
+    const meio = celulas.findIndex((c, j) => j !== nome && CABECALHO.meio.test(c));
     return {
       linha: i,
       nome,
@@ -77,6 +79,7 @@ function acharCabecalho(linhas) {
       custo: custo < 0 ? null : custo,
       cozinha: cozinha < 0 ? null : cozinha,
       tamanho: tamanho < 0 ? null : tamanho,
+      meio: meio < 0 ? null : meio,
     };
   }
   return null;
@@ -142,17 +145,32 @@ function juntarTamanhos(itens, comTamanhos) {
   }
   return saida.map((p) => {
     if (!p.tamanhos) return p;
-    const { linhas, ...produto } = p;
+    const { linhas, ...juntado } = p;
+    // Meio a meio: basta uma linha do produto dizer "Sim".
+    const meios = linhas.map((l) => l.meioAMeio);
+    const produto =
+      juntado.meioAMeio === undefined
+        ? juntado
+        : { ...juntado, meioAMeio: meios.includes(true) ? true : meios.includes(false) ? false : null };
     if (produto.tamanhos.length > 1) return produto;
     // Um tamanho só: produto de preço único, com o tamanho no nome.
     const [unico] = produto.tamanhos;
     const original = linhas.find((l) => l.linha === unico.linha);
-    return { ...noNome(original), umTamanho: unico.nome || null, repetidas: produto.repetidas };
+    return {
+      ...noNome(original),
+      ...(produto.meioAMeio === undefined ? {} : { meioAMeio: produto.meioAMeio }),
+      umTamanho: unico.nome || null,
+      repetidas: produto.repetidas,
+    };
   });
 }
 
 // comTamanhos: o banco aceita tamanhos (aceitaTamanhos() do serviço).
-export function interpretarPlanilha(linhas, { comTamanhos = true } = {}) {
+// comMeioAMeio: o banco aceita o meio a meio (aceitaMeioAMeio()). Sem ele, a
+// coluna "Meio a meio?" é ignorada.
+// meioAMeio no item: true/false (a planilha disse), null (em branco) ou
+// undefined (a planilha não tem a coluna).
+export function interpretarPlanilha(linhas, { comTamanhos = true, comMeioAMeio = true } = {}) {
   const cabecalho = acharCabecalho(linhas);
   const inicio = cabecalho ? cabecalho.linha + 1 : 0;
   const itens = [];
@@ -172,6 +190,7 @@ export function interpretarPlanilha(linhas, { comTamanhos = true } = {}) {
     const custo = lerNumero(brutoCusto);
     const cozinhaDaPlanilha = cabecalho?.cozinha === null || !cabecalho ? null : lerSimNao(linha[cabecalho.cozinha]);
     const tamanho = cabecalho?.tamanho === null || !cabecalho ? '' : limparNomeTamanho(textoDe(linha[cabecalho.tamanho]));
+    const temColunaMeio = comMeioAMeio && cabecalho && cabecalho.meio !== null;
 
     itens.push({
       linha: i + 1,
@@ -182,6 +201,7 @@ export function interpretarPlanilha(linhas, { comTamanhos = true } = {}) {
       cozinhaAdivinhada: cozinhaDaPlanilha === null,
       nomeLongo: nome.length > LIMITE_DO_NOME,
       tamanho,
+      ...(temColunaMeio ? { meioAMeio: lerSimNao(linha[cabecalho.meio]) } : {}),
     });
   }
 
@@ -213,6 +233,7 @@ const mesmoItem = (a, b) =>
   a.preco === b.preco &&
   a.custo === b.custo &&
   a.vaiParaCozinha === b.vaiParaCozinha &&
+  a.meioAMeio === b.meioAMeio &&
   textoDosTamanhos(a.tamanhos) === textoDosTamanhos(b.tamanhos);
 
 // "P R$ 35,00 · G R$ 55,00" ou o preço único; para as escolhas da revisão.
@@ -238,6 +259,8 @@ export function montarRevisao(itens, produtos) {
     const existente = chave ? (existentes.get(chave) ?? null) : null;
     // A planilha não disse se vai para a cozinha: vale o que já está no cardápio.
     if (existente && item.cozinhaAdivinhada) item = { ...item, vaiParaCozinha: existente.vai_para_cozinha !== false };
+    // Meio a meio em branco: também vale o que já está no cardápio.
+    if (existente && item.meioAMeio === null) item = { ...item, meioAMeio: Boolean(existente.meio_a_meio) };
     if (!grupo) {
       grupos.set(id, { id, ocorrencias: [item], repetidasIguais: [...(item.repetidas ?? [])], existente });
     } else if (grupo.ocorrencias.some((o) => mesmoItem(o, item))) {
@@ -306,6 +329,9 @@ export function precisaDeAtencao(grupo) {
 }
 
 const arredondar = (v) => Math.round(v * 100) / 100;
+// Só manda o meio a meio quando a planilha disse (ou ele já estava no cardápio).
+const meioDoItem = (item) => (typeof item.meioAMeio === 'boolean' ? { meio_a_meio: item.meioAMeio } : {});
+const meioDoNovo = (item) => (item.meioAMeio ? { meio_a_meio: true } : {});
 
 // O que salvar, a partir das escolhas: produtos novos e os que já existiam e
 // o dono mandou atualizar. Com tamanhos, o novo vem com tamanhos (sem preço) e
@@ -328,7 +354,7 @@ export function oQueSalvar(grupos) {
         atualizar.push({
           grupo: g.id,
           id: g.existente.id,
-          alteracoes: { vai_para_cozinha: item.vaiParaCozinha },
+          alteracoes: { vai_para_cozinha: item.vaiParaCozinha, ...meioDoItem(item) },
           tamanhos: tamanhos.map((t) => {
             const atual = atuais.get(chaveDoNome(t.nome));
             // Custo em branco na planilha não apaga o custo que já estava lá.
@@ -336,7 +362,7 @@ export function oQueSalvar(grupos) {
           }),
         });
       } else {
-        novos.push({ grupo: g.id, nome: item.nome.trim().replace(/\s+/g, ' '), vai_para_cozinha: item.vaiParaCozinha, tamanhos });
+        novos.push({ grupo: g.id, nome: item.nome.trim().replace(/\s+/g, ' '), vai_para_cozinha: item.vaiParaCozinha, ...meioDoNovo(item), tamanhos });
       }
       continue;
     }
@@ -344,6 +370,7 @@ export function oQueSalvar(grupos) {
     const dados = {
       preco: arredondar(lerValor(item.preco)),
       vai_para_cozinha: item.vaiParaCozinha,
+      ...(g.existente ? meioDoItem(item) : meioDoNovo(item)),
     };
     if (g.existente) {
       // Custo em branco na planilha não apaga o custo que já estava lá.

@@ -9,6 +9,7 @@ import Etiqueta from '../components/ui/Etiqueta';
 import Abas from '../components/ui/Abas';
 import AbaIngredientes from '../components/produtos/AbaIngredientes';
 import FormularioProduto from '../components/produtos/FormularioProduto';
+import EscolhaDaRegraMeioAMeio from '../components/produtos/EscolhaDaRegraMeioAMeio';
 import { FORM_VAZIO, listaNumerica } from '../lib/formularioProduto';
 import ImportarCardapio from '../components/produtos/ImportarCardapio';
 import ImportarPlanilha from '../components/produtos/ImportarPlanilha';
@@ -29,6 +30,7 @@ import {
   salvarTamanhosDoProduto,
   mudarDisponivelDoTamanho,
   aceitaTamanhos,
+  aceitaMeioAMeio,
 } from '../services/produtos';
 import { formatarMoeda, valorParaCampo } from '../lib/formatadores';
 import { algumTamanhoDisponivel, faixaDePreco, temTamanhos } from '../lib/tamanhos';
@@ -180,6 +182,7 @@ function CartaoProduto({ produto, pelosIngredientes, onEditar, onErro }) {
         <div className="flex flex-col items-end gap-1">
           {!sai && <Etiqueta cor="var(--color-accent-cozinha)">Esgotado</Etiqueta>}
           {produto.vai_para_cozinha === false && <Etiqueta cor="var(--color-accent-pedidos)">Sem cozinha</Etiqueta>}
+          {produto.meio_a_meio && <Etiqueta cor="var(--color-accent-produtos)">Meio a meio</Etiqueta>}
         </div>
       </div>
 
@@ -303,8 +306,52 @@ function Excluidos({ atualizarCardapio, onErro }) {
   );
 }
 
+// Sabores marcados como meio a meio (pelo cardápio pronto ou pela planilha)
+// e o dono ainda não disse como cobra: sem isso, o pedido meio a meio não sai.
+function FaltaRegraMeioAMeio() {
+  const { configurarMeioAMeio } = useAuth();
+  const [regra, setRegra] = useState(null);
+  const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar(e) {
+    e.preventDefault();
+    if (!regra) {
+      setErro('Escolha como você cobra o meio a meio.');
+      return;
+    }
+    setErro('');
+    setSalvando(true);
+    const { erro: falha } = await configurarMeioAMeio(regra);
+    setSalvando(false);
+    if (falha) setErro(falha);
+  }
+
+  return (
+    <section
+      aria-labelledby="titulo-falta-regra"
+      className="rounded-2xl border-2 border-[var(--color-accent-produtos)] bg-[var(--surface-card)] p-5 mb-6 flex flex-col gap-4"
+    >
+      <div>
+        <h2 id="titulo-falta-regra" className="text-lg font-semibold text-[var(--text-primary)]">
+          Falta escolher como cobrar o meio a meio
+        </h2>
+        <p className="text-sm text-[var(--text-secondary)]">
+          Alguns sabores podem ser meio a meio. Escolha uma vez e vale para todos (dá para mudar depois em Minha conta).
+        </p>
+      </div>
+      <form onSubmit={salvar} className="flex flex-col gap-4">
+        <EscolhaDaRegraMeioAMeio valor={regra} onMudar={setRegra} erro={erro} legendaVisivel={false} />
+        <Botao type="submit" cor={ACCENT} className="self-start" disabled={salvando}>
+          {salvando ? 'Salvando…' : 'Salvar'}
+        </Botao>
+      </form>
+    </section>
+  );
+}
+
 export default function Produtos() {
-  const { perfil } = useAuth();
+  const { perfil, configurarMeioAMeio } = useAuth();
   const { produtos, carregando, erro: erroCarga, recarregar } = useProdutos();
   const ingredientes = useIngredientes();
   const [aba, setAba] = useAbaNoEndereco('aba', ABAS, 'produtos');
@@ -323,7 +370,12 @@ export default function Produtos() {
 
   const comPreco = new Set(ingredientes.ingredientes.filter((i) => i.preco_compra !== null).map((i) => i.id));
 
-  async function salvar({ lista, tamanhos, ...dados }) {
+  async function salvar({ lista, tamanhos, regra_meio_a_meio: regra, ...dados }) {
+    // Primeiro produto meio a meio: a regra escolhida no formulário vai antes.
+    if (regra) {
+      const { erro: falha } = await configurarMeioAMeio(regra);
+      if (falha) throw new Error(falha);
+    }
     let id = formulario.id ?? criado.current;
     if (id) await atualizarProduto(id, dados);
     else {
@@ -405,6 +457,8 @@ export default function Produtos() {
       preco: valorParaCampo(produto.preco),
       custo: valorParaCampo(produto.custo),
       vaiParaCozinha: produto.vai_para_cozinha !== false,
+      meioAMeio: produto.meio_a_meio,
+      regraMeioAMeio: null,
       comTamanhos,
       tamanhos: produto.tamanhos.map((t) => ({
         chave: t.id,
@@ -424,6 +478,9 @@ export default function Produtos() {
   }
 
   const disponiveis = produtos.filter(algumTamanhoDisponivel).length;
+  // undefined no perfil: banco sem a migração do meio a meio.
+  const podeSerMeioAMeio = aceitaMeioAMeio() && perfil.regra_meio_a_meio !== undefined;
+  const faltaRegra = podeSerMeioAMeio && perfil.regra_meio_a_meio === null && produtos.some((p) => p.meio_a_meio);
 
   return (
     <AppShell>
@@ -500,11 +557,15 @@ export default function Produtos() {
             inicial={formulario}
             ingredientes={ingredientes.ingredientes}
             podeTerTamanhos={aceitaTamanhos()}
+            podeSerMeioAMeio={podeSerMeioAMeio}
+            regraMeioAMeio={perfil.regra_meio_a_meio ?? null}
             onSalvar={salvar}
             onCancelar={() => setFormulario(null)}
             onIrParaIngredientes={() => setAba('ingredientes')}
           />
         )}
+
+        {faltaRegra && !formulario && perfil.papel === 'admin' && <FaltaRegraMeioAMeio />}
 
         {(erro || erroCarga) && <Aviso className="mb-4">{erro || erroCarga}</Aviso>}
         {mensagem && (

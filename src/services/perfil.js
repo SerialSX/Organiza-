@@ -6,6 +6,7 @@ const CAMPOS_PERFIL = 'id, nome, papel, negocio_id';
 // Do mais novo para o mais antigo: cada migração acrescenta colunas. Se o banco
 // estiver atrás do código, usa a primeira consulta que ele entende.
 const CAMPOS_NEGOCIO = [
+  'nome, virada_do_dia, usa_tela_cozinha, modo_atendimento, quantidade_mesas, taxa_servico, regra_meio_a_meio', // 2026-11-14
   'nome, virada_do_dia, usa_tela_cozinha, modo_atendimento, quantidade_mesas, taxa_servico', // 2026-11-11
   'nome, virada_do_dia, usa_tela_cozinha, modo_atendimento', // 2026-11-10
   'nome, virada_do_dia, usa_tela_cozinha', // 2026-11-08
@@ -52,5 +53,9 @@ export async function buscarPerfil(usuario) {
     // pelo número digitado, sem mapa nem taxa.
     quantidade_mesas: negocio?.quantidade_mesas,
     taxa_servico: negocio?.taxa_servico,
+    // null: o dono ainda não escolheu como cobra o meio a meio (pergunta ao
+    // marcar o primeiro produto). undefined: banco sem a migração 2026-11-14;
+    // as telas escondem o meio a meio.
+    regra_meio_a_meio: negocio?.regra_meio_a_meio,
   };
 }

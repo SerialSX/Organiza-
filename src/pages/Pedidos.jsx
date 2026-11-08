@@ -27,7 +27,9 @@ import { usePendenciasAnteriores } from '../hooks/usePendenciasAnteriores';
 import { useFilaDeEnvio } from '../hooks/useFilaDeEnvio';
 import { useRascunhoDoPedido, novaChaveDeLinha } from '../hooks/useRascunhoDoPedido';
 import { criarPedido, editarPedido, buscarPedidoComValores, nomeComTamanho, ROTULO_FORMA } from '../services/pedidos';
-import { registrarToqueEsgotado } from '../services/produtos';
+import { aceitaMeioAMeio, registrarToqueEsgotado } from '../services/produtos';
+import EscolherMeioAMeio from '../components/pedidos/EscolherMeioAMeio';
+import { nomeDoItem, precoMeioAMeio, tamanhoQueCombina } from '../lib/meioAMeio';
 import { dispensarSaida, guardarNaFila } from '../services/filaDeEnvio';
 import { destinoDoPedido, formatarMoeda, hojeNoNegocio, numeroDoPedido } from '../lib/formatadores';
 import { podeEditar } from '../lib/pedidoStatus';
@@ -113,9 +115,11 @@ export default function Pedidos() {
 
   // Pedido em edição: { pedido } com os itens e preços como estavam no banco.
   const [edicao, setEdicao] = useState(null);
+  // Produto cujo meio a meio está sendo escolhido (a janela fica aberta).
+  const [meioDe, setMeioDe] = useState(null);
   // Uma linha por produto, tamanho e observação: "X-Burguer" e "X-Burguer sem
   // salada" ficam separados, e a pizza P da G também.
-  // [{ chave, produtoId, tamanhoId, nome, quantidade, observacao }]
+  // [{ chave, produtoId, tamanhoId, segundoId (meio a meio), nome, quantidade, observacao }]
   const [carrinho, setCarrinho] = useRascunhoDoPedido(perfil.negocio_id, Boolean(edicao));
   const [rascunhoGuardado, setRascunhoGuardado] = useState([]);
   // Balcão ou mesa. Na edição, o destino do pedido montado fica guardado à parte.
@@ -157,34 +161,62 @@ export default function Pedidos() {
   });
 
   const porId = Object.fromEntries(produtos.map((p) => [p.id, p]));
-  const chaveDe = (produtoId, tamanhoId) => `${produtoId}|${tamanhoId ?? ''}`;
-  // Na edição, o item que já estava no pedido (produto e tamanho) mantém o
-  // preço combinado e pode continuar mesmo que tenha esgotado ou saído do
-  // cardápio depois (mesma regra do banco).
+  // Mesma chave do banco: produto, tamanho e segundo sabor (meio a meio).
+  const chaveDe = (produtoId, tamanhoId, segundoId) => `${produtoId}|${tamanhoId ?? ''}|${segundoId ?? ''}`;
+  const chaveDaLinha = (l) => chaveDe(l.produtoId, l.tamanhoId, l.segundoId);
+  // Na edição, o item que já estava no pedido (produto, tamanho e sabores)
+  // mantém o preço combinado e pode continuar mesmo que tenha esgotado ou
+  // saído do cardápio depois (mesma regra do banco).
   const precoCombinado = Object.fromEntries(
-    (edicao?.pedido.itens ?? []).map((i) => [chaveDe(i.produto_id, i.tamanho_id), i.preco_unitario]),
+    (edicao?.pedido.itens ?? []).map((i) => [chaveDe(i.produto_id, i.tamanho_id, i.segundo_produto_id), i.preco_unitario]),
   );
+  const regraMeioAMeio = perfil.regra_meio_a_meio ?? null;
   const tamanhoDa = (linha) => porId[linha.produtoId]?.tamanhos?.find((t) => t.id === linha.tamanhoId);
-  // O que a linha é hoje no cardápio: null quando não pode mais entrar.
-  function noCardapio(linha) {
+  // O primeiro sabor (ou o produto inteiro) hoje no cardápio: null quando não pode mais entrar.
+  function primeiroNoCardapio(linha) {
     const produto = porId[linha.produtoId];
     if (!produto?.disponivel) return null;
     if (!linha.tamanhoId) return produto.tamanhos?.length ? null : produto;
     const tamanho = tamanhoDa(linha);
     return tamanho?.disponivel ? tamanho : null;
   }
-  const linhaValida = (linha) => chaveDe(linha.produtoId, linha.tamanhoId) in precoCombinado || noCardapio(linha) !== null;
+  // O segundo sabor hoje: marcado, com o mesmo tamanho e sem esgotar.
+  function segundoNoCardapio(linha) {
+    const segundo = porId[linha.segundoId];
+    if (!segundo?.disponivel || !segundo.meio_a_meio || !porId[linha.produtoId]?.meio_a_meio) return null;
+    const doSegundo = tamanhoQueCombina(segundo, tamanhoDa(linha)?.nome ?? null);
+    if (doSegundo === undefined || (doSegundo && !doSegundo.disponivel)) return null;
+    return doSegundo ?? segundo;
+  }
+  // O preço que a linha teria hoje no cardápio: null quando não pode mais entrar.
+  function noCardapio(linha) {
+    const primeiro = primeiroNoCardapio(linha);
+    if (!primeiro || !linha.segundoId) return primeiro ? primeiro.preco : null;
+    const segundo = regraMeioAMeio ? segundoNoCardapio(linha) : null;
+    return segundo ? precoMeioAMeio(regraMeioAMeio, primeiro.preco, segundo.preco) : null;
+  }
+  const linhaValida = (linha) => chaveDaLinha(linha) in precoCombinado || noCardapio(linha) !== null;
   const itens = carregando
     ? []
     : carrinho.filter(linhaValida).map((linha) => ({
         ...linha,
-        preco: precoCombinado[chaveDe(linha.produtoId, linha.tamanhoId)] ?? noCardapio(linha).preco,
+        preco: precoCombinado[chaveDaLinha(linha)] ?? noCardapio(linha),
       }));
-  // Saiu do pedido: esgotou, ou o produto mudou de tamanhos (rascunho antigo).
+  // Saiu do pedido: esgotou, ou o produto mudou de tamanhos (rascunho antigo),
+  // ou o meio a meio não combina mais (sabor desmarcado ou sem o tamanho).
   const invalidas = carregando ? [] : carrinho.filter((l) => !linhaValida(l));
   const mudouNoCardapio = (l) =>
     porId[l.produtoId]?.disponivel && (l.tamanhoId ? !tamanhoDa(l) : porId[l.produtoId].tamanhos?.length > 0);
-  const foraDoCardapio = [...new Set(invalidas.filter((l) => !mudouNoCardapio(l)).map((l) => l.nome))];
+  // Meio a meio que não combina mais: um dos sabores foi desmarcado, saiu do
+  // cardápio ou não tem mais o tamanho. (Esgotado entra no aviso de esgotou.)
+  const meioNaoCombina = (l) => {
+    if (!l.segundoId || mudouNoCardapio(l) || !primeiroNoCardapio(l)) return false;
+    const segundo = porId[l.segundoId];
+    if (!segundo || !segundo.meio_a_meio || !porId[l.produtoId].meio_a_meio) return true;
+    return tamanhoQueCombina(segundo, tamanhoDa(l)?.nome ?? null) === undefined;
+  };
+  const meioMudou = [...new Set(invalidas.filter(meioNaoCombina).map((l) => l.nome))];
+  const foraDoCardapio = [...new Set(invalidas.filter((l) => !mudouNoCardapio(l) && !meioNaoCombina(l)).map((l) => l.nome))];
   const tamanhosMudaram = [...new Set(invalidas.filter(mudouNoCardapio).map((l) => l.nome))];
   const totalItens = itens.reduce((s, i) => s + i.quantidade, 0);
   const total = itens.reduce((s, i) => s + i.quantidade * i.preco, 0);
@@ -193,9 +225,10 @@ export default function Pedidos() {
   const valorMudou = Math.round(total * 100) !== Math.round(totalPago * 100);
   // Quanto já tem no pedido: por produto e por tamanho ("produto|tamanho").
   const quantidadePorProduto = {};
+  // O meio a meio conta à parte ("meio|produto"), no botão dele.
   for (const linha of itens) {
     quantidadePorProduto[linha.produtoId] = (quantidadePorProduto[linha.produtoId] ?? 0) + linha.quantidade;
-    const chave = chaveDe(linha.produtoId, linha.tamanhoId);
+    const chave = linha.segundoId ? `meio|${linha.produtoId}` : `${linha.produtoId}|${linha.tamanhoId ?? ''}`;
     quantidadePorProduto[chave] = (quantidadePorProduto[chave] ?? 0) + linha.quantidade;
   }
 
@@ -255,11 +288,17 @@ export default function Pedidos() {
   }
 
   // tamanho: o botão do tamanho que tocaram (produto com tamanhos).
-  function adicionar(produto, tamanho = null) {
+  // segundo: a outra metade, no meio a meio.
+  function adicionar(produto, tamanho = null, segundo = null) {
     const tamanhoId = tamanho?.id ?? null;
+    const segundoId = segundo?.id ?? null;
     mexerNoCarrinho((c) => {
       const semObservacao = c.find(
-        (l) => l.produtoId === produto.id && (l.tamanhoId ?? null) === tamanhoId && !l.observacao.trim(),
+        (l) =>
+          l.produtoId === produto.id &&
+          (l.tamanhoId ?? null) === tamanhoId &&
+          (l.segundoId ?? null) === segundoId &&
+          !l.observacao.trim(),
       );
       if (semObservacao) {
         return c.map((l) => (l === semObservacao ? { ...l, quantidade: l.quantidade + 1 } : l));
@@ -270,7 +309,8 @@ export default function Pedidos() {
           chave: novaChaveDeLinha(),
           produtoId: produto.id,
           tamanhoId,
-          nome: nomeComTamanho(produto.nome, tamanho?.nome),
+          segundoId,
+          nome: nomeDoItem(produto.nome, tamanho?.nome ?? null, segundo?.nome ?? null),
           quantidade: 1,
           observacao: '',
         },
@@ -316,6 +356,7 @@ export default function Pedidos() {
           chave: novaChaveDeLinha(),
           produtoId: i.produto_id,
           tamanhoId: i.tamanho_id ?? null,
+          segundoId: i.segundo_produto_id ?? null,
           nome: i.nome,
           quantidade: i.quantidade,
           observacao: i.observacao ?? '',
@@ -385,9 +426,10 @@ export default function Pedidos() {
     setErro('');
     setAviso('');
     setEnviando(true);
-    const paraEnviar = itens.map(({ produtoId, tamanhoId, quantidade, observacao }) => ({
+    const paraEnviar = itens.map(({ produtoId, tamanhoId, segundoId, quantidade, observacao }) => ({
       produto_id: produtoId,
       tamanho_id: tamanhoId ?? null,
+      segundo_produto_id: segundoId ?? null,
       quantidade,
       observacao,
     }));
@@ -551,8 +593,27 @@ export default function Pedidos() {
             quantidadePorProduto={quantidadePorProduto}
             onAdicionar={adicionar}
             onEsgotado={tocouEsgotado}
+            meioAMeio={aceitaMeioAMeio() && perfil.regra_meio_a_meio !== undefined}
+            onMeioAMeio={setMeioDe}
           />
           </div>
+          {meioDe && (
+            <EscolherMeioAMeio
+              produto={porId[meioDe.id] ?? meioDe}
+              produtos={produtos}
+              regra={regraMeioAMeio}
+              ehDono={perfil.papel === 'admin'}
+              onEscolher={(tamanho, segundo) => {
+                adicionar(porId[meioDe.id] ?? meioDe, tamanho, segundo);
+                setMeioDe(null);
+              }}
+              onEsgotado={(produto, tamanho) => {
+                tocouEsgotado(produto, tamanho);
+                setMeioDe(null);
+              }}
+              onFechar={() => setMeioDe(null)}
+            />
+          )}
 
           <aside
             aria-labelledby="titulo-carrinho"
@@ -612,6 +673,12 @@ export default function Pedidos() {
                 <Aviso>
                   Os tamanhos de {tamanhosMudaram.join(', ')} mudaram no cardápio e {tamanhosMudaram.length === 1 ? 'ele saiu' : 'eles saíram'}{' '}
                   do pedido. Toque de novo no tamanho certo.
+                </Aviso>
+              )}
+              {meioMudou.length > 0 && (
+                <Aviso>
+                  {meioMudou.join(', ')} não {meioMudou.length === 1 ? 'pode' : 'podem'} mais ser meio a meio assim e{' '}
+                  {meioMudou.length === 1 ? 'saiu' : 'saíram'} do pedido. Escolha os sabores de novo.
                 </Aviso>
               )}
             </div>

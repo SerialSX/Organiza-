@@ -44,7 +44,22 @@ function ItemDaFila({ item, grande, onFaltou, onFaltouIngrediente }) {
                 {item.tamanho}
               </span>
             )}
-            {item.tamanho ? item.produto_nome : item.nome}
+            {item.segundo_sabor ? (
+              // Meio a meio: um selo e uma linha para cada metade.
+              <>
+                <span
+                  className={`inline-flex items-center rounded-lg border-2 border-[var(--color-accent-pedidos)] px-2 align-middle font-extrabold text-[var(--text-primary)] ${grande ? 'h-11 text-xl' : 'h-9 text-base'}`}
+                >
+                  Meio a meio
+                </span>
+                <span className="block mt-1">½ {item.produto_nome}</span>
+                <span className="block">½ {item.segundo_sabor}</span>
+              </>
+            ) : item.tamanho ? (
+              item.produto_nome
+            ) : (
+              item.nome
+            )}
           </span>
           {item.observacao && (
             <span

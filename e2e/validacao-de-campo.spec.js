@@ -103,7 +103,7 @@ test('cozinha do lado do balcão: o "Pronto" fica na tela de pedidos (pastelaria
 
   await page.goto('/minha-conta');
   await page.getByText('Não, eu mesmo preparo ou a cozinha fica do meu lado').click();
-  await page.getByRole('button', { name: 'Salvar' }).last().click();
+  await page.locator('section').filter({ has: page.getByRole('heading', { name: 'Como você atende' }) }).getByRole('button', { name: 'Salvar' }).click();
   await expect(page.getByText('Salvo.')).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Principal' }).first().getByRole('link', { name: 'Cozinha' })).toHaveCount(0);
 

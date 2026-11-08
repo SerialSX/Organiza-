@@ -13,12 +13,26 @@ const CAMPOS_BASE =
 const CAMPOS_DOS_TAMANHOS =
   ', produto_tamanhos ( id, nome, preco, custo, disponivel, arquivado, ordem, criado_em, tamanho_ingredientes ( ingrediente_id, quantidade ) )';
 
+// Migração 2026-11-14 (meio a meio): o produto pode ser meio a meio.
+const CAMPO_DO_MEIO_A_MEIO = ', meio_a_meio';
+
 // null: ainda não sabe; false: banco sem a migração dos tamanhos (as telas
 // escondem os tamanhos e seguem como antes); true: tem.
 let bancoTemTamanhos = isSupabaseConfigured ? null : true;
+// O mesmo para o meio a meio (migração mais nova que a dos tamanhos).
+let bancoTemMeioAMeio = isSupabaseConfigured ? null : true;
 
 export function aceitaTamanhos() {
   return bancoTemTamanhos !== false;
+}
+
+export function aceitaMeioAMeio() {
+  return bancoTemMeioAMeio !== false && bancoTemTamanhos !== false;
+}
+
+// Coluna meio_a_meio que o banco ainda não tem.
+function semColunaDoMeioAMeio(error) {
+  return /meio_a_meio/i.test(`${error?.message ?? ''} ${error?.details ?? ''} ${error?.hint ?? ''}`);
 }
 
 // Tabela ou relação que o banco ainda não tem.
@@ -32,16 +46,24 @@ function semTabelaDeTamanhos(error) {
 async function consultarProdutos(arquivado) {
   for (;;) {
     const comTamanhos = bancoTemTamanhos !== false;
+    const comMeioAMeio = comTamanhos && bancoTemMeioAMeio !== false;
     const { data, error } = await supabase
       .from('produtos')
-      .select(CAMPOS_BASE + (comTamanhos ? CAMPOS_DOS_TAMANHOS : ''))
+      .select(CAMPOS_BASE + (comMeioAMeio ? CAMPO_DO_MEIO_A_MEIO : '') + (comTamanhos ? CAMPOS_DOS_TAMANHOS : ''))
       .eq('arquivado', arquivado)
       .order('nome');
+    // Primeiro tira o meio a meio (a migração mais nova); só depois os tamanhos.
+    if (error && comMeioAMeio && semColunaDoMeioAMeio(error)) {
+      bancoTemMeioAMeio = false;
+      continue;
+    }
     if (error && comTamanhos && semTabelaDeTamanhos(error)) {
       bancoTemTamanhos = false;
+      bancoTemMeioAMeio = false;
       continue;
     }
     if (!error && comTamanhos) bancoTemTamanhos = true;
+    if (!error && comMeioAMeio) bancoTemMeioAMeio = true;
     return { data, error };
   }
 }
@@ -65,6 +87,7 @@ function normalizar({ produto_ingredientes: lista, produto_tamanhos: tamanhos, .
     preco: Number(p.preco),
     custo: numeroOuNull(p.custo),
     vai_para_cozinha: p.vai_para_cozinha ?? true,
+    meio_a_meio: Boolean(p.meio_a_meio),
     ingredientes: (lista ?? []).map((i) => ({ ingrediente_id: i.ingrediente_id, quantidade: Number(i.quantidade) })),
     // Só os que estão no cardápio, na ordem do cadastro. Vazio: preço único.
     tamanhos: (tamanhos ?? [])
@@ -110,8 +133,16 @@ export async function listarProdutos() {
   return data.map(normalizar);
 }
 
-export async function criarProduto(negocioId, { nome, preco, custo, vai_para_cozinha = true }) {
-  const novo = { nome: nome.trim(), preco, custo: custo ?? null, disponivel: true, vai_para_cozinha };
+// Banco sem a migração do meio a meio: as telas não oferecem a opção, mas por
+// garantia o erro diz o que fazer em vez de salvar sem ela.
+function conferirMeioAMeio(meioAMeio) {
+  if (meioAMeio && !aceitaMeioAMeio()) falha('O banco de dados ainda não aceita o meio a meio. Avise quem cuida do sistema.');
+}
+
+export async function criarProduto(negocioId, { nome, preco, custo, vai_para_cozinha = true, meio_a_meio = false }) {
+  conferirMeioAMeio(meio_a_meio);
+  // meio_a_meio só vai quando ligado: o banco antigo não conhece a coluna.
+  const novo = { nome: nome.trim(), preco, custo: custo ?? null, disponivel: true, vai_para_cozinha, ...(meio_a_meio ? { meio_a_meio } : {}) };
 
   if (!isSupabaseConfigured) {
     const db = lerDemo();
@@ -139,6 +170,9 @@ export async function criarProdutos(negocioId, lista) {
     custo: p.custo ?? null,
     disponivel: true,
     vai_para_cozinha: p.vai_para_cozinha ?? true,
+    // Banco sem a migração do meio a meio: o cardápio entra sem a marcação
+    // (o dono marca depois, quando o banco for atualizado).
+    meio_a_meio: Boolean(p.meio_a_meio) && aceitaMeioAMeio(),
     tamanhos: (p.tamanhos ?? []).map((t) => ({ nome: t.nome, preco: t.preco, custo: t.custo ?? null })),
   }));
   if (!novos.length) return 0;
@@ -174,6 +208,7 @@ export async function criarProdutos(negocioId, lista) {
       p_produtos: novos.map((p) => ({
         nome: p.nome,
         vai_para_cozinha: p.vai_para_cozinha,
+        ...(p.meio_a_meio ? { meio_a_meio: true } : {}),
         ...(p.tamanhos.length ? { tamanhos: p.tamanhos } : { preco: p.preco, custo: p.custo }),
       })),
     });
@@ -190,6 +225,7 @@ export async function criarProdutos(negocioId, lista) {
         custo: p.custo,
         disponivel: true,
         vai_para_cozinha: p.vai_para_cozinha,
+        ...(p.meio_a_meio ? { meio_a_meio: true } : {}),
         negocio_id: negocioId,
       })),
     );
@@ -198,13 +234,20 @@ export async function criarProdutos(negocioId, lista) {
 }
 
 export async function atualizarProduto(id, alteracoes) {
+  conferirMeioAMeio(alteracoes.meio_a_meio);
   if (!isSupabaseConfigured) {
     const db = lerDemo();
     salvarDemo({ ...db, produtos: db.produtos.map((p) => (p.id === id ? { ...p, ...alteracoes } : p)) });
     return;
   }
 
-  const { error } = await supabase.from('produtos').update(alteracoes).eq('id', id);
+  // Desligado num banco sem a coluna: não manda a chave, que ele não conhece.
+  const enviar =
+    alteracoes.meio_a_meio === false && !aceitaMeioAMeio()
+      ? Object.fromEntries(Object.entries(alteracoes).filter(([campo]) => campo !== 'meio_a_meio'))
+      : alteracoes;
+  if (!Object.keys(enviar).length) return;
+  const { error } = await supabase.from('produtos').update(enviar).eq('id', id);
   if (error) throw new Error('Não foi possível atualizar o produto.');
 }
 

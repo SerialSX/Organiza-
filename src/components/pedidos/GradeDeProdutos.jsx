@@ -3,6 +3,7 @@ import { SearchIcon, CloseIcon } from '../icons/AppIcons';
 import { classeCampo } from '../ui/Campo';
 import { formatarMoeda } from '../../lib/formatadores';
 import { algumTamanhoDisponivel, tamanhoDisponivel } from '../../lib/tamanhos';
+import { saboresParaCombinar } from '../../lib/meioAMeio';
 
 const ACCENT = 'var(--color-accent-pedidos)';
 // Com cardápio pequeno a busca só atrapalha; a partir daqui ela aparece.
@@ -25,9 +26,33 @@ function Contador({ qtd, className = '' }) {
   );
 }
 
+// "Meio a meio": abre a escolha do tamanho e da outra metade.
+function BotaoMeioAMeio({ produto, qtd, onMeioAMeio, className = '' }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onMeioAMeio(produto)}
+      aria-label={`${produto.nome} meio a meio${qtd ? `, ${qtd} no pedido` : ''}`}
+      className={`relative min-h-11 rounded-xl border-2 px-3 text-sm font-semibold text-[var(--texto-pedidos)] transition-transform active:scale-[0.97] ${className}`}
+      style={{ borderColor: qtd ? ACCENT : 'var(--border-subtle)' }}
+    >
+      ½ Meio a meio
+      {qtd > 0 && <span className="tabular-nums"> · {qtd}</span>}
+    </button>
+  );
+}
+
+// Pode abrir o meio a meio: marcado, com algum sabor para combinar, e o banco
+// já com a migração (meioAMeio ligado).
+function temMeioAMeio(produtos, produto, ligado) {
+  if (!ligado || !produto.meio_a_meio || !algumTamanhoDisponivel(produto)) return false;
+  if (!produto.tamanhos?.length) return saboresParaCombinar(produtos, produto, null).length > 0;
+  return produto.tamanhos.some((t) => saboresParaCombinar(produtos, produto, t).length > 0);
+}
+
 // Produto com tamanhos: um botão por tamanho, sempre à vista. Um toque já
 // adiciona aquele tamanho (não há tamanho escolhido de antemão).
-function CartaoComTamanhos({ produto, quantidadePorProduto, onAdicionar, onEsgotado }) {
+function CartaoComTamanhos({ produto, quantidadePorProduto, onAdicionar, onEsgotado, meioAMeio, onMeioAMeio }) {
   const total = quantidadePorProduto[produto.id] ?? 0;
   const sai = algumTamanhoDisponivel(produto);
   return (
@@ -38,12 +63,17 @@ function CartaoComTamanhos({ produto, quantidadePorProduto, onAdicionar, onEsgot
         className="rounded-2xl border-2 bg-[var(--surface-card)] p-3 flex flex-col gap-2"
         style={{ borderColor: total ? ACCENT : 'var(--border-subtle)' }}
       >
-        <span
-          className={`px-1 font-semibold leading-tight break-words ${sai ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}
-        >
-          {produto.nome}
-          {!sai && <span className="font-normal"> · Esgotado</span>}
-        </span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span
+            className={`px-1 font-semibold leading-tight break-words hyphens-auto min-w-0 ${sai ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}
+          >
+            {produto.nome}
+            {!sai && <span className="font-normal"> · Esgotado</span>}
+          </span>
+          {meioAMeio && (
+            <BotaoMeioAMeio produto={produto} qtd={quantidadePorProduto[`meio|${produto.id}`] ?? 0} onMeioAMeio={onMeioAMeio} />
+          )}
+        </div>
         <div className="flex flex-wrap gap-2">
           {produto.tamanhos.map((t) => {
             const disponivel = tamanhoDisponivel(produto, t);
@@ -86,7 +116,8 @@ function CartaoComTamanhos({ produto, quantidadePorProduto, onAdicionar, onEsgot
 
 // onAdicionar(produto, tamanho): tamanho só no produto com tamanhos.
 // onEsgotado: tocaram num produto (ou tamanho) esgotado, a venda que teria saído errada.
-export default function GradeDeProdutos({ produtos, quantidadePorProduto, onAdicionar, onEsgotado }) {
+// meioAMeio: o banco aceita o meio a meio; onMeioAMeio(produto) abre a escolha.
+export default function GradeDeProdutos({ produtos, quantidadePorProduto, onAdicionar, onEsgotado, meioAMeio = false, onMeioAMeio }) {
   const [busca, setBusca] = useState('');
   const termo = semAcento(busca.trim());
   const visiveis = termo ? produtos.filter((p) => semAcento(p.nome).includes(termo)) : produtos;
@@ -134,12 +165,16 @@ export default function GradeDeProdutos({ produtos, quantidadePorProduto, onAdic
                   quantidadePorProduto={quantidadePorProduto}
                   onAdicionar={onAdicionar}
                   onEsgotado={onEsgotado}
+                  meioAMeio={temMeioAMeio(produtos, p, meioAMeio)}
+                  onMeioAMeio={onMeioAMeio}
                 />
               );
             }
-            const qtd = quantidadePorProduto[p.id] ?? 0;
+            // O contador do cartão é só do produto inteiro; o meio a meio conta no botão dele.
+            const qtd = quantidadePorProduto[`${p.id}|`] ?? 0;
+            const comMeio = temMeioAMeio(produtos, p, meioAMeio);
             return (
-              <li key={p.id}>
+              <li key={p.id} className={comMeio ? 'flex flex-col gap-2' : undefined}>
                 <button
                   type="button"
                   // aria-disabled em vez de disabled: o toque ainda chega, para
@@ -163,6 +198,9 @@ export default function GradeDeProdutos({ produtos, quantidadePorProduto, onAdic
                   </span>
                   <Contador qtd={qtd} className="absolute top-3 right-3 min-w-8 h-8 px-2" />
                 </button>
+                {comMeio && (
+                  <BotaoMeioAMeio produto={p} qtd={quantidadePorProduto[`meio|${p.id}`] ?? 0} onMeioAMeio={onMeioAMeio} className="w-full" />
+                )}
               </li>
             );
           })}

@@ -12,6 +12,7 @@ import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
 import { listarPedidosDoPeriodo } from '../services/pedidos';
 import {
   calcularRelatorio,
+  formatarQuantidade,
   faltasNoPeriodo,
   faturamentoPorDia,
   intervaloDoPeriodo,
@@ -33,8 +34,10 @@ const PERIODOS = [
 
 const diaCurto = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
 
+// Meio a meio conta meia: "1,5 unidade", "2,5 unidades".
 function plural(n, singular, varios) {
-  return `${n} ${n === 1 ? singular : varios}`;
+  const um = n === 1 || (!Number.isInteger(n) && n < 2);
+  return `${formatarQuantidade(n)} ${um ? singular : varios}`;
 }
 
 function Indicador({ icon: Icon, cor, rotulo, valor, detalhe }) {

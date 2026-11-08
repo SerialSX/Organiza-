@@ -33,6 +33,7 @@ describe('perfil de quem entrou', () => {
   });
 
   it('banco sem a migração: entra mesmo assim, em vez de travar em "Sem conexão"', async () => {
+    respostas.push({ data: null, error: { code: '42703', message: 'column negocios_1.regra_meio_a_meio does not exist' } });
     respostas.push({ data: null, error: { code: '42703', message: 'column negocios_1.quantidade_mesas does not exist' } });
     respostas.push({ data: null, error: { code: '42703', message: 'column negocios_1.modo_atendimento does not exist' } });
     respostas.push({ data: null, error: { code: '42703', message: 'column negocios_1.virada_do_dia does not exist' } });

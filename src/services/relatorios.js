@@ -9,6 +9,7 @@ const DIA_MS = 24 * 3600000;
 // fica fora e é contado à parte, com o valor perdido.
 // Produto com tamanhos conta junto ("Pizza Calabresa: 30"), com o detalhe de
 // cada tamanho (P 5 · M 10 · G 15); o lucro usa o custo de cada tamanho.
+// Meio a meio: cada sabor conta meia (0,5), com metade do faturamento e do lucro.
 export function calcularRelatorio(todosOsPedidos, produtos) {
   const custos = Object.fromEntries(produtos.map((p) => [p.id, p.custo]));
   const custosDosTamanhos = Object.fromEntries(produtos.flatMap((p) => (p.tamanhos ?? []).map((t) => [t.id, t.custo])));
@@ -39,23 +40,32 @@ export function calcularRelatorio(todosOsPedidos, produtos) {
       const lucro = custo === null || custo === undefined ? null : item.quantidade * (item.preco_unitario - custo);
 
       faturamento += receita;
-      const atual = porProduto.get(item.produto_id) ?? {
-        produto_id: item.produto_id,
-        nome: item.produto_nome ?? item.nome,
-        quantidade: 0,
-        faturamento: 0,
-        lucro: null,
-        porTamanho: [],
-      };
-      atual.quantidade += item.quantidade;
-      if (item.tamanho) {
-        const doTamanho = atual.porTamanho.find((t) => t.nome.toLowerCase() === item.tamanho.toLowerCase());
-        if (doTamanho) doTamanho.quantidade += item.quantidade;
-        else atual.porTamanho.push({ nome: item.tamanho, quantidade: item.quantidade });
+      const partes = item.segundo_produto_id
+        ? [
+            { produto_id: item.produto_id, nome: item.produto_nome ?? item.nome, fator: 0.5 },
+            { produto_id: item.segundo_produto_id, nome: item.segundo_sabor, fator: 0.5 },
+          ]
+        : [{ produto_id: item.produto_id, nome: item.produto_nome ?? item.nome, fator: 1 }];
+      for (const parte of partes) {
+        const quantidade = item.quantidade * parte.fator;
+        const atual = porProduto.get(parte.produto_id) ?? {
+          produto_id: parte.produto_id,
+          nome: parte.nome,
+          quantidade: 0,
+          faturamento: 0,
+          lucro: null,
+          porTamanho: [],
+        };
+        atual.quantidade += quantidade;
+        if (item.tamanho) {
+          const doTamanho = atual.porTamanho.find((t) => t.nome.toLowerCase() === item.tamanho.toLowerCase());
+          if (doTamanho) doTamanho.quantidade += quantidade;
+          else atual.porTamanho.push({ nome: item.tamanho, quantidade });
+        }
+        atual.faturamento += receita * parte.fator;
+        if (lucro !== null) atual.lucro = (atual.lucro ?? 0) + lucro * parte.fator;
+        porProduto.set(parte.produto_id, atual);
       }
-      atual.faturamento += receita;
-      if (lucro !== null) atual.lucro = (atual.lucro ?? 0) + lucro;
-      porProduto.set(item.produto_id, atual);
     }
   }
 
@@ -85,9 +95,14 @@ export function calcularRelatorio(todosOsPedidos, produtos) {
   };
 }
 
+// "2", "2,5" (meio a meio conta meia).
+export function formatarQuantidade(n) {
+  return Number.isInteger(n) ? String(n) : n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+}
+
 // "P 5 · M 10 · G 15" (vazio para produto sem tamanhos).
 export function detalheDosTamanhos(porTamanho) {
-  return porTamanho.map((t) => `${t.nome} ${t.quantidade}`).join(' · ');
+  return porTamanho.map((t) => `${t.nome} ${formatarQuantidade(t.quantidade)}`).join(' · ');
 }
 
 function celulaCsv(valor) {
@@ -103,7 +118,7 @@ function numeroCsv(valor) {
 export function rankingParaCsv(ranking) {
   const linhas = [
     ['Produto', 'Quantidade', 'Por tamanho', 'Faturamento (R$)', 'Lucro estimado (R$)'],
-    ...ranking.map((p) => [p.nome, p.quantidade, p.detalheTamanhos ?? '', numeroCsv(p.faturamento), numeroCsv(p.lucro)]),
+    ...ranking.map((p) => [p.nome, formatarQuantidade(p.quantidade), p.detalheTamanhos ?? '', numeroCsv(p.faturamento), numeroCsv(p.lucro)]),
   ];
   return linhas.map((linha) => linha.map(celulaCsv).join(';')).join('\r\n');
 }

@@ -220,3 +220,54 @@ describe('coluna Tamanho', () => {
     ]);
   });
 });
+
+describe('coluna Meio a meio?', () => {
+  const cabecalho = ['Produto', 'Tamanho', 'Preço', 'Vai para a cozinha?', 'Custo (se souber)', 'Meio a meio?'];
+
+  it('lê Sim, Não e em branco; basta uma linha do produto dizer Sim', () => {
+    const { itens } = interpretarPlanilha([
+      cabecalho,
+      ['Pizza Calabresa', 'P', 35, 'Sim', null, 'Sim'],
+      ['Pizza Calabresa', 'G', 55, 'Sim', null, null],
+      ['Pastel', null, 9, 'Sim', null, 'Não'],
+      ['Tapioca', null, 8, 'Sim', null, null],
+    ]);
+    expect(itens.map((i) => [i.nome, i.meioAMeio])).toEqual([
+      ['Pizza Calabresa', true],
+      ['Pastel', false],
+      ['Tapioca', null],
+    ]);
+  });
+
+  it('planilha sem a coluna, ou banco sem o meio a meio: nem aparece', () => {
+    const [semColuna] = interpretarPlanilha([cabecalho.slice(0, 5), ['Pastel', null, 9, 'Sim', null]]).itens;
+    expect(semColuna).not.toHaveProperty('meioAMeio');
+    const [bancoAntigo] = interpretarPlanilha([cabecalho, ['Pizza', null, 40, 'Sim', null, 'Sim']], { comMeioAMeio: false }).itens;
+    expect(bancoAntigo).not.toHaveProperty('meioAMeio');
+  });
+
+  it('novo marcado entra com meio_a_meio; em branco não manda; existente em branco fica como está', () => {
+    const { itens } = interpretarPlanilha([
+      cabecalho,
+      ['Pizza Calabresa', 'P', 35, 'Sim', null, 'Sim'],
+      ['Pizza Calabresa', 'G', 55, 'Sim', null, 'Sim'],
+      ['Tapioca', null, 8, 'Sim', null, null],
+      ['Pizza Atum', null, 50, 'Sim', null, null],
+      ['Pastel', null, 9, 'Sim', null, 'Não'],
+    ]);
+    const existentes = [
+      { id: 'at', nome: 'Pizza Atum', preco: 45, vai_para_cozinha: true, meio_a_meio: true, tamanhos: [] },
+      { id: 'pa', nome: 'Pastel', preco: 8, vai_para_cozinha: true, meio_a_meio: true, tamanhos: [] },
+    ];
+    const grupos = montarRevisao(itens, existentes).map((g) => ({ ...g, escolha: 0 }));
+    const { novos, atualizar } = oQueSalvar(grupos);
+    expect(novos.map((n) => [n.nome, n.meio_a_meio])).toEqual([
+      ['Pizza Calabresa', true],
+      ['Tapioca', undefined],
+    ]);
+    expect(atualizar.map((a) => [a.id, a.alteracoes.meio_a_meio])).toEqual([
+      ['at', true],
+      ['pa', false],
+    ]);
+  });
+});

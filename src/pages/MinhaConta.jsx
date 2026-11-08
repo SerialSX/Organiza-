@@ -13,6 +13,7 @@ import EscolhaDaCozinha from '../components/boasVindas/EscolhaDaCozinha';
 import { QuantasMesas, TaxaDeServico } from '../components/mesas/EscolhaDasMesas';
 import { atendeNaMesa, atendeNoBalcao, modoDoNegocio } from '../lib/atendimento';
 import { MESAS_PADRAO } from '../lib/mesas';
+import EscolhaDaRegraMeioAMeio from '../components/produtos/EscolhaDaRegraMeioAMeio';
 
 const ACCENT = 'var(--color-brand-orange)';
 const PERIGO = 'var(--color-accent-cozinha)';
@@ -191,6 +192,39 @@ function ComoVoceAtende({ perfil }) {
   );
 }
 
+// Só o dono: como cobra a pizza meio a meio. Vale para os pedidos novos.
+function MeioAMeio({ perfil }) {
+  const { configurarMeioAMeio } = useAuth();
+  const [regra, setRegra] = useState(perfil.regra_meio_a_meio ?? null);
+  const [mensagem, setMensagem] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar(e) {
+    e.preventDefault();
+    setMensagem(null);
+    setSalvando(true);
+    const { erro } = await configurarMeioAMeio(regra);
+    setSalvando(false);
+    if (erro) setMensagem({ tipo: 'erro', texto: erro });
+    else setMensagem({ tipo: 'sucesso', texto: 'Salvo. Vale para os pedidos novos; os que já foram feitos continuam com o preço de antes.' });
+  }
+
+  return (
+    <Secao
+      titulo="Meio a meio"
+      texto="Para pizza (ou o que mais sai com dois sabores). Os sabores são marcados em Produtos, com “Pode ser meio a meio”."
+    >
+      {mensagem && <Aviso tipo={mensagem.tipo}>{mensagem.texto}</Aviso>}
+      <form onSubmit={salvar} className="flex flex-col gap-4">
+        <EscolhaDaRegraMeioAMeio valor={regra} onMudar={setRegra} />
+        <Botao type="submit" cor={ACCENT} className="self-start" disabled={!regra || regra === perfil.regra_meio_a_meio || salvando}>
+          {salvando ? 'Salvando…' : 'Salvar'}
+        </Botao>
+      </form>
+    </Secao>
+  );
+}
+
 function TrocarSenha() {
   const { trocarSenha, confirmarSenhaAtual, modoDemo } = useAuth();
   const [mensagem, setMensagem] = useState(null);
@@ -291,6 +325,8 @@ export default function MinhaConta() {
         <Perfil perfil={perfil} papel={papel} />
         <SeusDados perfil={perfil} />
         {perfil.papel === 'admin' && <ComoVoceAtende perfil={perfil} />}
+        {/* undefined: banco sem a migração do meio a meio. */}
+        {perfil.papel === 'admin' && perfil.regra_meio_a_meio !== undefined && <MeioAMeio perfil={perfil} />}
         <TrocarSenha />
 
         {/* Atalho para a página do QR code (só o dono configura) */}

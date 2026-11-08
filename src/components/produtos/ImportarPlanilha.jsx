@@ -4,7 +4,7 @@ import Botao from '../ui/Botao';
 import Campo, { classeCampo } from '../ui/Campo';
 import Carregando from '../ui/Carregando';
 import { CloseIcon, DownloadIcon, PlusIcon, SheetIcon, TrashIcon } from '../icons/AppIcons';
-import { criarProdutos, atualizarProduto, salvarTamanhosDoProduto, aceitaTamanhos } from '../../services/produtos';
+import { criarProdutos, atualizarProduto, salvarTamanhosDoProduto, aceitaTamanhos, aceitaMeioAMeio } from '../../services/produtos';
 import { lerArquivoDePlanilha, ErroDePlanilha } from '../../lib/lerPlanilha';
 import { baixarModelo } from '../../lib/modeloDePlanilha';
 import {
@@ -199,6 +199,19 @@ function CamposDoItem({ item, prefixo, temCusto, comNome, erros, desabilitado, o
           )}
         </span>
       </label>
+      {/* Só quando a planilha tem a coluna "Meio a meio?". */}
+      {item.meioAMeio !== undefined && (
+        <label className="flex items-start gap-3 min-h-11 text-[var(--text-primary)]">
+          <input
+            type="checkbox"
+            checked={Boolean(item.meioAMeio)}
+            onChange={(e) => onMudar('meioAMeio', e.target.checked)}
+            disabled={desabilitado}
+            className="mt-0.5 w-6 h-6 shrink-0 accent-[var(--color-accent-produtos)]"
+          />
+          <span className="font-medium">Pode ser meio a meio</span>
+        </label>
+      )}
     </div>
   );
 }
@@ -338,6 +351,7 @@ export default function ImportarPlanilha({ produtos, negocioId, onFechar, onImpo
     try {
       const { itens, temCusto: comCusto } = interpretarPlanilha(await lerArquivoDePlanilha(arquivo), {
         comTamanhos: aceitaTamanhos(),
+        comMeioAMeio: aceitaMeioAMeio(),
       });
       setGrupos(montarRevisao(itens, produtos).map((g) => ({ ...g, atencao: precisaDeAtencao(g) })));
       setTemCusto(comCusto);

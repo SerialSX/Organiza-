@@ -34,7 +34,7 @@ test('baixa o modelo, e o próprio Organiza+ lê o arquivo baixado', async ({ pa
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Baixar o modelo' }).click()]);
   expect(download.suggestedFilename()).toBe('modelo-cardapio-organiza.xlsx');
   const bytes = new Uint8Array(await readFile(await download.path()));
-  expect(await lerBytesDePlanilha(bytes, 'modelo.xlsx')).toEqual([['Produto', 'Tamanho', 'Preço', 'Vai para a cozinha?', 'Custo (se souber)']]);
+  expect(await lerBytesDePlanilha(bytes, 'modelo.xlsx')).toEqual([['Produto', 'Tamanho', 'Preço', 'Vai para a cozinha?', 'Custo (se souber)', 'Meio a meio?']]);
 });
 
 test('importa a planilha: confere, escolhe os repetidos e salva', async ({ page }) => {

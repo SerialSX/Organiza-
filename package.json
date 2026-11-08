@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "preview": "vite preview",
-    "test:banco": "node supabase/testes/fluxo-do-pedido.mjs && node supabase/testes/pagina-publica.mjs && node supabase/testes/ingredientes.mjs && node supabase/testes/leituras-cardapio.mjs && node supabase/testes/operacao.mjs && node supabase/testes/mesas.mjs && node supabase/testes/fim-do-dia.mjs && node supabase/testes/tamanhos.mjs",
+    "test:banco": "node supabase/testes/fluxo-do-pedido.mjs && node supabase/testes/pagina-publica.mjs && node supabase/testes/ingredientes.mjs && node supabase/testes/leituras-cardapio.mjs && node supabase/testes/operacao.mjs && node supabase/testes/mesas.mjs && node supabase/testes/fim-do-dia.mjs && node supabase/testes/tamanhos.mjs && node supabase/testes/meio-a-meio.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {

@@ -5,13 +5,13 @@ import EstadoVazio from '../ui/EstadoVazio';
 import { BoxIcon } from '../icons/AppIcons';
 import { useProdutos } from '../../hooks/useProdutos';
 import { useIngredientes } from '../../hooks/useIngredientes';
-import { atualizarProduto } from '../../services/produtos';
+import { atualizarProduto, mudarDisponivelDoTamanho } from '../../services/produtos';
 
 const VERMELHO = 'var(--color-accent-cozinha)';
 
-// "Acabou o queijo": um toque esgota todos os produtos que levam queijo, em
-// vez de a cozinha lembrar um por um. Voltar é produto a produto, porque um
-// deles pode estar esgotado por outro motivo.
+// "Acabou o queijo": um toque esgota todos os produtos que levam queijo (em
+// todos os tamanhos), em vez de a cozinha lembrar um por um. Voltar é produto
+// a produto, porque um deles pode estar esgotado por outro motivo.
 function AcabouIngrediente({ produtos, onErro }) {
   const { ingredientes } = useIngredientes();
   const [escolhido, setEscolhido] = useState(null);
@@ -83,6 +83,15 @@ export default function ListaEsgotados({ onErro }) {
     }
   }
 
+  // "Acabou a massa da G": só aquele tamanho.
+  async function alternarTamanho(tamanho) {
+    try {
+      await mudarDisponivelDoTamanho(tamanho.id, !tamanho.disponivel);
+    } catch (e) {
+      onErro(e.message);
+    }
+  }
+
   if (carregando) return <Carregando texto="Carregando produtos…" />;
 
   if (!produtos.length) {
@@ -93,11 +102,12 @@ export default function ListaEsgotados({ onErro }) {
     <>
       <AcabouIngrediente produtos={produtos} onErro={onErro} />
       <p className="text-sm text-[var(--text-secondary)] mb-4">
-        Toque no produto para marcar como esgotado ou avisar que voltou. A tela de pedidos bloqueia na hora.
+        Toque no produto para marcar como esgotado ou avisar que voltou. A tela de pedidos bloqueia na hora. Produto com tamanhos
+        pode esgotar um tamanho só.
       </p>
       <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {produtos.map((p) => (
-          <li key={p.id}>
+          <li key={p.id} className="flex flex-col gap-2">
             <button
               type="button"
               onClick={() => alternar(p)}
@@ -106,7 +116,10 @@ export default function ListaEsgotados({ onErro }) {
               className="w-full min-h-16 flex items-center gap-3 rounded-2xl border-2 bg-[var(--surface-card)] p-4 text-left transition-colors"
               style={{ borderColor: p.disponivel ? 'var(--border-subtle)' : VERMELHO }}
             >
-              <span className="flex-1 min-w-0 font-semibold text-[var(--text-primary)] break-words">{p.nome}</span>
+              <span className="flex-1 min-w-0 font-semibold text-[var(--text-primary)] break-words">
+                {p.nome}
+                {p.tamanhos.length > 0 && <span className="block text-xs font-medium text-[var(--text-secondary)]">Todos os tamanhos</span>}
+              </span>
               <span
                 className="shrink-0 rounded-xl px-3 py-2 text-sm font-bold text-[var(--sobre-destaque)]"
                 style={{ backgroundColor: p.disponivel ? 'var(--color-accent-relatorios)' : VERMELHO }}
@@ -114,6 +127,31 @@ export default function ListaEsgotados({ onErro }) {
                 {p.disponivel ? 'Tem' : 'Esgotado'}
               </span>
             </button>
+            {p.disponivel && p.tamanhos.length > 0 && (
+              <div className="flex flex-wrap gap-2" role="group" aria-label={`Tamanhos de ${p.nome}`}>
+                {p.tamanhos.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => alternarTamanho(t)}
+                    aria-pressed={!t.disponivel}
+                    aria-label={
+                      t.disponivel
+                        ? `${p.nome} ${t.nome}, tem. Tocar marca como esgotado`
+                        : `${p.nome} ${t.nome}, esgotado. Tocar marca que voltou`
+                    }
+                    className="min-h-11 rounded-xl border-2 px-3 text-sm font-bold transition-colors"
+                    style={
+                      t.disponivel
+                        ? { borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }
+                        : { borderColor: VERMELHO, backgroundColor: VERMELHO, color: 'var(--sobre-destaque)' }
+                    }
+                  >
+                    <span className={t.disponivel ? '' : 'line-through'}>{t.nome}</span> {t.disponivel ? 'tem' : 'esgotado'}
+                  </button>
+                ))}
+              </div>
+            )}
           </li>
         ))}
       </ul>

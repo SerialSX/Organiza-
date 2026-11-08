@@ -117,3 +117,106 @@ describe('montarRevisao e oQueSalvar', () => {
     expect(errosDoItem(item(2, 'X', '5', { custo: 'muito' }))).toEqual({ custo: 'Digite um valor como 6,00 ou deixe em branco.' });
   });
 });
+
+describe('coluna Tamanho', () => {
+  const cabecalho = ['Produto', 'Tamanho', 'Preço', 'Vai para a cozinha?', 'Custo (se souber)'];
+
+  it('mesmo nome com tamanhos diferentes vira um produto com tamanhos', () => {
+    const { itens } = interpretarPlanilha([
+      cabecalho,
+      ['Pizza Calabresa', 'P', 35, 'Sim', 10],
+      ['Pastel', null, 9, null, null],
+      ['pizza calabresa', 'G', '55,00', 'Sim', null],
+      ['Pizza Calabresa', 'P', 35, 'Sim', 10],
+    ]);
+    expect(itens).toHaveLength(2);
+    const [pizza, pastel] = itens;
+    expect(pastel).toMatchObject({ nome: 'Pastel', preco: '9,00' });
+    expect(pastel.tamanhos).toBeUndefined();
+    expect(pizza).toMatchObject({ linha: 2, nome: 'Pizza Calabresa', preco: '', repetidas: [5] });
+    expect(pizza.tamanhos.map((t) => [t.linha, t.nome, t.preco, t.custo])).toEqual([
+      [2, 'P', '35,00', '10,00'],
+      [4, 'G', '55,00', ''],
+    ]);
+    const [grupo] = montarRevisao([pizza], []);
+    expect(grupo.repetidasIguais).toEqual([5]);
+    expect(precisaDeAtencao(grupo)).toBe(false);
+    expect(oQueSalvar([grupo]).novos).toEqual([
+      {
+        grupo: grupo.id,
+        nome: 'Pizza Calabresa',
+        vai_para_cozinha: true,
+        tamanhos: [
+          { nome: 'P', preco: 35, custo: 10 },
+          { nome: 'G', preco: 55, custo: null },
+        ],
+      },
+    ]);
+  });
+
+  it('um tamanho só entra como preço único, com o tamanho no nome', () => {
+    const { itens } = interpretarPlanilha([cabecalho, ['Açaí', '500 ml', 18, null, null]]);
+    expect(itens[0]).toMatchObject({ nome: 'Açaí 500 ml', preco: '18,00', umTamanho: '500 ml' });
+    expect(itens[0].tamanhos).toBeUndefined();
+    expect(precisaDeAtencao(montarRevisao(itens, [])[0])).toBe(true);
+  });
+
+  it('tamanho repetido com outro preço e linha sem tamanho viram erro para o dono corrigir', () => {
+    const { itens } = interpretarPlanilha([
+      cabecalho,
+      ['Pizza', 'G', 50, null, null],
+      ['Pizza', 'G', 52, null, null],
+      ['Pizza', null, 30, null, null],
+    ]);
+    const [grupo] = montarRevisao(itens, []);
+    expect(precisaDeAtencao(grupo)).toBe(true);
+    const [, segunda, terceira] = grupo.ocorrencias[0].tamanhos;
+    const erros = errosDoItem(grupo.ocorrencias[0]);
+    expect(erros[`tamanho-nome-${segunda.chave}`]).toBe('O tamanho "G" aparece duas vezes. Deixe um só.');
+    expect(erros[`tamanho-nome-${terceira.chave}`]).toBe('Digite o tamanho, como P ou 500 ml.');
+  });
+
+  it('banco sem tamanhos: o tamanho vai para o nome, como antes', () => {
+    const { itens } = interpretarPlanilha(
+      [cabecalho, ['Pizza', 'P', 30, null, null], ['Pizza', 'G', 50, null, null]],
+      { comTamanhos: false },
+    );
+    expect(itens.map((i) => [i.nome, i.preco])).toEqual([
+      ['Pizza P', '30,00'],
+      ['Pizza G', '50,00'],
+    ]);
+  });
+
+  it('produto que já existe: os tamanhos de mesmo nome continuam os mesmos; preço único desliga os tamanhos', () => {
+    const existente = {
+      id: 'pz',
+      nome: 'Pizza',
+      preco: 30,
+      vai_para_cozinha: true,
+      tamanhos: [
+        { id: 't-p', nome: 'P', preco: 30, custo: 9, disponivel: false },
+        { id: 't-g', nome: 'G', preco: 50, custo: null, disponivel: true },
+      ],
+    };
+    const comTamanhos = interpretarPlanilha([cabecalho, ['Pizza', 'p', 32, null, null], ['Pizza', 'M', 42, null, null]]).itens;
+    const [grupo] = montarRevisao(comTamanhos, [existente]);
+    grupo.escolha = 0;
+    expect(oQueSalvar([grupo]).atualizar).toEqual([
+      {
+        grupo: grupo.id,
+        id: 'pz',
+        alteracoes: { vai_para_cozinha: true },
+        tamanhos: [
+          { id: 't-p', nome: 'p', preco: 32, custo: 9, disponivel: false },
+          { id: null, nome: 'M', preco: 42, custo: null, disponivel: true },
+        ],
+      },
+    ]);
+
+    const [unico] = montarRevisao(interpretarPlanilha([cabecalho, ['Pizza', null, 40, null, null]]).itens, [existente]);
+    unico.escolha = 0;
+    expect(oQueSalvar([unico]).atualizar).toEqual([
+      { grupo: unico.id, id: 'pz', alteracoes: { preco: 40, vai_para_cozinha: true }, tamanhos: [] },
+    ]);
+  });
+});

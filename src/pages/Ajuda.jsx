@@ -18,11 +18,16 @@ const PERGUNTAS = [
     resposta: (
       <>
         Você, em poucos minutos: em <Link to="/produtos">Produtos</Link> dá para começar com um cardápio pronto
-        (pastelaria, hamburgueria, espetaria ou bebidas) e só ajustar os preços. Já tem os produtos numa planilha? Toque em
+        (pastelaria, hamburgueria, espetaria, pizzaria ou bebidas) e só ajustar os preços. Já tem os produtos numa planilha? Toque em
         "Importar planilha": dá para baixar um modelo, e você confere tudo antes de salvar. Se preferir, a equipe do
         projeto cadastra junto com você.
       </>
     ),
+  },
+  {
+    pergunta: 'Vendo pizza P, M e G (ou açaí de 300 e 500 ml). Cadastro três produtos?',
+    resposta:
+      'Não: é um produto só, com tamanhos. No cadastro, marque "Tem tamanhos?" e dê o preço de cada um (os botões "P · M · G" preenchem os nomes). Com os ingredientes, diga quanto vai em cada tamanho e o custo de cada um sai sozinho. Na tela de pedidos aparece um botão por tamanho, com o preço; a cozinha vê o tamanho grande, antes do nome. Acabou só a G? Desligue só ela, em Produtos ou nos Esgotados da Cozinha. Na planilha, use a coluna "Tamanho" e repita o nome numa linha para cada tamanho.',
   },
   {
     pergunta: 'A internet caiu. Perco o pedido?',

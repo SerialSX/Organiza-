@@ -109,9 +109,9 @@ describe('rankingParaCsv', () => {
       { nome: 'Suco; grande', quantidade: 1, faturamento: 8, lucro: null },
     ]);
     expect(csv.split('\r\n')).toEqual([
-      'Produto;Quantidade;Faturamento (R$);Lucro estimado (R$)',
-      'X-Burguer;2;37,00;19,00',
-      '"Suco; grande";1;8,00;',
+      'Produto;Quantidade;Por tamanho;Faturamento (R$);Lucro estimado (R$)',
+      'X-Burguer;2;;37,00;19,00',
+      '"Suco; grande";1;;8,00;',
     ]);
   });
 });

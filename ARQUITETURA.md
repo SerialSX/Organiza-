@@ -60,6 +60,7 @@ itens_pedido
 - observacao (até 140 caracteres)  <- "sem salada", mostrado na cozinha
 - faltou (boolean)                 <- a cozinha avisa que não tem como fazer (produto sem ingredientes cadastrados)
 - faltou_ingredientes (text[])     <- "faltou queijo": nomes guardados, o histórico não muda se renomear
+- tamanho_id, tamanho (até 20)     <- o tamanho escolhido e o nome copiado ("G"); produto com tamanhos não entra sem ele
 
 ingredientes
 - id, negocio_id, nome (único entre os ativos), unidade ("g" | "ml" | "un")
@@ -68,6 +69,16 @@ ingredientes
 
 produto_ingredientes
 - produto_id, ingrediente_id, negocio_id, quantidade  <- "120 g de carne"; chaves compostas garantem o mesmo negócio
+                                                       (produto com tamanhos: a maior quantidade; vale para o "faltou")
+
+produto_tamanhos   <- pizza P, M, G; açaí 300 ml e 500 ml (2 a 8 por produto)
+- id, produto_id, negocio_id, nome (1 a 20, único entre os ativos do produto), preco, custo
+- disponivel (esgotado só deste tamanho; o esgotado do produto vale para todos)
+- arquivado (tirar um tamanho arquiva: os pedidos antigos continuam com o nome), ordem
+- o produto continua com preco/custo iguais aos do primeiro tamanho (sincronizar_produto_com_tamanhos)
+
+tamanho_ingredientes
+- tamanho_id, ingrediente_id, negocio_id, quantidade  <- quanto vai em cada tamanho; o custo de cada tamanho sai sozinho
 
 contador_pedidos
 - negocio_id, dia, ultimo         <- última senha dada no dia; só o criar_pedido mexe, travando a linha
@@ -148,6 +159,7 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js
 - Cadastrar, editar, marcar esgotado, excluir (arquivar) e devolver ao cardápio.
 - Ingredientes com preço de compra; cada produto diz quanto leva de cada um e o custo sai sozinho, com o lucro por unidade na hora.
 - Importar planilha (`src/components/produtos/ImportarPlanilha.jsx`): modelo .xlsx para baixar, montado no navegador (`src/lib/modeloDePlanilha.js`, abas "Cardápio" e "Como preencher"); lê .xlsx e .csv no próprio aparelho, sem biblioteca (`src/lib/lerPlanilha.js`: ZIP com DecompressionStream e XML), e explica o que fazer com .xls, PDF ou arquivo vazio. Acha as colunas pelo título (ou nome e preço sem título), junta linhas repetidas iguais, pede escolha quando o nome se repete com valores diferentes ou já está no cardápio ("Manter como está" é o padrão) e desmarca "Vai para a cozinha" do que parece bebida (`src/lib/importarPlanilha.js`). Os novos entram de uma vez (tudo ou nada) e tentar de novo não duplica. Até 300 produtos por planilha.
+- Tamanhos (`src/lib/tamanhos.js`, `src/lib/formularioProduto.js`, `src/components/produtos/TamanhosDoProduto.jsx`): "Tem tamanhos?" no cadastro, com "P · M · G" e "Pequeno · Médio · Grande" para preencher, de 2 a 8 tamanhos, cada um com preço, custo (pelos ingredientes, quanto vai em cada tamanho, ou digitado) e esgotado próprio. Em Pedidos, um botão por tamanho com o preço, sempre à vista; a conta, o caixa e os resumos mostram "Pizza Calabresa (G)"; a Cozinha mostra o tamanho num selo grande antes do nome; trocar o tamanho na edição é um item novo, com o preço do tamanho novo, e marca o pedido como alterado. Relatório: "Pizza Calabresa: 30 (P 5 · M 10 · G 15)", com o lucro pelo custo de cada tamanho. Planilha com a coluna "Tamanho" (mesmo nome em várias linhas = um produto com tamanhos; um tamanho só vira preço único com o tamanho no nome). Cardápio pronto "Pizzaria". Desligar os tamanhos pede um preço único; tirar um tamanho não muda os pedidos feitos. Banco sem a migração 2026-11-13: as telas escondem os tamanhos e seguem como antes (`aceitaTamanhos()` em `src/services/produtos.js`).
 
 ### Fase 3. Pedidos — pronta
 - Toque para adicionar, observação por item, busca quando o cardápio passa de 12 itens.

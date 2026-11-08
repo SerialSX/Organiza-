@@ -235,6 +235,7 @@ function Ranking({ ranking }) {
               />
             </div>
             <p className="ml-9 text-xs tabular-nums text-[var(--text-secondary)]">
+              {p.detalheTamanhos && <span className="block font-semibold text-[var(--text-primary)]">{p.detalheTamanhos}</span>}
               {formatarMoeda(p.faturamento)} vendidos
               {p.lucro !== null && `, ${formatarMoeda(p.lucro)} de lucro`}
             </p>

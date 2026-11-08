@@ -17,6 +17,8 @@ function vazio() {
     itens_pedido: [],
     ingredientes: [],
     produto_ingredientes: [],
+    produto_tamanhos: [],
+    tamanho_ingredientes: [],
     contas_mesa: [],
     pagamentos_conta: [],
     dias_encerrados: [],

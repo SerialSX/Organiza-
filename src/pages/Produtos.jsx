@@ -3,22 +3,21 @@ import AppShell from '../components/ui/AppShell';
 import PageHeader from '../components/ui/PageHeader';
 import Aviso from '../components/ui/Aviso';
 import Botao from '../components/ui/Botao';
-import Campo from '../components/ui/Campo';
 import Carregando from '../components/ui/Carregando';
 import EstadoVazio from '../components/ui/EstadoVazio';
 import Etiqueta from '../components/ui/Etiqueta';
 import Abas from '../components/ui/Abas';
 import AbaIngredientes from '../components/produtos/AbaIngredientes';
-import IngredientesDoProduto from '../components/produtos/IngredientesDoProduto';
+import FormularioProduto from '../components/produtos/FormularioProduto';
+import { FORM_VAZIO, listaNumerica } from '../lib/formularioProduto';
 import ImportarCardapio from '../components/produtos/ImportarCardapio';
 import ImportarPlanilha from '../components/produtos/ImportarPlanilha';
-import { ProductsIcon, PlusIcon, PencilIcon, TrashIcon, CloseIcon, BoxIcon, CameraIcon, SheetIcon } from '../components/icons/AppIcons';
+import { ProductsIcon, PlusIcon, PencilIcon, TrashIcon, BoxIcon, CameraIcon, SheetIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
 import { useProdutos } from '../hooks/useProdutos';
 import { useIngredientes } from '../hooks/useIngredientes';
 import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
 import { salvarIngredientesDoProduto } from '../services/ingredientes';
-import { estimarCusto } from '../lib/custos';
 import { CARDAPIOS_PRONTOS } from '../lib/cardapiosProntos';
 import {
   criarProduto,
@@ -27,216 +26,26 @@ import {
   excluirProduto,
   listarProdutosArquivados,
   devolverAoCardapio,
+  salvarTamanhosDoProduto,
+  mudarDisponivelDoTamanho,
+  aceitaTamanhos,
 } from '../services/produtos';
-import { formatarMoeda, lerValor, valorParaCampo } from '../lib/formatadores';
+import { formatarMoeda, valorParaCampo } from '../lib/formatadores';
+import { algumTamanhoDisponivel, faixaDePreco, temTamanhos } from '../lib/tamanhos';
 
 const ACCENT = 'var(--color-accent-produtos)';
-const FORM_VAZIO = { nome: '', preco: '', custo: '', lista: [], vaiParaCozinha: true };
 
 const ABAS = [
   { id: 'produtos', rotulo: 'Produtos', Icone: ProductsIcon },
   { id: 'ingredientes', rotulo: 'Ingredientes', Icone: BoxIcon },
 ];
 
-const LIMITE_INGREDIENTES = 30;
-
-function listaNumerica(lista) {
-  return lista.map((l) => ({ ingrediente_id: l.ingrediente_id, quantidade: lerValor(l.quantidade) }));
-}
-
-// estimado: custo calculado pelos ingredientes (null quando não há ingrediente com preço)
-function validar(form, estimado) {
-  const erros = {};
-  const nome = form.nome.trim();
-  const preco = lerValor(form.preco);
-  const custo = estimado ?? (form.custo.trim() === '' ? null : lerValor(form.custo));
-  const lista = listaNumerica(form.lista);
-
-  if (!nome) erros.nome = 'Digite o nome do produto.';
-  if (!Number.isFinite(preco) || preco <= 0) erros.preco = 'Digite um preço maior que zero, como 12,50.';
-  if (custo !== null && (!Number.isFinite(custo) || custo < 0)) erros.custo = 'Digite um valor como 6,00 ou deixe em branco.';
-  if (lista.some((l) => !(l.quantidade > 0 && l.quantidade <= 100000))) {
-    erros.lista = 'Diga quanto vai de cada ingrediente, como 120 (g) ou 1 (un).';
-  }
-  if (lista.length > LIMITE_INGREDIENTES) erros.lista = `Um produto pode ter até ${LIMITE_INGREDIENTES} ingredientes.`;
-  if (Object.keys(erros).length) return { erros };
-  return {
-    dados: {
-      nome,
-      preco: Math.round(preco * 100) / 100,
-      custo: custo === null ? null : Math.round(custo * 100) / 100,
-      vai_para_cozinha: form.vaiParaCozinha !== false,
-      lista,
-    },
-  };
-}
-
 function mesmaLista(a, b) {
   const chave = (l) => l.map((i) => `${i.ingrediente_id}:${i.quantidade}`).sort().join('|');
   return chave(a) === chave(b);
 }
 
-function Lucro({ preco, custo }) {
-  const venda = lerValor(preco);
-  if (custo === null || !(venda > 0)) return null;
-  const lucro = venda - custo;
-  return (
-    <p className="text-sm font-semibold tabular-nums" style={{ color: lucro >= 0 ? 'var(--texto-relatorios)' : 'var(--texto-cozinha)' }}>
-      {lucro >= 0
-        ? `Lucro de ${formatarMoeda(lucro)} por unidade (${Math.round((lucro / venda) * 100)}% do preço)`
-        : `Prejuízo de ${formatarMoeda(-lucro)} por unidade: o custo passou do preço de venda`}
-    </p>
-  );
-}
-
-function FormularioProduto({ inicial, ingredientes, onSalvar, onCancelar, onIrParaIngredientes }) {
-  const [form, setForm] = useState(inicial);
-  const [erros, setErros] = useState({});
-  const [erroGeral, setErroGeral] = useState('');
-  const [salvando, setSalvando] = useState(false);
-  const editando = Boolean(inicial.id);
-  const porId = Object.fromEntries(ingredientes.map((i) => [i.id, i]));
-  const linhasValidas = listaNumerica(form.lista).filter((l) => l.quantidade > 0);
-  const { total: estimado, semPreco } = estimarCusto(linhasValidas, porId);
-  const custoAtual = estimado ?? (form.custo.trim() === '' ? null : lerValor(form.custo));
-
-  function alterar(campo) {
-    return (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    const { erros: invalidos, dados } = validar(form, estimado);
-    if (invalidos) {
-      setErros(invalidos);
-      e.currentTarget.elements.namedItem(Object.keys(invalidos)[0])?.focus();
-      return;
-    }
-    setErros({});
-    setErroGeral('');
-    setSalvando(true);
-    try {
-      await onSalvar(dados);
-    } catch (falha) {
-      setErroGeral(falha.message);
-      setSalvando(false);
-    }
-  }
-
-  return (
-    <form
-      onSubmit={handleSubmit}
-      noValidate
-      aria-labelledby="titulo-formulario-produto"
-      className="rounded-2xl border-2 bg-[var(--surface-card)] p-5 sm:p-6 mb-6 flex flex-col gap-4"
-      style={{ borderColor: ACCENT }}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <h2 id="titulo-formulario-produto" className="text-lg font-semibold text-[var(--text-primary)]">
-          {editando ? 'Editar produto' : 'Novo produto'}
-        </h2>
-        <button
-          type="button"
-          onClick={onCancelar}
-          aria-label="Fechar sem salvar"
-          className="w-11 h-11 inline-flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--surface-card-hover)]"
-        >
-          <CloseIcon className="w-5 h-5" />
-        </button>
-      </div>
-
-      {erroGeral && <Aviso>{erroGeral}</Aviso>}
-
-      <Campo
-        rotulo="Nome"
-        name="nome"
-        value={form.nome}
-        onChange={alterar('nome')}
-        placeholder="Ex.: X-Burguer"
-        autoComplete="off"
-        autoFocus
-        maxLength={120}
-        erro={erros.nome}
-      />
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Campo
-          rotulo="Preço de venda (R$)"
-          name="preco"
-          value={form.preco}
-          onChange={alterar('preco')}
-          placeholder="0,00"
-          inputMode="decimal"
-          autoComplete="off"
-          erro={erros.preco}
-        />
-        {estimado === null ? (
-          <Campo
-            rotulo="Custo (R$, opcional)"
-            name="custo"
-            value={form.custo}
-            onChange={alterar('custo')}
-            placeholder="0,00"
-            inputMode="decimal"
-            autoComplete="off"
-            erro={erros.custo}
-            dica="Digite o custo ou adicione os ingredientes abaixo para calcular."
-          />
-        ) : (
-          <div className="flex flex-col gap-1.5" aria-live="polite">
-            <span className="text-sm font-medium text-[var(--text-secondary)]">Custo estimado</span>
-            <p className="min-h-12 flex items-center text-2xl font-bold tabular-nums text-[var(--text-primary)]">
-              {formatarMoeda(estimado)}
-            </p>
-            <p className="text-xs text-[var(--text-secondary)]">
-              Calculado pelos ingredientes. Muda sozinho quando o preço de um ingrediente muda.
-            </p>
-          </div>
-        )}
-      </div>
-
-      <Lucro preco={form.preco} custo={custoAtual} />
-
-      <label className="flex items-start gap-3 rounded-xl border border-[var(--border-subtle)] p-4 cursor-pointer">
-        <input
-          type="checkbox"
-          name="vaiParaCozinha"
-          checked={form.vaiParaCozinha !== false}
-          onChange={(e) => setForm((f) => ({ ...f, vaiParaCozinha: e.target.checked }))}
-          className="mt-0.5 w-5 h-5 shrink-0"
-        />
-        <span>
-          <span className="block font-semibold text-[var(--text-primary)]">Vai para a cozinha</span>
-          <span className="block text-sm text-[var(--text-secondary)]">
-            Desmarque para bebida e o que já sai pronto: entra na conta e no caixa, mas não aparece na fila da cozinha.
-          </span>
-        </span>
-      </label>
-
-      <IngredientesDoProduto
-        lista={form.lista}
-        onMudar={(lista) => setForm((f) => ({ ...f, lista }))}
-        ingredientes={ingredientes}
-        erro={erros.lista}
-        onIrParaIngredientes={onIrParaIngredientes}
-        nomeProduto={form.nome}
-      />
-
-      {estimado !== null && semPreco.length > 0 && (
-        <Aviso tipo="info">
-          {semPreco.join(', ')} {semPreco.length === 1 ? 'está' : 'estão'} sem preço e não entra{semPreco.length === 1 ? '' : 'm'} na
-          conta. O custo real pode ser maior.
-        </Aviso>
-      )}
-
-      <Botao type="submit" tamanho="grande" cor={ACCENT} larguraTotal disabled={salvando}>
-        {salvando ? 'Salvando…' : editando ? 'Salvar alterações' : 'Salvar produto'}
-      </Botao>
-    </form>
-  );
-}
-
-function Interruptor({ ligado, onChange, rotulo }) {
+function Interruptor({ ligado, onChange, rotulo, disabled = false }) {
   return (
     <button
       type="button"
@@ -244,7 +53,8 @@ function Interruptor({ ligado, onChange, rotulo }) {
       aria-checked={ligado}
       aria-label={rotulo}
       onClick={onChange}
-      className="relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors"
+      disabled={disabled}
+      className="relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
       style={{ backgroundColor: ligado ? 'var(--color-accent-relatorios)' : 'var(--border-subtle)' }}
     >
       <span
@@ -253,6 +63,15 @@ function Interruptor({ ligado, onChange, rotulo }) {
       />
     </button>
   );
+}
+
+// Quanto vai do ingrediente em cada tamanho. Se nenhum tamanho tem a
+// quantidade (o produto ganhou tamanhos pela planilha), todos começam com a
+// quantidade do produto, para o dono ajustar.
+function quantidadesPorTamanho(produto, linha, texto) {
+  const doTamanho = (t) => t.ingredientes.find((i) => i.ingrediente_id === linha.ingrediente_id)?.quantidade;
+  const algum = produto.tamanhos.some((t) => doTamanho(t) !== undefined);
+  return Object.fromEntries(produto.tamanhos.map((t) => [t.id, texto(algum ? doTamanho(t) : linha.quantidade)]));
 }
 
 // Para quem perguntou "quem cadastra o cardápio?": um toque e o cardápio
@@ -275,7 +94,7 @@ function CardapioPronto({ negocioId, onPronto, onErro }) {
     <div className="mt-4 flex flex-col items-center gap-3">
       <p className="text-sm font-semibold text-[var(--text-primary)]">Começar com um cardápio pronto:</p>
       <div className="flex flex-wrap justify-center gap-2">
-        {CARDAPIOS_PRONTOS.map((c) => (
+        {CARDAPIOS_PRONTOS.filter((c) => !c.comTamanhos || aceitaTamanhos()).map((c) => (
           <Botao key={c.id} cor={ACCENT} onClick={() => usar(c)} disabled={Boolean(salvando)}>
             {salvando === c.id ? 'Cadastrando…' : c.nome}
           </Botao>
@@ -286,9 +105,46 @@ function CardapioPronto({ negocioId, onPronto, onErro }) {
   );
 }
 
+// Um tamanho no cartão do produto: preço, lucro e o esgotado só dele.
+function LinhaDoTamanho({ produto, tamanho, onErro }) {
+  const sai = produto.disponivel && tamanho.disponivel;
+  const lucro = tamanho.custo === null ? null : tamanho.preco - tamanho.custo;
+
+  async function alternar() {
+    try {
+      await mudarDisponivelDoTamanho(tamanho.id, !tamanho.disponivel);
+    } catch (e) {
+      onErro(e.message);
+    }
+  }
+
+  return (
+    <li className="flex items-center gap-3">
+      <span className="flex-1 min-w-0">
+        <span
+          className={`font-semibold tabular-nums ${sai ? 'text-[var(--text-primary)]' : 'line-through text-[var(--text-secondary)]'}`}
+        >
+          {tamanho.nome} · {formatarMoeda(tamanho.preco)}
+        </span>
+        <span className="block text-xs tabular-nums text-[var(--text-secondary)]">
+          {!tamanho.disponivel ? 'Esgotado' : lucro === null ? 'Sem custo' : `Lucro de ${formatarMoeda(lucro)} cada`}
+        </span>
+      </span>
+      <Interruptor
+        ligado={tamanho.disponivel}
+        onChange={alternar}
+        disabled={!produto.disponivel}
+        rotulo={`${produto.nome} ${tamanho.nome} disponível`}
+      />
+    </li>
+  );
+}
+
 function CartaoProduto({ produto, pelosIngredientes, onEditar, onErro }) {
   const [confirmando, setConfirmando] = useState(false);
   const margem = produto.custo === null ? null : produto.preco - produto.custo;
+  const comTamanhos = temTamanhos(produto);
+  const sai = algumTamanhoDisponivel(produto);
 
   async function alternarDisponivel() {
     try {
@@ -312,27 +168,43 @@ function CartaoProduto({ produto, pelosIngredientes, onEditar, onErro }) {
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <p className="text-lg font-semibold text-[var(--text-primary)] break-words">{produto.nome}</p>
-          <p className="text-2xl font-bold tabular-nums text-[var(--texto-produtos)]">{formatarMoeda(produto.preco)}</p>
-          <p className="text-sm tabular-nums text-[var(--text-secondary)] mt-1">
-            {margem === null
-              ? 'Sem custo cadastrado'
-              : `Custo ${formatarMoeda(produto.custo)}${pelosIngredientes ? ' (pelos ingredientes)' : ''}, lucro de ${formatarMoeda(margem)} cada`}
-          </p>
+          <p className="text-2xl font-bold tabular-nums text-[var(--texto-produtos)]">{faixaDePreco(produto)}</p>
+          {!comTamanhos && (
+            <p className="text-sm tabular-nums text-[var(--text-secondary)] mt-1">
+              {margem === null
+                ? 'Sem custo cadastrado'
+                : `Custo ${formatarMoeda(produto.custo)}${pelosIngredientes ? ' (pelos ingredientes)' : ''}, lucro de ${formatarMoeda(margem)} cada`}
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-end gap-1">
-          {!produto.disponivel && <Etiqueta cor="var(--color-accent-cozinha)">Esgotado</Etiqueta>}
+          {!sai && <Etiqueta cor="var(--color-accent-cozinha)">Esgotado</Etiqueta>}
           {produto.vai_para_cozinha === false && <Etiqueta cor="var(--color-accent-pedidos)">Sem cozinha</Etiqueta>}
         </div>
       </div>
+
+      {comTamanhos && (
+        <ul className="flex flex-col gap-3" aria-label={`Tamanhos de ${produto.nome}`}>
+          {produto.tamanhos.map((t) => (
+            <LinhaDoTamanho key={t.id} produto={produto} tamanho={t} onErro={onErro} />
+          ))}
+        </ul>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border-subtle)] pt-4">
         <Interruptor
           ligado={produto.disponivel}
           onChange={alternarDisponivel}
-          rotulo={`${produto.nome} disponível`}
+          rotulo={comTamanhos ? `${produto.nome}, todos os tamanhos disponíveis` : `${produto.nome} disponível`}
         />
         <span className="text-sm font-medium text-[var(--text-secondary)] flex-1">
-          {produto.disponivel ? 'Disponível' : 'Esgotado'}
+          {comTamanhos
+            ? produto.disponivel
+              ? 'Todos os tamanhos'
+              : 'Esgotado (todos)'
+            : produto.disponivel
+              ? 'Disponível'
+              : 'Esgotado'}
         </span>
 
         {confirmando ? (
@@ -445,18 +317,46 @@ export default function Produtos() {
   // Produto novo que já foi criado, mas a lista de ingredientes falhou: a
   // próxima tentativa só atualiza, em vez de criar o produto de novo.
   const criado = useRef(null);
+  // Tamanhos já criados numa tentativa que falhou depois (nos ingredientes):
+  // tentar de novo atualiza esses, em vez de criar outros.
+  const idsDosTamanhos = useRef({});
 
   const comPreco = new Set(ingredientes.ingredientes.filter((i) => i.preco_compra !== null).map((i) => i.id));
 
-  async function salvar({ lista, ...dados }) {
+  async function salvar({ lista, tamanhos, ...dados }) {
     let id = formulario.id ?? criado.current;
     if (id) await atualizarProduto(id, dados);
     else {
       id = (await criarProduto(perfil.negocio_id, dados)).id;
       criado.current = id;
     }
-    if (!mesmaLista(lista, listaNumerica(formulario.lista))) await salvarIngredientesDoProduto(id, lista);
+    const tinhaTamanhos = Boolean(formulario.comTamanhos);
+    if (tamanhos) {
+      const ids = idsDosTamanhos.current;
+      const salvos = await salvarTamanhosDoProduto(
+        id,
+        tamanhos.map((t) => ({ ...t, id: t.id ?? ids[t.chave] ?? null })),
+      );
+      tamanhos.forEach((t, i) => {
+        if (salvos[i]) ids[t.chave] = salvos[i].id;
+      });
+      const itens = lista.map((l) => ({
+        ingrediente_id: l.ingrediente_id,
+        por_tamanho: Object.fromEntries(
+          Object.entries(l.porChave)
+            .filter(([chave]) => ids[chave])
+            .map(([chave, q]) => [ids[chave], q]),
+        ),
+      }));
+      if (itens.length || formulario.lista.length) await salvarIngredientesDoProduto(id, itens);
+    } else {
+      // Desligou os tamanhos: eles vão para o arquivo (pedidos antigos ficam
+      // como estão) e a lista de ingredientes volta a ser uma só.
+      if (tinhaTamanhos) await salvarTamanhosDoProduto(id, []);
+      if (tinhaTamanhos || !mesmaLista(lista, listaNumerica(formulario.lista))) await salvarIngredientesDoProduto(id, lista);
+    }
     criado.current = null;
+    idsDosTamanhos.current = {};
     setFormulario(null);
     recarregar();
   }
@@ -466,6 +366,7 @@ export default function Produtos() {
     setMensagem('');
     setImportando(false);
     criado.current = null;
+    idsDosTamanhos.current = {};
     setFormulario(form);
   }
 
@@ -496,18 +397,33 @@ export default function Produtos() {
   }
 
   function abrirEdicao(produto) {
+    const texto = (q) => (q === undefined || q === null ? '' : String(q).replace('.', ','));
+    const comTamanhos = temTamanhos(produto);
     abrir({
       id: produto.id,
       nome: produto.nome,
       preco: valorParaCampo(produto.preco),
       custo: valorParaCampo(produto.custo),
       vaiParaCozinha: produto.vai_para_cozinha !== false,
-      lista: produto.ingredientes.map((l) => ({ ingrediente_id: l.ingrediente_id, quantidade: String(l.quantidade).replace('.', ',') })),
+      comTamanhos,
+      tamanhos: produto.tamanhos.map((t) => ({
+        chave: t.id,
+        id: t.id,
+        nome: t.nome,
+        preco: valorParaCampo(t.preco),
+        custo: valorParaCampo(t.custo),
+        disponivel: t.disponivel,
+      })),
+      lista: produto.ingredientes.map((l) => ({
+        ingrediente_id: l.ingrediente_id,
+        quantidade: texto(l.quantidade),
+        ...(comTamanhos ? { por: quantidadesPorTamanho(produto, l, texto) } : {}),
+      })),
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  const disponiveis = produtos.filter((p) => p.disponivel).length;
+  const disponiveis = produtos.filter(algumTamanhoDisponivel).length;
 
   return (
     <AppShell>
@@ -583,6 +499,7 @@ export default function Produtos() {
             key={formulario.id ?? 'novo'}
             inicial={formulario}
             ingredientes={ingredientes.ingredientes}
+            podeTerTamanhos={aceitaTamanhos()}
             onSalvar={salvar}
             onCancelar={() => setFormulario(null)}
             onIrParaIngredientes={() => setAba('ingredientes')}

@@ -6,6 +6,8 @@ import Aviso from '../ui/Aviso';
 import Botao from '../ui/Botao';
 import Tutorial from './Tutorial';
 import GuiaCozinha from './GuiaCozinha';
+import TelaDoCelular from '../TelaDoCelular';
+import { dispensarTelaDoCelular, mostrarPassoDoCelular } from '../../lib/aparelho';
 import EscolhaDoModo from './EscolhaDoModo';
 import EscolhaDaCozinha from './EscolhaDaCozinha';
 import { QuantasMesas, TaxaDeServico } from '../mesas/EscolhaDasMesas';
@@ -50,7 +52,7 @@ export default function BoasVindas({ onConcluir }) {
   const { mode } = useTheme();
   const { perfil, configurarAtendimento, configurarMesas } = useAuth();
   const [soMesas] = useState(() => perfil.modo_atendimento !== null && precisaResponderMesas(perfil));
-  // modo | tutorial | mesas | taxa | cozinha | guia | um-aparelho | mesas-prontas
+  // modo | tutorial | mesas | taxa | cozinha | guia | um-aparelho | mesas-prontas | celular
   const [etapa, setEtapa] = useState(soMesas ? 'mesas' : 'modo');
   const [modo, setModo] = useState(soMesas ? perfil.modo_atendimento : null);
   const [usaTela, setUsaTela] = useState(null);
@@ -63,6 +65,13 @@ export default function BoasVindas({ onConcluir }) {
   const numero = (etapaDaPergunta) =>
     soMesas ? { mesas: 1, taxa: 2 }[etapaDaPergunta] : { modo: 1, mesas: 2, taxa: 3, cozinha: naMesa ? 4 : 2 }[etapaDaPergunta];
   const pergunta = (etapaDaPergunta) => `Pergunta ${numero(etapaDaPergunta)} de ${totalDePerguntas}`;
+
+  // Último passo, só em celular ou tablet e sem obrigação: o ícone na tela do
+  // celular. Já aberto pelo ícone, ou com "Agora não" antes, não aparece.
+  function concluir() {
+    if (etapa !== 'celular' && mostrarPassoDoCelular()) setEtapa('celular');
+    else onConcluir();
+  }
 
   // As mesas primeiro: se falhar, nada fica salvo pela metade e a pessoa
   // continua nas perguntas.
@@ -211,7 +220,7 @@ export default function BoasVindas({ onConcluir }) {
               Dá para mudar o número de mesas e a taxa em{' '}
               <strong className="text-[var(--text-primary)]">Minha conta → Como você atende</strong>.
             </p>
-            <Botao tamanho="grande" cor={ACCENT} className="self-start" onClick={onConcluir}>
+            <Botao tamanho="grande" cor={ACCENT} className="self-start" onClick={concluir}>
               Entendi, começar
             </Botao>
           </>
@@ -244,7 +253,7 @@ export default function BoasVindas({ onConcluir }) {
               negocioId={perfil.negocio_id}
               rotuloFechar="Faço isso depois"
               rotuloDepoisDoTeste="Começar a usar"
-              onFechar={onConcluir}
+              onFechar={concluir}
             />
             <p className="text-sm text-[var(--text-secondary)]">
               Este passo a passo fica guardado em <strong className="text-[var(--text-primary)]">Ajuda → Como ligar o aparelho da cozinha</strong>.
@@ -269,9 +278,36 @@ export default function BoasVindas({ onConcluir }) {
               Se um dia você colocar um aparelho na cozinha, é só mudar em{' '}
               <strong className="text-[var(--text-primary)]">Minha conta → Como você atende</strong>.
             </p>
-            <Botao tamanho="grande" cor={ACCENT} className="self-start" onClick={onConcluir}>
+            <Botao tamanho="grande" cor={ACCENT} className="self-start" onClick={concluir}>
               Entendi, começar
             </Botao>
+          </>
+        )}
+        {etapa === 'celular' && (
+          <>
+            <Cabecalho titulo="Deixe o Organiza+ na tela do seu celular">
+              <p className="text-[var(--text-secondary)]">
+                Assim ele fica junto com o WhatsApp e você abre com um toque, sem procurar o endereço. É opcional.
+              </p>
+            </Cabecalho>
+            <TelaDoCelular />
+            <p className="text-sm text-[var(--text-secondary)]">
+              Este passo fica guardado em <strong className="text-[var(--text-primary)]">Ajuda → Colocar na tela do celular</strong>.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Botao tamanho="grande" cor={ACCENT} onClick={onConcluir}>
+                Começar a usar
+              </Botao>
+              <Botao
+                variante="secundaria"
+                onClick={() => {
+                  dispensarTelaDoCelular();
+                  onConcluir();
+                }}
+              >
+                Agora não
+              </Botao>
+            </div>
           </>
         )}
       </main>

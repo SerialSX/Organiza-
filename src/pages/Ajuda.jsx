@@ -10,6 +10,7 @@ import { MODOS, modoDoNegocio } from '../lib/atendimento';
 import Abas from '../components/ui/Abas';
 import Tutorial from '../components/boasVindas/Tutorial';
 import GuiaCozinha from '../components/boasVindas/GuiaCozinha';
+import TelaDoCelular from '../components/TelaDoCelular';
 
 const PERGUNTAS = [
   {
@@ -119,7 +120,12 @@ const PERGUNTAS = [
   {
     pergunta: 'Funciona no meu celular?',
     resposta:
-      'Funciona no navegador do celular, do tablet ou do computador, sem instalar nada. No celular, use "Adicionar à tela inicial" no menu do navegador para abrir como um aplicativo.',
+      'Funciona no navegador do celular, do tablet ou do computador, sem instalar nada. Para achar mais fácil, coloque o ícone do Organiza+ na tela do celular: veja "Colocar na tela do celular", aqui na Ajuda.',
+  },
+  {
+    pergunta: 'Abri pelo link do WhatsApp (ou do Instagram) e toda hora pede para entrar.',
+    resposta:
+      'Esses apps abrem o link num navegador próprio, que não guarda a sua entrada. Toque no menu do app e escolha "Abrir no Chrome" (no iPhone, "Abrir no Safari"). Melhor ainda: depois de abrir no navegador, coloque o Organiza+ na tela do celular.',
   },
   {
     pergunta: 'Esqueci a senha.',
@@ -160,6 +166,7 @@ export default function Ajuda() {
   const { autenticado, perfil } = useAuth();
   const { hash } = useLocation();
   const [guiaAberto, setGuiaAberto] = useState(hash === '#aparelho-da-cozinha');
+  const [celularAberto, setCelularAberto] = useState(hash === '#tela-do-celular');
 
   // Link vindo de outra tela (ex.: Minha conta → ver o passo a passo).
   useEffect(() => {
@@ -181,11 +188,29 @@ export default function Ajuda() {
           <p className="text-[var(--text-secondary)]">As dúvidas que os negócios mais perguntam.</p>
         </div>
 
-        <section aria-labelledby="titulo-contato" className="rounded-2xl border-2 border-[var(--color-brand-orange)] p-5 flex flex-col gap-3">
+        <section
+          id="travou"
+          aria-labelledby="titulo-contato"
+          className="scroll-mt-6 rounded-2xl border-2 border-[var(--color-brand-orange)] p-5 flex flex-col gap-3"
+        >
           <h2 id="titulo-contato" className="text-xl font-bold text-[var(--text-primary)]">
-            Travou no meio do movimento?
+            Travou? Veja o que fazer
           </h2>
-          <p className="text-[var(--text-secondary)]">Fale com a equipe do Organiza+.</p>
+          <ol className="flex flex-col gap-3 text-[var(--text-primary)]">
+            <li>
+              <strong>1. Puxe a tela para baixo</strong> ou feche e abra o Organiza+ de novo. Os pedidos que já saíram não se
+              perdem: eles ficam guardados na internet.
+            </li>
+            <li>
+              <strong>2. Sem internet?</strong> Pode continuar lançando: os pedidos ficam guardados no celular e saem sozinhos
+              quando a internet voltar, mesmo se você fechar o Organiza+. Não lance de novo.
+            </li>
+            <li>
+              <strong>3. Ainda não voltou?</strong> Anote no papel por enquanto. Depois, lance os pedidos do papel no Organiza+
+              para o caixa da noite ficar certo.
+            </li>
+          </ol>
+          <p className="font-semibold text-[var(--text-primary)]">Continua travado? Fale com a equipe do Organiza+.</p>
           <div className="flex flex-wrap gap-3">
             {autenticado && GRUPO_WHATSAPP && (
               <a
@@ -208,9 +233,6 @@ export default function Ajuda() {
           <p className="text-sm text-[var(--text-secondary)]">
             O Organiza+ é um projeto de estudantes da Unifor. Respondemos assim que possível, mas não temos atendimento 24 horas.
           </p>
-          <p className="text-sm text-[var(--text-secondary)]">
-            Enquanto isso, anote no papel e lance depois: nenhum pedido se perde.
-          </p>
         </section>
 
         <ComoFunciona modoInicial={autenticado ? modoDoNegocio(perfil) : 'balcao'} />
@@ -229,6 +251,26 @@ export default function Ajuda() {
           </summary>
           <div className="mt-4">
             {guiaAberto && <GuiaCozinha negocioId={autenticado ? perfil?.negocio_id : null} />}
+          </div>
+        </details>
+
+        <details
+          id="tela-do-celular"
+          open={celularAberto}
+          onToggle={(e) => setCelularAberto(e.currentTarget.open)}
+          className="scroll-mt-6 group rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] px-5 py-4"
+        >
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 min-h-8 text-xl font-bold text-[var(--text-primary)]">
+            Colocar na tela do celular
+            <span aria-hidden="true" className="text-[var(--text-secondary)] transition-transform group-open:rotate-45 text-xl">
+              +
+            </span>
+          </summary>
+          <div className="mt-4 flex flex-col gap-3">
+            <p className="text-[var(--text-secondary)]">
+              O ícone do Organiza+ fica junto com o WhatsApp e abre com um toque, sem procurar o endereço.
+            </p>
+            {celularAberto && <TelaDoCelular />}
           </div>
         </details>
 

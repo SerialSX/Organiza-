@@ -28,7 +28,7 @@ import { useFilaDeEnvio } from '../hooks/useFilaDeEnvio';
 import { useRascunhoDoPedido, novaChaveDeLinha } from '../hooks/useRascunhoDoPedido';
 import { criarPedido, editarPedido, buscarPedidoComValores, ROTULO_FORMA } from '../services/pedidos';
 import { registrarToqueEsgotado } from '../services/produtos';
-import { guardarNaFila } from '../services/filaDeEnvio';
+import { dispensarSaida, guardarNaFila } from '../services/filaDeEnvio';
 import { destinoDoPedido, formatarMoeda, hojeNoNegocio, numeroDoPedido } from '../lib/formatadores';
 import { podeEditar } from '../lib/pedidoStatus';
 import { separarPedidos } from '../lib/fila';
@@ -140,9 +140,15 @@ export default function Pedidos() {
     return () => clearTimeout(id);
   }, [enviado]);
 
-  const aoSairDaFila = useCallback((pedido, envio) => {
-    setEnviado({ ...pedido, itens: envio.linhas ?? [] });
-  }, []);
+  // O pedido guardado sem internet saiu: o número aparece grande aqui, com o
+  // que ele era, e sai do aviso das outras telas.
+  const aoSairDaFila = useCallback(
+    (pedido, envio) => {
+      setEnviado({ ...pedido, itens: envio.linhas ?? [], resumoDaFila: envio.resumo ?? '' });
+      dispensarSaida(perfil.negocio_id, envio.chaveEnvio);
+    },
+    [perfil.negocio_id],
+  );
   const { fila: filaDeEnvio, tentarAgora, descartar } = useFilaDeEnvio({
     negocioId: perfil.negocio_id,
     usuarioId: perfil.id,

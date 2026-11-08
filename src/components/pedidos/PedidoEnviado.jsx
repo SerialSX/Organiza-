@@ -6,7 +6,13 @@ import { destinoDoPedido, numeroDoPedido } from '../../lib/formatadores';
 export default function PedidoEnviado({ pedido }) {
   // Só bebida (nada para a cozinha preparar): já sai pronto para entregar.
   const jaPronto = pedido.status === 'pronto';
-  const situacao = jaPronto ? 'Pronto para entregar.' : 'Enviado para a cozinha.';
+  // Estava esperando a internet: diz qual era, porque o cliente ainda não
+  // sabe o número.
+  const situacao = pedido.resumoDaFila
+    ? `Pedido de ${pedido.resumoDaFila} saiu (estava esperando a internet).`
+    : jaPronto
+      ? 'Pronto para entregar.'
+      : 'Enviado para a cozinha.';
 
   return (
     <div
@@ -16,13 +22,15 @@ export default function PedidoEnviado({ pedido }) {
     >
       {pedido.mesa ? (
         <>
-          <p className="text-sm font-semibold">{situacao}</p>
+          <p className="text-sm font-semibold break-words">{situacao}</p>
           <p className="text-5xl font-extrabold tabular-nums mt-1 break-words">{destinoDoPedido(pedido)}</p>
           <p className="text-sm mt-1">{jaPronto ? 'Pode levar até a mesa.' : 'Entrou na conta da mesa.'}</p>
         </>
       ) : (
         <>
-          <p className="text-sm font-semibold">{situacao} Diga ao cliente a senha:</p>
+          <p className="text-sm font-semibold break-words">
+            {situacao} {pedido.resumoDaFila ? 'Agora é o número abaixo. Diga ao cliente a senha:' : 'Diga ao cliente a senha:'}
+          </p>
           <p className="text-5xl font-extrabold tracking-wider tabular-nums mt-1" translate="no">
             {numeroDoPedido(pedido)}
           </p>

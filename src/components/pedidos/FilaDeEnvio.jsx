@@ -1,4 +1,5 @@
 import Botao from '../ui/Botao';
+import Etiqueta from '../ui/Etiqueta';
 import { WifiOffIcon } from '../icons/AppIcons';
 import { formatarHora, hojeNoNegocio } from '../../lib/formatadores';
 
@@ -36,7 +37,8 @@ export default function FilaDeEnvio({ fila, onTentar, onDescartar }) {
           </h2>
           {esperando.length > 0 && (
             <p className="text-sm text-[var(--text-secondary)]">
-              Saem sozinhos, na ordem, quando a conexão voltar. A senha aparece na hora.
+              Saem sozinhos, na ordem, quando a conexão voltar, mesmo se fechar o Organiza+. A senha aparece na hora.{' '}
+              <strong className="text-[var(--text-primary)]">Não lance de novo.</strong>
             </p>
           )}
         </div>
@@ -49,6 +51,11 @@ export default function FilaDeEnvio({ fila, onTentar, onDescartar }) {
       <ul className="flex flex-col gap-2" aria-live="polite">
         {fila.map((envio) => (
           <li key={envio.chaveEnvio} className="rounded-xl border border-[var(--border-subtle)] px-3 py-2 text-sm">
+            {!envio.erro && (
+              <Etiqueta cor="var(--color-brand-orange)" className="mb-1">
+                Esperando internet
+              </Etiqueta>
+            )}
             <p className="font-semibold text-[var(--text-primary)] break-words">
               {envio.mesa ? `${envio.nomeMesa || `Mesa ${envio.mesa}`}: ` : ''}
               {envio.identificacao ? `${envio.identificacao}: ` : ''}

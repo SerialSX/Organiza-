@@ -331,3 +331,22 @@ export function HelpIcon(props) {
     </svg>
   );
 }
+
+// O ícone de compartilhar do Safari (quadrado com a seta para cima).
+export function ShareIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M12 3v12M8 7l4-4 4 4" />
+      <path d="M7 10H5v11h14V10h-2" />
+    </svg>
+  );
+}
+
+export function PhoneIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <rect x="6" y="2.5" width="12" height="19" rx="2.5" />
+      <path d="M11 18.5h2" />
+    </svg>
+  );
+}

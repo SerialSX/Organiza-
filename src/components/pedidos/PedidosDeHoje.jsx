@@ -7,10 +7,11 @@ import { atualizarStatusPedido, ROTULO_FORMA } from '../../services/pedidos';
 import { destinoDoPedido, numeroDoPedido } from '../../lib/formatadores';
 import { STATUS, podeEditar } from '../../lib/pedidoStatus';
 import { descreverFalta, itensQueFaltaram } from '../../lib/fila';
+import { resumoDosItens as juntarItens } from '../../lib/combos';
 
 
 function resumoDosItens(pedido) {
-  return pedido.itens.map((i) => `${i.quantidade}× ${i.nome}${i.observacao ? ` (${i.observacao})` : ''}`).join(', ');
+  return juntarItens(pedido.itens, true);
 }
 
 function CartaoPedidoDeHoje({ pedido, editandoEste, semTelaCozinha, onEditar, onErro }) {

@@ -359,3 +359,25 @@ export function SheetIcon(props) {
     </svg>
   );
 }
+
+// Combo: itens juntos numa bandeja.
+export function ComboIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M3 17h18l-1.5 3h-15L3 17z" />
+      <path d="M5 17a4 4 0 0 1 8 0" />
+      <path d="M15 17V9h4l-1 8" />
+      <path d="M17 9l1-4" />
+    </svg>
+  );
+}
+
+// Promoção: etiqueta de preço.
+export function TagIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M3 12V4h8l10 10-8 8L3 12z" />
+      <circle cx="7.5" cy="8.5" r="1.5" />
+    </svg>
+  );
+}

@@ -13,7 +13,7 @@ import EscolhaDaRegraMeioAMeio from '../components/produtos/EscolhaDaRegraMeioAM
 import { FORM_VAZIO, listaNumerica } from '../lib/formularioProduto';
 import ImportarCardapio from '../components/produtos/ImportarCardapio';
 import ImportarPlanilha from '../components/produtos/ImportarPlanilha';
-import { ProductsIcon, PlusIcon, PencilIcon, TrashIcon, BoxIcon, CameraIcon, SheetIcon } from '../components/icons/AppIcons';
+import { ProductsIcon, PlusIcon, PencilIcon, TrashIcon, BoxIcon, CameraIcon, SheetIcon, ComboIcon, TagIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
 import { useProdutos } from '../hooks/useProdutos';
 import { useIngredientes } from '../hooks/useIngredientes';
@@ -34,6 +34,11 @@ import {
 } from '../services/produtos';
 import { formatarMoeda, valorParaCampo } from '../lib/formatadores';
 import { algumTamanhoDisponivel, faixaDePreco, temTamanhos } from '../lib/tamanhos';
+import Interruptor from '../components/ui/Interruptor';
+import AbaCombos from '../components/produtos/AbaCombos';
+import AbaPromocoes from '../components/produtos/AbaPromocoes';
+import { useCombos } from '../hooks/useCombos';
+import { aceitaCombos } from '../services/combos';
 
 const ACCENT = 'var(--color-accent-produtos)';
 
@@ -41,30 +46,16 @@ const ABAS = [
   { id: 'produtos', rotulo: 'Produtos', Icone: ProductsIcon },
   { id: 'ingredientes', rotulo: 'Ingredientes', Icone: BoxIcon },
 ];
+// Banco sem a migração 2026-11-15: as abas de combos e promoções não aparecem.
+const ABAS_COM_COMBOS = [
+  ...ABAS,
+  { id: 'combos', rotulo: 'Combos', Icone: ComboIcon },
+  { id: 'promocoes', rotulo: 'Promoções', Icone: TagIcon },
+];
 
 function mesmaLista(a, b) {
   const chave = (l) => l.map((i) => `${i.ingrediente_id}:${i.quantidade}`).sort().join('|');
   return chave(a) === chave(b);
-}
-
-function Interruptor({ ligado, onChange, rotulo, disabled = false }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={ligado}
-      aria-label={rotulo}
-      onClick={onChange}
-      disabled={disabled}
-      className="relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
-      style={{ backgroundColor: ligado ? 'var(--color-accent-relatorios)' : 'var(--border-subtle)' }}
-    >
-      <span
-        className="inline-block h-6 w-6 rounded-full bg-white shadow transition-transform"
-        style={{ transform: ligado ? 'translateX(28px)' : 'translateX(4px)' }}
-      />
-    </button>
-  );
 }
 
 // Quanto vai do ingrediente em cada tamanho. Se nenhum tamanho tem a
@@ -354,7 +345,10 @@ export default function Produtos() {
   const { perfil, configurarMeioAMeio } = useAuth();
   const { produtos, carregando, erro: erroCarga, recarregar } = useProdutos();
   const ingredientes = useIngredientes();
-  const [aba, setAba] = useAbaNoEndereco('aba', ABAS, 'produtos');
+  const combos = useCombos();
+  const comCombos = aceitaCombos();
+  const abas = comCombos ? ABAS_COM_COMBOS : ABAS;
+  const [aba, setAba] = useAbaNoEndereco('aba', abas, 'produtos');
   // null = fechado; objeto = formulário aberto (com id quando editando)
   const [formulario, setFormulario] = useState(null);
   const [erro, setErro] = useState('');
@@ -513,7 +507,7 @@ export default function Produtos() {
       </PageHeader>
 
       <div className="mb-6">
-        <Abas opcoes={ABAS} valor={aba} onMudar={setAba} cor={ACCENT} rotulo="O que mostrar" />
+        <Abas opcoes={abas} valor={aba} onMudar={setAba} cor={ACCENT} rotulo="O que mostrar" />
       </div>
 
       {/* As duas abas ficam montadas: ir cadastrar um ingrediente no meio de um
@@ -531,6 +525,26 @@ export default function Produtos() {
           </Botao>
         )}
       </div>
+
+      {comCombos && aba === 'combos' && (
+        <AbaCombos
+          combos={combos.combos}
+          carregando={combos.carregando || carregando}
+          erroCarga={combos.erro}
+          produtos={produtos}
+          recarregar={combos.recarregar}
+        />
+      )}
+      {comCombos && aba === 'promocoes' && (
+        <AbaPromocoes
+          promocoes={combos.promocoes}
+          combos={combos.combos}
+          carregando={combos.carregando || carregando}
+          erroCarga={combos.erro}
+          produtos={produtos}
+          recarregar={combos.recarregar}
+        />
+      )}
 
       <div hidden={aba !== 'produtos'}>
         {importando === 'planilha' && (

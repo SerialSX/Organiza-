@@ -55,7 +55,10 @@ function SemRegra({ ehDono }) {
 // Meio a meio: escolhe o tamanho (quando tem) e o segundo sabor, entre os
 // marcados que têm o mesmo tamanho. Sabor esgotado aparece riscado e, tocado,
 // avisa (como na grade). onEscolher(tamanho | null, segundoProduto).
-export default function EscolherMeioAMeio({ produto, produtos, regra, ehDono, onEscolher, onEsgotado, onFechar }) {
+// precoAgora(produto, tamanho): o preço de cada metade agora (com a promoção).
+const SEM_PROMOCAO = (produto, tamanho) => ({ preco: (tamanho ?? produto).preco });
+
+export default function EscolherMeioAMeio({ produto, produtos, regra, ehDono, onEscolher, onEsgotado, onFechar, precoAgora = SEM_PROMOCAO }) {
   const comTamanhos = produto.tamanhos.length > 0;
   // Tamanhos com pelo menos um outro sabor do mesmo tamanho.
   const tamanhos = produto.tamanhos.filter((t) => saboresParaCombinar(produtos, produto, t).length > 0);
@@ -63,7 +66,7 @@ export default function EscolherMeioAMeio({ produto, produtos, regra, ehDono, on
   const idTitulo = `meio-${produto.id}`;
   const escolhendoSabor = !comTamanhos || tamanho;
   const sabores = escolhendoSabor ? saboresParaCombinar(produtos, produto, tamanho) : [];
-  const precoDoPrimeiro = tamanho ? tamanho.preco : produto.preco;
+  const precoDoPrimeiro = precoAgora(produto, tamanho).preco;
 
   return (
     <Janela titulo={`${produto.nome} meio a meio`} idTitulo={idTitulo} onFechar={onFechar}>
@@ -107,9 +110,9 @@ export default function EscolherMeioAMeio({ produto, produtos, regra, ehDono, on
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
-              {sabores.map(({ produto: segundo, tamanho: doSegundo, preco, disponivel }) => {
+              {sabores.map(({ produto: segundo, tamanho: doSegundo, disponivel }) => {
                 const nome = nomeDoItem(produto.nome, tamanho?.nome ?? null, segundo.nome);
-                const valor = precoMeioAMeio(regra, precoDoPrimeiro, preco);
+                const valor = precoMeioAMeio(regra, precoDoPrimeiro, precoAgora(segundo, doSegundo).preco);
                 return (
                   <li key={segundo.id}>
                     <button

@@ -4,6 +4,7 @@ import Etiqueta from '../ui/Etiqueta';
 import { AlertIcon, CheckIcon, ClockIcon } from '../icons/AppIcons';
 import { chamadaDoPedido, destinoDoPedido, formatarEspera, formatarHora, minutosDesde, numeroDoPedido } from '../../lib/formatadores';
 import { LIMITE_ATRASO_MINUTOS } from '../../lib/pedidoStatus';
+import { agruparItens } from '../../lib/combos';
 
 const VERMELHO = 'var(--color-accent-cozinha)';
 const VERDE = 'var(--color-accent-relatorios)';
@@ -138,6 +139,49 @@ function ItemDaFila({ item, grande, onFaltou, onFaltouIngrediente }) {
   );
 }
 
+// Combo: o nome em destaque e, embaixo, cada parte que a cozinha prepara. A
+// observação vale para o combo inteiro e aparece uma vez só.
+function ComboDaFila({ grupo, grande, onFaltou, onFaltouIngrediente }) {
+  return (
+    <li className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={`inline-flex items-center rounded-lg px-2.5 font-extrabold text-[var(--sobre-destaque)] break-words ${grande ? 'min-h-11 text-2xl' : 'min-h-9 text-lg'}`}
+          style={{ backgroundColor: 'var(--color-brand-orange)' }}
+        >
+          {grupo.nome}
+        </span>
+        {grupo.quantidade > 1 && (
+          <span className={`font-bold text-[var(--text-primary)] ${grande ? 'text-2xl' : 'text-lg'}`}>{grupo.quantidade} combos</span>
+        )}
+      </div>
+      {grupo.observacao && (
+        <span
+          className={`self-start rounded-r-lg border-l-4 border-[var(--color-brand-orange)] px-2.5 py-1 ${grande ? 'text-xl' : 'text-base'} font-bold break-words bg-[color-mix(in_srgb,var(--color-brand-orange)_18%,transparent)] text-[var(--text-primary)]`}
+        >
+          {grupo.observacao}
+        </span>
+      )}
+      <ul aria-label={`Partes do ${grupo.nome}`} className="flex flex-col gap-3 border-l-4 border-[var(--color-brand-orange)] pl-3">
+        {grupo.itens.map((item) => (
+          <ItemDaFila
+            key={item.id}
+            item={{ ...item, observacao: null }}
+            grande={grande}
+            onFaltou={onFaltou}
+            onFaltouIngrediente={onFaltouIngrediente}
+          />
+        ))}
+      </ul>
+    </li>
+  );
+}
+
+// "1× Coca (Combo Casal)": a bebida do combo sai junto.
+function semPreparoTexto(itens) {
+  return itens.map((i) => `${i.quantidade}× ${i.nome}${i.combo_nome ? ` (${i.combo_nome})` : ''}`).join(', ');
+}
+
 // posicao: lugar na fila (1 = o mais antigo, o próximo a sair).
 // grande: modo foco (poucos pedidos por vez, letras maiores).
 export default function CartaoFila({ pedido, posicao, agora, grande = false, onPronto, onFaltou, onFaltouIngrediente }) {
@@ -206,13 +250,23 @@ export default function CartaoFila({ pedido, posicao, agora, grande = false, onP
       )}
 
       <ul className="flex flex-col gap-3">
-        {paraPreparar.map((item) => (
-          <ItemDaFila key={item.id} item={item} grande={grande} onFaltou={onFaltou} onFaltouIngrediente={onFaltouIngrediente} />
-        ))}
+        {agruparItens(paraPreparar).map((linha) =>
+          linha.combo ? (
+            <ComboDaFila key={linha.grupo} grupo={linha} grande={grande} onFaltou={onFaltou} onFaltouIngrediente={onFaltouIngrediente} />
+          ) : (
+            <ItemDaFila
+              key={linha.item.id}
+              item={linha.item}
+              grande={grande}
+              onFaltou={onFaltou}
+              onFaltouIngrediente={onFaltouIngrediente}
+            />
+          ),
+        )}
       </ul>
       {semPreparo.length > 0 && (
         <p className="text-sm text-[var(--text-secondary)] break-words">
-          Sai junto, sem preparo: {semPreparo.map((i) => `${i.quantidade}× ${i.nome}`).join(', ')}
+          Sai junto, sem preparo: {semPreparoTexto(semPreparo)}
         </p>
       )}
 

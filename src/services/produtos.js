@@ -56,12 +56,13 @@ export async function criarProduto(negocioId, { nome, preco, custo, vai_para_coz
   return normalizar(data);
 }
 
-// Cardápio pronto: vários de uma vez, sem repetir nome que já existe.
+// Cardápio pronto e planilha: vários de uma vez (tudo ou nada), sem repetir
+// nome que já existe. Tentar de novo depois de uma falha não duplica.
 export async function criarProdutos(negocioId, lista) {
   const novos = produtosQueFaltam({ produtos: lista }, await listarProdutos()).map((p) => ({
     nome: p.nome,
     preco: p.preco,
-    custo: null,
+    custo: p.custo ?? null,
     disponivel: true,
     vai_para_cozinha: p.vai_para_cozinha ?? true,
   }));

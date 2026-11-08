@@ -16,6 +16,8 @@ async function negocioNovo(page) {
   await page.evaluate(() => {
     const db = JSON.parse(localStorage.getItem('organiza-demo-db') ?? '{}');
     localStorage.setItem('organiza-demo-db', JSON.stringify({ ...db, perfil: { ...db.perfil, modo_atendimento: null, quantidade_mesas: null, taxa_servico: null } }));
+    // O passo opcional do ícone na tela do celular tem teste próprio (confianca.spec.js).
+    localStorage.setItem('organiza-tela-do-celular-dispensado', 'sim');
   });
 }
 
@@ -131,6 +133,7 @@ test('conta antiga que atende na mesa responde só as mesas e a taxa', async ({ 
       'organiza-demo-db',
       JSON.stringify({ ...db, perfil: { ...db.perfil, modo_atendimento: 'mesa', quantidade_mesas: null, taxa_servico: null } }),
     );
+    localStorage.setItem('organiza-tela-do-celular-dispensado', 'sim');
   });
   await page.goto('/pedidos');
   await expect(page.getByRole('heading', { name: 'Quantas mesas você tem?' })).toBeVisible();

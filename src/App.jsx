@@ -6,6 +6,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import ExigeConfiguracao from './components/ExigeConfiguracao';
 import Carregando from './components/ui/Carregando';
 import ErroDaTela from './components/ErroDaTela';
+import AvisoNavegadorDeDentro from './components/AvisoNavegadorDeDentro';
 import { ehArquivoDeVersaoAntiga, limparMarcaDeRecarga, recarregarUmaVez } from './lib/recarga';
 
 // Cada tela vira um arquivo separado no build: quem abre a página do QR code
@@ -58,6 +59,7 @@ function App() {
       <ThemeProvider>
         <AuthProvider>
           <BrowserRouter>
+            <AvisoNavegadorDeDentro />
             <Suspense fallback={<TelaCarregando />}>
               <Routes>
                 <Route path="/" element={<Landing />} />

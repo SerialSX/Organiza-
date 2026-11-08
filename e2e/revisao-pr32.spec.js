@@ -103,12 +103,19 @@ test('pedido guardado sem internet sai mesmo fora da tela de Pedidos', async ({ 
 
   await irPara('Caixa');
   await expect(page).toHaveURL(/\/caixa$/);
-  const aviso = page.getByText('1 pedido guardado sem internet, esperando para sair.');
+  // Faixa fixa em qualquer tela: diz que o pedido está guardado e para não lançar de novo.
+  const aviso = page.getByText('Sem internet. 1 pedido guardado neste aparelho: sai sozinho quando a internet voltar. Não lance de novo.');
   await expect(aviso).toBeVisible();
   await semProblemasDeAcessibilidade(page);
 
   await context.setOffline(false);
   await expect(aviso).toBeHidden({ timeout: 15000 });
+  // Saiu fora da tela de Pedidos: o aviso diz o número novo e fica até o "Ok".
+  const saiu = page.getByRole('status').filter({ hasText: 'Pedido de Dona Rita: 1× Espeto de carne saiu. Agora é o 001: diga ao cliente.' });
+  await expect(saiu).toBeVisible();
+  await semProblemasDeAcessibilidade(page);
+  await saiu.getByRole('button', { name: 'Ok' }).click();
+  await expect(saiu).toHaveCount(0);
   await irPara('Pedidos');
   await expect(page.getByRole('region', { name: 'Na cozinha' }).getByText('Dona Rita')).toBeVisible();
 });

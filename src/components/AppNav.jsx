@@ -37,10 +37,16 @@ export default function AppNav() {
   );
 
   const acoes = (
-    <div className="ml-auto flex items-center gap-2">
+    <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
       <ThemeToggle />
-      <Link to="/ajuda" aria-label="Ajuda" title="Ajuda" className={botaoRedondo}>
-        <HelpIcon className="w-5 h-5" />
+      {/* Sempre à vista: abre a Ajuda já no "Travou? Veja o que fazer". */}
+      <Link
+        to="/ajuda#travou"
+        title="Ajuda: travou? Veja o que fazer"
+        className="inline-flex items-center gap-1.5 h-11 rounded-full border border-[var(--border-subtle)] px-3 text-sm font-bold text-[var(--text-primary)] hover:bg-[var(--surface-card-hover)] transition-colors"
+      >
+        <HelpIcon className="hidden sm:block w-5 h-5" />
+        Travou?
       </Link>
       <Link to="/minha-conta" aria-label="Minha conta" title="Minha conta" className={botaoRedondo}>
         <UserIcon className="w-5 h-5" />

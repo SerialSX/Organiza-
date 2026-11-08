@@ -6,8 +6,27 @@ import ThemeToggle from './ThemeToggle';
 import RodapeContato from './RodapeContato';
 
 // Moldura das telas de entrar, criar conta e recuperar senha.
-export default function TelaDeAcesso({ titulo, subtitulo, children, rodape }) {
+// lateral: conteúdo ao lado do formulário no computador e logo abaixo dele no
+// celular (as perguntas antes de criar a conta).
+export default function TelaDeAcesso({ titulo, subtitulo, children, rodape, lateral }) {
   const { mode } = useTheme();
+
+  const formulario = (
+    <div className="w-full max-w-md">
+      <Link to="/" className="block w-fit mx-auto mb-8 rounded-lg" aria-label="Organiza+, página inicial">
+        <img src={mode === 'dark' ? logoDark : logoLight} alt="" width="1372" height="434" className="h-12 w-auto" />
+      </Link>
+      <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-alt)] p-6 sm:p-8 flex flex-col gap-5">
+        <div className="flex flex-col gap-1 text-center">
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">{titulo}</h1>
+          {subtitulo && <p className="text-sm text-[var(--text-secondary)]">{subtitulo}</p>}
+        </div>
+        {children}
+      </div>
+      {rodape && <div className="mt-6 text-center text-sm text-[var(--text-secondary)]">{rodape}</div>}
+      {!lateral && <RodapeContato className="mt-6" />}
+    </div>
+  );
 
   return (
     <div className="min-h-svh bg-[var(--surface)] flex flex-col">
@@ -15,20 +34,15 @@ export default function TelaDeAcesso({ titulo, subtitulo, children, rodape }) {
         <ThemeToggle />
       </div>
       <main className="flex-1 flex items-start sm:items-center justify-center px-4 pb-10">
-        <div className="w-full max-w-md">
-          <Link to="/" className="block w-fit mx-auto mb-8 rounded-lg" aria-label="Organiza+, página inicial">
-            <img src={mode === 'dark' ? logoDark : logoLight} alt="" width="1372" height="434" className="h-12 w-auto" />
-          </Link>
-          <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-alt)] p-6 sm:p-8 flex flex-col gap-5">
-            <div className="flex flex-col gap-1 text-center">
-              <h1 className="text-2xl font-bold text-[var(--text-primary)]">{titulo}</h1>
-              {subtitulo && <p className="text-sm text-[var(--text-secondary)]">{subtitulo}</p>}
-            </div>
-            {children}
+        {lateral ? (
+          <div className="w-full max-w-md lg:max-w-5xl flex flex-col lg:flex-row lg:items-start gap-10 lg:gap-16">
+            {formulario}
+            {/* O contato já está no fim da lateral ("Ainda tem dúvida?"). */}
+            <div className="w-full max-w-md lg:pt-20">{lateral}</div>
           </div>
-          {rodape && <div className="mt-6 text-center text-sm text-[var(--text-secondary)]">{rodape}</div>}
-          <RodapeContato className="mt-6" />
-        </div>
+        ) : (
+          formulario
+        )}
       </main>
     </div>
   );

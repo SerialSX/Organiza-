@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { criarPedido } from '../services/pedidos';
-import { assinarFila, lerFila, marcarErroNaFila, tirarDaFila } from '../services/filaDeEnvio';
+import { assinarFila, lerFila, marcarErroNaFila, registrarSaida, tirarDaFila } from '../services/filaDeEnvio';
 import { hojeNoNegocio } from '../lib/formatadores';
 
 const INTERVALO_MS = 10000;
@@ -68,6 +68,15 @@ export function useFilaDeEnvio({ negocioId, usuarioId, onEnviado }) {
             formaPagamento: envio.formaPagamento,
           });
           tirarDaFila(negocioId, envio.chaveEnvio);
+          registrarSaida(negocioId, {
+            chaveEnvio: envio.chaveEnvio,
+            numero: pedido.numero,
+            status: pedido.status,
+            resumo: envio.resumo,
+            mesa: envio.mesa ?? null,
+            nomeMesa: envio.nomeMesa ?? null,
+            identificacao: envio.identificacao ?? null,
+          });
           window.dispatchEvent(new CustomEvent(EVENTO_ENVIADO, { detail: { negocioId, pedido, envio } }));
         } catch (e) {
           // Ainda sem internet: para e tenta mais tarde, na mesma ordem.

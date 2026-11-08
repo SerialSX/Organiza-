@@ -155,7 +155,7 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js
 - Mapa das mesas (quem atende na mesa): livre em cinza, ocupada em laranja com o total. Tocar na livre lança o pedido; na ocupada abre a conta (lançar mais, fechar mesa, passar para outra mesa ou juntar). Mesa extra com nome. Fechar mesa: consumo + taxa de serviço (o cliente pode não pagar), um pagou tudo, dividiram (igual ou cada um um valor) ou pagaram separado sem anotar.
 - Editar (com aviso se outra pessoa alterou) e cancelar com motivo.
 - Nome ou mesa no pedido; a conta de cada mesa soma a noite toda e fecha de uma vez. Forma de pagamento na hora ou depois.
-- Sem internet: o pedido fica guardado no aparelho e sai sozinho quando a conexão volta, sem duplicar.
+- Sem internet: o pedido fica guardado no aparelho e sai sozinho quando a conexão volta, sem duplicar. Faixa fixa logo abaixo do cabeçalho em todas as telas (`FaixaDeInternet`, em `src/components/ui/AvisosDeInternet.jsx`) com quantos pedidos estão guardados e "Não lance de novo"; cada pedido da fila mostra "Esperando internet". Quando um pedido guardado sai, o aviso "Agora é o 014: diga ao cliente" aparece em qualquer tela (`SaidasDaFila`, guardado em `organiza-fila-saidas-<id>`) e, em Pedidos, no próprio aviso de enviado.
 - Toque em produto esgotado registrado (venda que teria saído errada).
 - Modo sem tela de cozinha: o "Pronto" fica na tela de pedidos.
 
@@ -184,10 +184,14 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js
 - Política de privacidade (`/privacidade`) e Ajuda (`/ajuda`) com as dúvidas da validação de campo.
 - Contato da equipe para ajuda (joaoemanuel15@edu.unifor.br, em `src/lib/contato.js`): no rodapé da landing, das telas de acesso e do painel, na Ajuda e na política de privacidade.
 - Tela que se recupera sozinha depois de um deploy (ErroDaTela e recarga) e workflow de saúde a cada 6 h.
+- "Travou?" sempre no topo (e no rodapé do painel) leva a `/ajuda#travou`: três passos (puxar a tela, sem internet não lance de novo, anotar no papel) e o contato da equipe. Grupo de ajuda no WhatsApp só dentro do sistema, quando `GRUPO_WHATSAPP` estiver preenchido.
+- Aviso de navegador de dentro de outro app (Instagram, Facebook, WhatsApp, TikTok etc., em `src/lib/aparelho.js`): explica como abrir no Chrome ou no Safari e copia o endereço; some com "Entendi" e não aparece na página do cliente.
+- Ícone na tela do celular: passo opcional no fim das boas-vindas, só em celular ou tablet que ainda não abriu como app ("Agora não" guarda a escolha). No Android usa o aviso de instalar do Chrome (um toque, capturado cedo em `src/lib/instalar.js`); no iPhone mostra os passos do Safari. Fica também na Ajuda. Manifesto com ícones 192 e 512.
+- Criar conta responde as perguntas de quem ainda está decidindo (custo, aparelho, cardápio, internet, papel, dados), ao lado do formulário no computador e abaixo dele no celular.
 
 ### Próximos passos
 - Supabase e Vercel no ar e teste do fluxo completo com dados reais.
-- Decisões em aberto: contas de equipe por papel, adicionais pagos, app instalável (PWA) para abrir telas sem internet.
+- Decisões em aberto: contas de equipe por papel, adicionais pagos, abrir telas sem internet (o ícone na tela já existe, mas ainda precisa de internet para abrir).
 
 ## Regra geral para todas as fases
 

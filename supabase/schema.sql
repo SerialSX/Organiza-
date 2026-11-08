@@ -212,6 +212,37 @@ alter table public.itens_pedido
   add column if not exists tamanho text check (tamanho is null or length(tamanho) between 1 and 20);
 create index if not exists itens_pedido_tamanho_idx on public.itens_pedido (tamanho_id);
 
+-- Meio a meio (2026-11-14).
+-- Vazio: o dono ainda não escolheu (a tela pergunta ao marcar o primeiro
+-- produto como meio a meio).
+alter table public.negocios
+  add column if not exists regra_meio_a_meio text check (regra_meio_a_meio in ('mais_caro', 'media'));
+
+alter table public.produtos
+  add column if not exists meio_a_meio boolean not null default false;
+
+-- O segundo sabor do item. Sem chave estrangeira de propósito: uma segunda
+-- ligação de itens_pedido com produtos deixaria ambíguas as consultas que já
+-- leem "produtos ( nome )" pelo item. Quem garante que o sabor existe e é do
+-- mesmo negócio é gravar_itens_pedido. O nome é copiado: o histórico não muda
+-- se o sabor for renomeado ou arquivado depois.
+alter table public.itens_pedido
+  add column if not exists segundo_produto_id uuid,
+  add column if not exists segundo_tamanho_id uuid,
+  add column if not exists segundo_sabor text check (segundo_sabor is null or length(segundo_sabor) between 1 and 120);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'itens_pedido_segundo_sabor_completo'
+  ) then
+    alter table public.itens_pedido
+      add constraint itens_pedido_segundo_sabor_completo
+      check ((segundo_produto_id is null) = (segundo_sabor is null));
+  end if;
+end;
+$$;
+
 -- Registro do que aconteceu no balcão e na cozinha, para as métricas do TCC:
 -- produto esgotado que evitou venda, faltas avisadas pela cozinha (que
 -- continuam contadas mesmo se o pedido for editado depois). Só funções do
@@ -415,9 +446,13 @@ create trigger ao_criar_usuario_auth
 -- para o usuário.
 
 -- Grava os itens com preço e custo do cadastro (do tamanho, quando tem). Na
--- edição, p_anteriores traz { "produto_id|tamanho_id": { preco, custo, tamanho } }
--- do que já estava no pedido: esses itens mantêm o preço combinado e
--- continuam aceitos mesmo que tenham esgotado ou saído do cardápio depois.
+-- edição, p_anteriores traz { "produto_id|tamanho_id|segundo_produto_id":
+-- { preco, custo, tamanho, segundo_tamanho_id, segundo_sabor } } do que já
+-- estava no pedido: esses itens mantêm o preço combinado e continuam aceitos
+-- mesmo que tenham esgotado ou saído do cardápio depois.
+-- Meio a meio: o item traz "segundo_produto_id". O tamanho do segundo sabor é
+-- o de mesmo nome (G com G); o preço segue a regra do negócio e o custo é a
+-- metade do custo de cada sabor.
 create or replace function public.gravar_itens_pedido(
   p_pedido_id uuid,
   p_negocio_id uuid,
@@ -435,12 +470,20 @@ declare
   v_tamanho public.produto_tamanhos;
   v_tamanho_id uuid;
   v_nome_tamanho text;
+  v_segundo public.produtos;
+  v_segundo_tamanho public.produto_tamanhos;
+  v_segundo_id uuid;
+  v_segundo_tamanho_id uuid;
+  v_segundo_sabor text;
+  v_regra text;
   v_chave text;
   v_quantidade int;
   v_observacao text;
   v_ja_estava boolean;
   v_preco numeric(10, 2);
   v_custo numeric(10, 2);
+  v_preco_2 numeric(10, 2);
+  v_custo_2 numeric(10, 2);
 begin
   if p_itens is null or jsonb_typeof(p_itens) <> 'array'
      or jsonb_array_length(p_itens) not between 1 and 100 then
@@ -453,7 +496,8 @@ begin
        or jsonb_typeof(v_item -> 'produto_id') is distinct from 'string'
        or jsonb_typeof(v_item -> 'quantidade') is distinct from 'number'
        or coalesce(jsonb_typeof(v_item -> 'observacao'), 'null') not in ('string', 'null')
-       or coalesce(jsonb_typeof(v_item -> 'tamanho_id'), 'null') not in ('string', 'null') then
+       or coalesce(jsonb_typeof(v_item -> 'tamanho_id'), 'null') not in ('string', 'null')
+       or coalesce(jsonb_typeof(v_item -> 'segundo_produto_id'), 'null') not in ('string', 'null') then
       raise exception 'Item do pedido inválido.';
     end if;
 
@@ -488,7 +532,21 @@ begin
       v_nome_tamanho := v_tamanho.nome;
     end if;
 
-    v_chave := v_produto.id::text || '|' || coalesce(v_tamanho_id::text, '');
+    v_segundo_id := null;
+    if v_item ->> 'segundo_produto_id' is not null then
+      select * into v_segundo from public.produtos
+      where id::text = v_item ->> 'segundo_produto_id' and negocio_id = p_negocio_id
+      for share;
+      if not found then
+        raise exception 'Um dos sabores saiu do cardápio. Lance o pedido de novo.';
+      end if;
+      if v_segundo.id = v_produto.id then
+        raise exception 'Escolha dois sabores diferentes para o meio a meio.';
+      end if;
+      v_segundo_id := v_segundo.id;
+    end if;
+
+    v_chave := v_produto.id::text || '|' || coalesce(v_tamanho_id::text, '') || '|' || coalesce(v_segundo_id::text, '');
     v_ja_estava := p_anteriores ? v_chave;
 
     if not v_ja_estava then
@@ -508,6 +566,53 @@ begin
       end if;
     end if;
 
+    v_segundo_tamanho_id := null;
+    v_segundo_sabor := null;
+    if v_segundo_id is not null and v_ja_estava then
+      v_segundo_tamanho_id := (p_anteriores -> v_chave ->> 'segundo_tamanho_id')::uuid;
+      v_segundo_sabor := coalesce(p_anteriores -> v_chave ->> 'segundo_sabor', v_segundo.nome);
+    elsif v_segundo_id is not null then
+      if not v_produto.meio_a_meio then
+        raise exception '% não pode ser meio a meio. Revise o pedido.', v_produto.nome;
+      end if;
+      if v_segundo.arquivado then
+        raise exception 'O sabor % saiu do cardápio. Lance o pedido de novo.', v_segundo.nome;
+      end if;
+      if not v_segundo.meio_a_meio then
+        raise exception '% não pode ser meio a meio. Revise o pedido.', v_segundo.nome;
+      end if;
+      if not v_segundo.disponivel then
+        raise exception 'O sabor % esgotou. Revise o pedido.', v_segundo.nome;
+      end if;
+      if v_tamanho_id is not null then
+        select * into v_segundo_tamanho from public.produto_tamanhos
+        where produto_id = v_segundo.id and not arquivado and lower(nome) = lower(v_tamanho.nome)
+        for share;
+        if not found then
+          raise exception 'O sabor % não tem o tamanho %. Revise o pedido.', v_segundo.nome, v_tamanho.nome;
+        end if;
+        if not v_segundo_tamanho.disponivel then
+          raise exception 'O sabor % esgotou no tamanho %. Revise o pedido.', v_segundo.nome, v_tamanho.nome;
+        end if;
+        v_segundo_tamanho_id := v_segundo_tamanho.id;
+        v_preco_2 := v_segundo_tamanho.preco;
+        v_custo_2 := v_segundo_tamanho.custo;
+      else
+        if exists (
+          select 1 from public.produto_tamanhos where produto_id = v_segundo.id and not arquivado
+        ) then
+          raise exception 'Os dois sabores precisam ter o mesmo tamanho. Revise o pedido.';
+        end if;
+        v_preco_2 := v_segundo.preco;
+        v_custo_2 := v_segundo.custo;
+      end if;
+      v_segundo_sabor := v_segundo.nome;
+      select regra_meio_a_meio into v_regra from public.negocios where id = p_negocio_id;
+      if v_regra is null then
+        raise exception 'Escolha em Minha conta como cobrar o meio a meio.';
+      end if;
+    end if;
+
     if v_ja_estava then
       v_preco := (p_anteriores -> v_chave ->> 'preco')::numeric;
       v_custo := (p_anteriores -> v_chave ->> 'custo')::numeric;
@@ -521,10 +626,20 @@ begin
       v_custo := v_produto.custo;
     end if;
 
+    if v_segundo_id is not null and not v_ja_estava then
+      v_preco := case when v_regra = 'mais_caro' then greatest(v_preco, v_preco_2) else round((v_preco + v_preco_2) / 2, 2) end;
+      -- Sem o custo de um dos sabores, o custo do item fica sem saber.
+      v_custo := round(v_custo / 2 + v_custo_2 / 2, 2);
+    end if;
+
     insert into public.itens_pedido (
-      pedido_id, produto_id, quantidade, preco_unitario, custo_unitario, observacao, tamanho_id, tamanho
+      pedido_id, produto_id, quantidade, preco_unitario, custo_unitario, observacao, tamanho_id, tamanho,
+      segundo_produto_id, segundo_tamanho_id, segundo_sabor
     )
-    values (p_pedido_id, v_produto.id, v_quantidade, v_preco, v_custo, v_observacao, v_tamanho_id, v_nome_tamanho);
+    values (
+      p_pedido_id, v_produto.id, v_quantidade, v_preco, v_custo, v_observacao, v_tamanho_id, v_nome_tamanho,
+      v_segundo_id, v_segundo_tamanho_id, v_segundo_sabor
+    );
   end loop;
 end;
 $$;
@@ -697,11 +812,15 @@ begin
     raise exception 'Outra pessoa alterou este pedido agora há pouco. Abra o pedido de novo para ver como ficou.';
   end if;
 
-  -- Chave: produto e tamanho. Trocar a P pela G é um item novo, com o preço da G.
+  -- Chave: produto, tamanho e segundo sabor. Trocar a P pela G, ou trocar um
+  -- dos sabores, é um item novo, com o preço de hoje.
   select coalesce(
     jsonb_object_agg(
-      produto_id::text || '|' || coalesce(tamanho_id::text, ''),
-      jsonb_build_object('preco', preco_unitario, 'custo', custo_unitario, 'tamanho', tamanho)
+      produto_id::text || '|' || coalesce(tamanho_id::text, '') || '|' || coalesce(segundo_produto_id::text, ''),
+      jsonb_build_object(
+        'preco', preco_unitario, 'custo', custo_unitario, 'tamanho', tamanho,
+        'segundo_tamanho_id', segundo_tamanho_id, 'segundo_sabor', segundo_sabor
+      )
     ),
     '{}'::jsonb
   )
@@ -1059,12 +1178,8 @@ begin
 end;
 $$;
 
--- Vários produtos de uma vez, com ou sem tamanhos (cardápio pronto e
--- planilha): tudo ou nada. Nome que já está no cardápio é pulado (tocar duas
--- vezes não duplica). Devolve quantos entraram.
--- p_produtos: [{ "nome": "Pizza Calabresa", "vai_para_cozinha": true,
---   "preco": 40, "custo": null }] ou, com tamanhos, [{ "nome": "...",
---   "tamanhos": [{ "nome": "P", "preco": 32, "custo": null }, ...] }].
+-- Cardápio pronto e planilha: cria os produtos (com tamanhos ou não, e com
+-- "meio_a_meio") de uma vez, tudo ou nada.
 create or replace function public.criar_produtos_com_tamanhos(p_produtos jsonb)
 returns int
 language plpgsql
@@ -1095,6 +1210,7 @@ begin
     if jsonb_typeof(v_item) <> 'object'
        or jsonb_typeof(v_item -> 'nome') is distinct from 'string'
        or coalesce(jsonb_typeof(v_item -> 'vai_para_cozinha'), 'null') not in ('boolean', 'null')
+       or coalesce(jsonb_typeof(v_item -> 'meio_a_meio'), 'null') not in ('boolean', 'null')
        or coalesce(jsonb_typeof(v_item -> 'tamanhos'), 'null') not in ('array', 'null')
        or coalesce(jsonb_typeof(v_item -> 'preco'), 'null') not in ('number', 'null')
        or coalesce(jsonb_typeof(v_item -> 'custo'), 'null') not in ('number', 'null') then
@@ -1130,8 +1246,12 @@ begin
       end if;
     end if;
 
-    insert into public.produtos (negocio_id, nome, preco, custo, vai_para_cozinha)
-    values (v_negocio_id, v_nome, coalesce(v_preco, 0), v_custo, coalesce((v_item ->> 'vai_para_cozinha')::boolean, true))
+    insert into public.produtos (negocio_id, nome, preco, custo, vai_para_cozinha, meio_a_meio)
+    values (
+      v_negocio_id, v_nome, coalesce(v_preco, 0), v_custo,
+      coalesce((v_item ->> 'vai_para_cozinha')::boolean, true),
+      coalesce((v_item ->> 'meio_a_meio')::boolean, false)
+    )
     returning id into v_produto_id;
 
     v_ordem := 0;
@@ -1303,8 +1423,9 @@ create trigger ao_mudar_ingrediente
   execute function public.ao_mudar_ingrediente();
 
 -- A cozinha avisa que faltou um ingrediente de um item ("faltou queijo"). Só
--- aceita ingrediente que está no produto. Mexe em atualizado_em do pedido
--- para o tempo real avisar a tela do atendente.
+-- aceita ingrediente que está no produto (ou no segundo sabor, no meio a
+-- meio). Mexe em atualizado_em do pedido para o tempo real avisar a tela do
+-- atendente.
 create or replace function public.marcar_ingrediente_faltou(p_item_id uuid, p_ingrediente_id uuid, p_faltou boolean)
 returns void
 language plpgsql
@@ -1314,9 +1435,10 @@ as $$
 declare
   v_pedido_id uuid;
   v_produto_id uuid;
+  v_segundo_id uuid;
   v_nome text;
 begin
-  select p.id, i.produto_id into v_pedido_id, v_produto_id
+  select p.id, i.produto_id, i.segundo_produto_id into v_pedido_id, v_produto_id, v_segundo_id
   from public.itens_pedido i
   join public.pedidos p on p.id = i.pedido_id
   where i.id = p_item_id
@@ -1327,10 +1449,14 @@ begin
     raise exception 'Este pedido não está mais na fila.';
   end if;
 
-  select g.nome into v_nome
+  -- O evento fica com o sabor que tem o ingrediente (o primeiro, se os dois têm).
+  select g.nome, pi.produto_id into v_nome, v_produto_id
   from public.produto_ingredientes pi
   join public.ingredientes g on g.id = pi.ingrediente_id
-  where pi.produto_id = v_produto_id and pi.ingrediente_id = p_ingrediente_id;
+  where pi.ingrediente_id = p_ingrediente_id
+    and (pi.produto_id = v_produto_id or pi.produto_id = v_segundo_id)
+  order by pi.produto_id = v_produto_id desc
+  limit 1;
   if not found then
     raise exception 'Este ingrediente não está mais no produto. Atualize a tela.';
   end if;
@@ -1504,6 +1630,32 @@ grant execute on function public.registrar_toque_esgotado(uuid) to authenticated
 grant execute on function public.registrar_pagamento(uuid[], text) to authenticated;
 revoke all on function public.configurar_atendimento(text, boolean) from public, anon;
 grant execute on function public.configurar_atendimento(text, boolean) to authenticated;
+
+-- Só o dono: como cobra o meio a meio. Vale só para os pedidos novos.
+create or replace function public.configurar_meio_a_meio(p_regra text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_negocio_id uuid;
+begin
+  select negocio_id into v_negocio_id
+  from public.usuarios
+  where id = (select auth.uid()) and papel = 'admin';
+  if v_negocio_id is null then
+    raise exception 'Só o dono do negócio pode mudar como cobra o meio a meio.';
+  end if;
+  if p_regra is null or p_regra not in ('mais_caro', 'media') then
+    raise exception 'Escolha como cobrar o meio a meio.';
+  end if;
+  update public.negocios set regra_meio_a_meio = p_regra where id = v_negocio_id;
+end;
+$$;
+
+revoke all on function public.configurar_meio_a_meio(text) from public, anon;
+grant execute on function public.configurar_meio_a_meio(text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Mesas: mapa, conta da mesa e taxa de serviço
@@ -2522,7 +2674,7 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select 20261113;
+  select 20261114;
 $$;
 
 revoke all on function public.versao_do_banco() from public;

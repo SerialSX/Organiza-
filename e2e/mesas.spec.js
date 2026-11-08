@@ -241,7 +241,7 @@ test('Minha conta: muda o número de mesas e a taxa', async ({ page }) => {
   await page.goto('/minha-conta');
   await page.getByRole('button', { name: 'Uma mesa a mais' }).click();
   await page.getByRole('button', { name: 'Aumentar a taxa' }).click();
-  await page.getByRole('button', { name: 'Salvar' }).last().click();
+  await page.locator('section').filter({ has: page.getByRole('heading', { name: 'Como você atende' }) }).getByRole('button', { name: 'Salvar' }).click();
   await expect(page.getByText('Salvo.')).toBeVisible();
   await semProblemasDeAcessibilidade(page);
 

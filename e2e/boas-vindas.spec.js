@@ -176,10 +176,10 @@ test('dá para trocar a resposta antes de continuar e depois em Minha conta', as
   await expect(page.getByRole('radio', { name: /^Balcão O cliente pede/ })).toBeChecked();
   await page.getByText('Tenho os dois tipos de cliente').click();
   // Passou a atender na mesa: responde as mesas e a taxa antes de salvar.
-  await expect(page.getByRole('button', { name: 'Salvar' }).last()).toBeDisabled();
+  await expect(page.locator('section').filter({ has: page.getByRole('heading', { name: 'Como você atende' }) }).getByRole('button', { name: 'Salvar' })).toBeDisabled();
   await expect(page.getByLabel('Quantas mesas você tem?')).toHaveValue('8');
   await page.getByText('Não cobro').click();
-  await page.getByRole('button', { name: 'Salvar' }).last().click();
+  await page.locator('section').filter({ has: page.getByRole('heading', { name: 'Como você atende' }) }).getByRole('button', { name: 'Salvar' }).click();
   await expect(page.getByText('Salvo.')).toBeVisible();
   await semProblemasDeAcessibilidade(page);
 

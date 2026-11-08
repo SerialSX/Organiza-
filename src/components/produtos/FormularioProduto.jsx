@@ -6,6 +6,7 @@ import IngredientesDoProduto from './IngredientesDoProduto';
 import TamanhosDoProduto from './TamanhosDoProduto';
 import { CloseIcon } from '../icons/AppIcons';
 import { estimarCusto } from '../../lib/custos';
+import EscolhaDaRegraMeioAMeio from './EscolhaDaRegraMeioAMeio';
 import { formatarMoeda, lerValor } from '../../lib/formatadores';
 import {
   comTamanhosDesligados,
@@ -31,8 +32,19 @@ function Lucro({ preco, custo, rotulo = '' }) {
   );
 }
 
-// podeTerTamanhos: false quando o banco ainda não tem a migração dos tamanhos.
-export default function FormularioProduto({ inicial, ingredientes, podeTerTamanhos, onSalvar, onCancelar, onIrParaIngredientes }) {
+// podeTerTamanhos / podeSerMeioAMeio: false quando o banco ainda não tem a
+// migração. regraMeioAMeio: a do negócio; null quando o dono ainda não
+// escolheu (a escolha é pedida aqui, ao marcar o primeiro produto).
+export default function FormularioProduto({
+  inicial,
+  ingredientes,
+  podeTerTamanhos,
+  podeSerMeioAMeio = false,
+  regraMeioAMeio = null,
+  onSalvar,
+  onCancelar,
+  onIrParaIngredientes,
+}) {
   const [form, setForm] = useState(inicial);
   const [erros, setErros] = useState({});
   const [erroGeral, setErroGeral] = useState('');
@@ -66,10 +78,17 @@ export default function FormularioProduto({ inicial, ingredientes, podeTerTamanh
 
   async function handleSubmit(e) {
     e.preventDefault();
-    const { erros: invalidos, dados } = validarProduto(form, porId);
+    const validado = validarProduto(form, porId);
+    const pedirRegra = form.meioAMeio && !regraMeioAMeio;
+    const invalidos =
+      pedirRegra && !form.regraMeioAMeio
+        ? { ...validado.erros, regraMeioAMeio: 'Escolha como você cobra o meio a meio.' }
+        : validado.erros;
+    const dados = validado.dados && { ...validado.dados, regra_meio_a_meio: pedirRegra ? form.regraMeioAMeio : null };
     if (invalidos) {
       setErros(invalidos);
-      e.currentTarget.elements.namedItem(Object.keys(invalidos)[0])?.focus();
+      const campo = e.currentTarget.elements.namedItem(Object.keys(invalidos)[0]);
+      (campo?.focus ? campo : campo?.[0])?.focus();
       return;
     }
     setErros({});
@@ -191,6 +210,36 @@ export default function FormularioProduto({ inicial, ingredientes, podeTerTamanh
 
           <Lucro preco={form.preco} custo={custoAtual} />
         </>
+      )}
+
+      {(podeSerMeioAMeio || form.meioAMeio) && (
+        <div className="rounded-xl border border-[var(--border-subtle)]">
+          <label className="flex items-start gap-3 p-4 cursor-pointer">
+            <input
+              type="checkbox"
+              name="meioAMeio"
+              checked={form.meioAMeio}
+              onChange={(e) => setForm((f) => ({ ...f, meioAMeio: e.target.checked }))}
+              className="mt-0.5 w-5 h-5 shrink-0"
+            />
+            <span>
+              <span className="block font-semibold text-[var(--text-primary)]">Pode ser meio a meio</span>
+              <span className="block text-sm text-[var(--text-secondary)]">
+                Marque nos sabores que podem ir juntos, como as pizzas. No pedido, junta dois sabores marcados do mesmo tamanho (G com G).
+              </span>
+            </span>
+          </label>
+          {form.meioAMeio && !regraMeioAMeio && (
+            <div className="border-t border-[var(--border-subtle)] p-4">
+              <EscolhaDaRegraMeioAMeio
+                valor={form.regraMeioAMeio}
+                onMudar={(regra) => setForm((f) => ({ ...f, regraMeioAMeio: regra }))}
+                erro={erros.regraMeioAMeio}
+                texto="Vale para todos os sabores. Dá para mudar depois em Minha conta."
+              />
+            </div>
+          )}
+        </div>
       )}
 
       <label className="flex items-start gap-3 rounded-xl border border-[var(--border-subtle)] p-4 cursor-pointer">

@@ -48,11 +48,11 @@ export const CARDAPIOS_PRONTOS = [
     // Precisa do banco com os tamanhos (migração 2026-11-13).
     comTamanhos: true,
     produtos: [
-      { nome: 'Pizza Calabresa', tamanhos: [{ nome: 'P', preco: 35 }, { nome: 'M', preco: 45 }, { nome: 'G', preco: 55 }] },
-      { nome: 'Pizza Mussarela', tamanhos: [{ nome: 'P', preco: 33 }, { nome: 'M', preco: 43 }, { nome: 'G', preco: 52 }] },
-      { nome: 'Pizza Frango com catupiry', tamanhos: [{ nome: 'P', preco: 38 }, { nome: 'M', preco: 48 }, { nome: 'G', preco: 58 }] },
-      { nome: 'Pizza Portuguesa', tamanhos: [{ nome: 'P', preco: 38 }, { nome: 'M', preco: 48 }, { nome: 'G', preco: 58 }] },
-      { nome: 'Pizza Marguerita', tamanhos: [{ nome: 'P', preco: 36 }, { nome: 'M', preco: 46 }, { nome: 'G', preco: 56 }] },
+      { nome: 'Pizza Calabresa', meio_a_meio: true, tamanhos: [{ nome: 'P', preco: 35 }, { nome: 'M', preco: 45 }, { nome: 'G', preco: 55 }] },
+      { nome: 'Pizza Mussarela', meio_a_meio: true, tamanhos: [{ nome: 'P', preco: 33 }, { nome: 'M', preco: 43 }, { nome: 'G', preco: 52 }] },
+      { nome: 'Pizza Frango com catupiry', meio_a_meio: true, tamanhos: [{ nome: 'P', preco: 38 }, { nome: 'M', preco: 48 }, { nome: 'G', preco: 58 }] },
+      { nome: 'Pizza Portuguesa', meio_a_meio: true, tamanhos: [{ nome: 'P', preco: 38 }, { nome: 'M', preco: 48 }, { nome: 'G', preco: 58 }] },
+      { nome: 'Pizza Marguerita', meio_a_meio: true, tamanhos: [{ nome: 'P', preco: 36 }, { nome: 'M', preco: 46 }, { nome: 'G', preco: 56 }] },
       { nome: 'Refrigerante lata', preco: 6, vai_para_cozinha: false },
       { nome: 'Refrigerante 2 litros', preco: 14, vai_para_cozinha: false },
     ],

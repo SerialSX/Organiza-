@@ -7,7 +7,18 @@ import { LIMITE_NOME_TAMANHO, MAXIMO_DE_TAMANHOS, MINIMO_DE_TAMANHOS, limparNome
 const LIMITE_INGREDIENTES = 30;
 const PRECO_MAXIMO = 99999.99;
 
-export const FORM_VAZIO = { nome: '', preco: '', custo: '', lista: [], vaiParaCozinha: true, comTamanhos: false, tamanhos: [] };
+export const FORM_VAZIO = {
+  nome: '',
+  preco: '',
+  custo: '',
+  lista: [],
+  vaiParaCozinha: true,
+  comTamanhos: false,
+  tamanhos: [],
+  meioAMeio: false,
+  // Só quando o negócio ainda não escolheu: a regra é pedida junto.
+  regraMeioAMeio: null,
+};
 
 let contador = 0;
 // Chave da linha de um tamanho no formulário (o novo ainda não tem id do banco).
@@ -74,7 +85,7 @@ function validarTamanhos(form, estimados, erros) {
 }
 
 // porId: ingredientes por id (para o custo estimado).
-// Devolve { erros } ou { dados: { nome, vai_para_cozinha, preco, custo, tamanhos, lista } }:
+// Devolve { erros } ou { dados: { nome, vai_para_cozinha, meio_a_meio, preco, custo, tamanhos, lista } }:
 // sem tamanhos, tamanhos é null e lista é [{ ingrediente_id, quantidade }];
 // com tamanhos, lista é [{ ingrediente_id, porChave: { [chave]: quantidade } }]
 // e preco/custo são os do primeiro tamanho.
@@ -83,7 +94,7 @@ export function validarProduto(form, porId) {
   const nome = form.nome.trim();
   if (!nome) erros.nome = 'Digite o nome do produto.';
   if (form.lista.length > LIMITE_INGREDIENTES) erros.lista = `Um produto pode ter até ${LIMITE_INGREDIENTES} ingredientes.`;
-  const base = { nome, vai_para_cozinha: form.vaiParaCozinha !== false };
+  const base = { nome, vai_para_cozinha: form.vaiParaCozinha !== false, meio_a_meio: Boolean(form.meioAMeio) };
 
   if (form.comTamanhos) {
     const tamanhos = validarTamanhos(form, custosDosTamanhos(form, porId), erros);

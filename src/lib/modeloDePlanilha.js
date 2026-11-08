@@ -3,16 +3,16 @@
 // Aba 1 "Cardápio": só o cabeçalho, para preencher (é a que o Organiza+ lê).
 // Aba 2 "Como preencher": explicação e um exemplo (não é importada).
 
-export const COLUNAS_DO_MODELO = ['Produto', 'Tamanho', 'Preço', 'Vai para a cozinha?', 'Custo (se souber)'];
+export const COLUNAS_DO_MODELO = ['Produto', 'Tamanho', 'Preço', 'Vai para a cozinha?', 'Custo (se souber)', 'Meio a meio?'];
 export const NOME_DO_MODELO = 'modelo-cardapio-organiza.xlsx';
 
 const EXEMPLO = [
-  ['Pastel de carne', null, 9, 'Sim', 3.5],
-  ['X-Burguer', null, 18, 'Sim', null],
-  ['Pizza Calabresa', 'P', 35, 'Sim', null],
-  ['Pizza Calabresa', 'M', 45, 'Sim', null],
-  ['Pizza Calabresa', 'G', 55, 'Sim', null],
-  ['Refrigerante lata', null, 6, 'Não', 3],
+  ['Pastel de carne', null, 9, 'Sim', 3.5, 'Não'],
+  ['X-Burguer', null, 18, 'Sim', null, 'Não'],
+  ['Pizza Calabresa', 'P', 35, 'Sim', null, 'Sim'],
+  ['Pizza Calabresa', 'M', 45, 'Sim', null, 'Sim'],
+  ['Pizza Calabresa', 'G', 55, 'Sim', null, 'Sim'],
+  ['Refrigerante lata', null, 6, 'Não', 3, 'Não'],
 ];
 
 const COMO_PREENCHER = [
@@ -22,6 +22,7 @@ const COMO_PREENCHER = [
   'Preço: o valor de venda, como 12,50.',
   'Vai para a cozinha?: "Sim" para o que precisa preparar. "Não" para bebida e o que já sai pronto. Em branco: o Organiza+ decide e você confere antes de salvar.',
   'Custo (se souber): quanto você gasta para fazer. Pode deixar em branco.',
+  'Meio a meio?: "Sim" nos sabores que podem ir dois numa pizza só (do mesmo tamanho). Em branco ou "Não": não é meio a meio.',
   'Depois, em Produtos, toque em "Importar planilha" e escolha este arquivo. Nada é salvo antes de você conferir.',
 ];
 
@@ -42,20 +43,20 @@ function linhaXml(valores, numero, estilos = []) {
 
 const CABECA = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 const NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
-const LARGURAS = '<cols><col min="1" max="1" width="34" customWidth="1"/><col min="2" max="2" width="12" customWidth="1"/><col min="3" max="3" width="12" customWidth="1"/><col min="4" max="4" width="20" customWidth="1"/><col min="5" max="5" width="18" customWidth="1"/></cols>';
+const LARGURAS = '<cols><col min="1" max="1" width="34" customWidth="1"/><col min="2" max="2" width="12" customWidth="1"/><col min="3" max="3" width="12" customWidth="1"/><col min="4" max="4" width="20" customWidth="1"/><col min="5" max="5" width="18" customWidth="1"/><col min="6" max="6" width="16" customWidth="1"/></cols>';
 const TOPO_FIXO =
   '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>';
 // Estilos: 0 normal, 1 negrito, 2 dinheiro (0,00), 3 negrito grande.
 const ESTILOS = `${CABECA}<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts><fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 
 function abaCardapio() {
-  const cabecalho = linhaXml(COLUNAS_DO_MODELO, 1, [1, 1, 1, 1, 1]);
+  const cabecalho = linhaXml(COLUNAS_DO_MODELO, 1, [1, 1, 1, 1, 1, 1]);
   // Preço e custo já com o formato de dinheiro nas linhas para preencher.
   const colunasComFormato = LARGURAS.replace('max="3" width="12" customWidth="1"', 'max="3" width="12" style="2" customWidth="1"').replace(
     'max="5" width="18" customWidth="1"',
     'max="5" width="18" style="2" customWidth="1"',
   );
-  return `${CABECA}<worksheet ${NS}><dimension ref="A1:E1"/>${TOPO_FIXO}${colunasComFormato}<sheetData>${cabecalho}</sheetData><dataValidations count="1"><dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="Sim ou Não" error="Escolha Sim ou Não." sqref="D2:D1000"><formula1>"Sim,Não"</formula1></dataValidation></dataValidations></worksheet>`;
+  return `${CABECA}<worksheet ${NS}><dimension ref="A1:F1"/>${TOPO_FIXO}${colunasComFormato}<sheetData>${cabecalho}</sheetData><dataValidations count="1"><dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="Sim ou Não" error="Escolha Sim ou Não." sqref="D2:D1000 F2:F1000"><formula1>"Sim,Não"</formula1></dataValidation></dataValidations></worksheet>`;
 }
 
 function abaComoPreencher() {
@@ -65,9 +66,9 @@ function abaComoPreencher() {
   for (const texto of COMO_PREENCHER.slice(1)) linhas.push(linhaXml([texto], n++));
   n++;
   linhas.push(linhaXml(['Exemplo preenchido:'], n++, [1]));
-  linhas.push(linhaXml(COLUNAS_DO_MODELO, n++, [1, 1, 1, 1, 1]));
-  for (const ex of EXEMPLO) linhas.push(linhaXml(ex, n++, [0, 0, 2, 0, 2]));
-  return `${CABECA}<worksheet ${NS}><dimension ref="A1:E${n - 1}"/>${LARGURAS}<sheetData>${linhas.join('')}</sheetData></worksheet>`;
+  linhas.push(linhaXml(COLUNAS_DO_MODELO, n++, [1, 1, 1, 1, 1, 1]));
+  for (const ex of EXEMPLO) linhas.push(linhaXml(ex, n++, [0, 0, 2, 0, 2, 0]));
+  return `${CABECA}<worksheet ${NS}><dimension ref="A1:F${n - 1}"/>${LARGURAS}<sheetData>${linhas.join('')}</sheetData></worksheet>`;
 }
 
 function partes() {

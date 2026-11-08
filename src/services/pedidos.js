@@ -4,6 +4,7 @@ import { hojeNoNegocio } from '../lib/formatadores';
 import { lerDemo, salvarDemo, assinarDemo, novoId } from './demoStore';
 import { limparNomeMesa } from '../lib/mesas';
 import { emAberto } from '../lib/fimDoDia';
+import { custoMeioAMeio, nomeDoItem, precoMeioAMeio, tamanhoQueCombina } from '../lib/meioAMeio';
 
 const CAMPOS_PEDIDO_BASE =
   'id, numero, mesa, dia, status, criado_em, alterado_em, pronto_em, cancelado_em, motivo_cancelamento, identificacao, forma_pagamento, pago_em';
@@ -25,6 +26,10 @@ const NIVEIS_DE_CAMPOS = [
 const CAMPOS_ITEM = 'id, produto_id, quantidade, observacao, faltou, faltou_ingredientes';
 // Migração 2026-11-13 (tamanhos): o tamanho escolhido (id e nome copiado).
 const CAMPOS_DO_TAMANHO = ', tamanho_id, tamanho';
+// Migração 2026-11-14 (meio a meio): o segundo sabor (id, tamanho e nome copiado).
+const CAMPOS_DO_MEIO_A_MEIO = ', segundo_produto_id, segundo_tamanho_id, segundo_sabor';
+// Do banco mais novo para o mais antigo, as colunas extras dos itens.
+const NIVEIS_DOS_ITENS = [CAMPOS_DO_TAMANHO + CAMPOS_DO_MEIO_A_MEIO, CAMPOS_DO_TAMANHO, ''];
 const PRODUTO_DO_ITEM = 'produtos ( nome, vai_para_cozinha, produto_ingredientes ( ingrediente_id, ingredientes ( nome ) ) )';
 const ITENS_ABERTOS = (t) => `itens_pedido ( ${CAMPOS_ITEM}${t}, ${PRODUTO_DO_ITEM} )`;
 const ITENS_COM_VALORES = (t) => `itens_pedido ( ${CAMPOS_ITEM}${t}, preco_unitario, custo_unitario, ${PRODUTO_DO_ITEM} )`;
@@ -37,24 +42,50 @@ const ITENS_DO_PERIODO = (t) =>
 // a cozinha e o caixa continuarem funcionando (o aviso de banco desatualizado
 // aparece para a equipe).
 let nivelDoBanco = 0;
-let itensComTamanho = true;
+let nivelDosItens = 0;
 
 // 42703 / PGRST204: coluna que não existe, ou seja, banco ainda sem a migração.
 export function colunaInexistente(error) {
   return error?.code === '42703' || error?.code === 'PGRST204' || /does not exist/i.test(error?.message ?? '');
 }
 
-// itens: função que monta a parte dos itens (com ou sem as colunas do tamanho).
-// A migração dos tamanhos é a mais nova: sem ela, tira primeiro o tamanho e
-// só depois desce os níveis das colunas do pedido.
+// itens: função que monta a parte dos itens (com ou sem as colunas do tamanho
+// e do meio a meio). As migrações dos itens são as mais novas: sem elas, tira
+// primeiro o meio a meio, depois o tamanho, e só então desce os níveis das
+// colunas do pedido.
 async function consultarPedidos(montar, itens) {
   for (;;) {
-    const resposta = await montar(`${NIVEIS_DE_CAMPOS[nivelDoBanco]}, ${itens(itensComTamanho ? CAMPOS_DO_TAMANHO : '')}`);
+    const resposta = await montar(`${NIVEIS_DE_CAMPOS[nivelDoBanco]}, ${itens(NIVEIS_DOS_ITENS[nivelDosItens])}`);
     if (!colunaInexistente(resposta.error)) return resposta;
-    if (itensComTamanho) itensComTamanho = false;
+    // Faltou a coluna do tamanho: o banco também não tem a do meio a meio (que
+    // é mais nova); pula direto para sem as duas.
+    if (nivelDosItens < NIVEIS_DOS_ITENS.length - 1 && /\btamanho/.test(resposta.error?.message ?? '')) {
+      nivelDosItens = NIVEIS_DOS_ITENS.length - 1;
+    } else if (nivelDosItens < NIVEIS_DOS_ITENS.length - 1) nivelDosItens++;
     else if (nivelDoBanco < NIVEIS_DE_CAMPOS.length - 1) nivelDoBanco++;
     else return resposta;
   }
+}
+
+// O "Faltou" da cozinha no meio a meio: os ingredientes dos dois sabores. O
+// segundo sabor não tem ligação direta com o item (ver a migração 2026-11-14),
+// então os ingredientes dele vêm numa consulta à parte, só quando há algum.
+async function comIngredientesDoSegundoSabor(pedidos) {
+  const ids = [...new Set(pedidos.flatMap((p) => (p.itens_pedido ?? []).map((i) => i.segundo_produto_id).filter(Boolean)))];
+  if (!ids.length) return pedidos;
+  const { data, error } = await supabase
+    .from('produtos')
+    .select('id, produto_ingredientes ( ingrediente_id, ingredientes ( nome ) )')
+    .in('id', ids);
+  // Sem a lista do segundo sabor, a cozinha ainda vê o pedido e o "Faltou" do primeiro.
+  if (error) return pedidos;
+  const porId = new Map(data.map((p) => [p.id, p.produto_ingredientes ?? []]));
+  return pedidos.map((p) => ({
+    ...p,
+    itens_pedido: (p.itens_pedido ?? []).map((i) =>
+      i.segundo_produto_id ? { ...i, ingredientes_do_segundo: porId.get(i.segundo_produto_id) ?? [] } : i,
+    ),
+  }));
 }
 
 // Função do banco que não existe com esses parâmetros: banco ainda sem a migração.
@@ -138,12 +169,20 @@ function porNome(a, b) {
 
 // "Pizza Calabresa (G)": o que aparece na conta, no caixa e nos resumos.
 export function nomeComTamanho(produto, tamanho) {
-  return tamanho ? `${produto} (${tamanho})` : produto;
+  return nomeDoItem(produto, tamanho, null);
 }
 
-// ingredientes: [{ id, nome }] do produto, hoje
+// Os dois sabores juntos, sem repetir o que está nos dois ("queijo").
+function juntarIngredientes(...listas) {
+  const vistos = new Map();
+  for (const i of listas.flat()) if (!vistos.has(i.id)) vistos.set(i.id, i);
+  return [...vistos.values()];
+}
+
+// ingredientes: [{ id, nome }] do produto (e do segundo sabor), hoje
 function normalizarItem(i, nome, ingredientes = []) {
   const tamanho = i.tamanho ?? null;
+  const segundoSabor = i.segundo_sabor ?? null;
   return {
     id: i.id,
     produto_id: i.produto_id,
@@ -152,7 +191,11 @@ function normalizarItem(i, nome, ingredientes = []) {
     tamanho_id: i.tamanho_id ?? null,
     tamanho,
     produto_nome: nome,
-    nome: nomeComTamanho(nome, tamanho),
+    // Meio a meio: o segundo sabor (id para editar, nome gravado no pedido).
+    segundo_produto_id: i.segundo_produto_id ?? null,
+    segundo_tamanho_id: i.segundo_tamanho_id ?? null,
+    segundo_sabor: segundoSabor,
+    nome: nomeDoItem(nome, tamanho, segundoSabor),
     quantidade: i.quantidade,
     observacao: i.observacao ?? null,
     faltou: Boolean(i.faltou),
@@ -199,7 +242,11 @@ function normalizarSupabase(p) {
       normalizarItem(
         { ...i, vai_para_cozinha: i.produtos?.vai_para_cozinha },
         i.produtos?.nome ?? 'Produto removido',
-        (i.produtos?.produto_ingredientes ?? []).map((pi) => ({ id: pi.ingrediente_id, nome: pi.ingredientes?.nome ?? '' })),
+        juntarIngredientes(
+          ...[i.produtos?.produto_ingredientes ?? [], i.ingredientes_do_segundo ?? []].map((lista) =>
+            lista.map((pi) => ({ id: pi.ingrediente_id, nome: pi.ingredientes?.nome ?? '' })),
+          ),
+        ),
       ),
     ),
   );
@@ -233,7 +280,7 @@ function montarDemo(db, filtro, { comValores }) {
             const item = normalizarItem(
               { ...i, vai_para_cozinha: paraCozinha[i.produto_id] },
               nomes[i.produto_id] ?? 'Produto removido',
-              ingredientesDo(i.produto_id),
+              juntarIngredientes(ingredientesDo(i.produto_id), i.segundo_produto_id ? ingredientesDo(i.segundo_produto_id) : []),
             );
             return comValores ? item : { ...item, preco_unitario: null, custo_unitario: null };
           }),
@@ -245,9 +292,30 @@ function falhaDemo(mensagem) {
   throw new Error(mensagem);
 }
 
-// Mesma chave do editar_pedido no banco: produto e tamanho.
-function chaveDoItem(produtoId, tamanhoId) {
-  return `${produtoId}|${tamanhoId ?? ''}`;
+// Mesma chave do editar_pedido no banco: produto, tamanho e segundo sabor.
+function chaveDoItem(produtoId, tamanhoId, segundoId) {
+  return `${produtoId}|${tamanhoId ?? ''}|${segundoId ?? ''}`;
+}
+
+// Segundo sabor de um item novo, com as regras do gravar_itens_pedido.
+function segundoSaborDemo(db, produto, tamanho, segundo) {
+  if (!produto.meio_a_meio) falhaDemo(`${produto.nome} não pode ser meio a meio. Revise o pedido.`);
+  if (segundo.arquivado) falhaDemo(`O sabor ${segundo.nome} saiu do cardápio. Lance o pedido de novo.`);
+  if (!segundo.meio_a_meio) falhaDemo(`${segundo.nome} não pode ser meio a meio. Revise o pedido.`);
+  if (!segundo.disponivel) falhaDemo(`O sabor ${segundo.nome} esgotou. Revise o pedido.`);
+  const tamanhos = (db.produto_tamanhos ?? []).filter((t) => t.produto_id === segundo.id && !t.arquivado);
+  const doSegundo = tamanhoQueCombina({ tamanhos }, tamanho?.nome ?? null);
+  if (doSegundo === undefined) {
+    falhaDemo(
+      tamanho
+        ? `O sabor ${segundo.nome} não tem o tamanho ${tamanho.nome}. Revise o pedido.`
+        : 'Os dois sabores precisam ter o mesmo tamanho. Revise o pedido.',
+    );
+  }
+  if (doSegundo && !doSegundo.disponivel) falhaDemo(`O sabor ${segundo.nome} esgotou no tamanho ${tamanho.nome}. Revise o pedido.`);
+  const regra = db.perfil?.regra_meio_a_meio ?? null;
+  if (!regra) falhaDemo('Escolha em Minha conta como cobrar o meio a meio.');
+  return { regra, tamanho: doSegundo, doCadastro: doSegundo ?? segundo };
 }
 
 // Mesmas regras (e textos) do gravar_itens_pedido no banco.
@@ -260,7 +328,10 @@ function itensDemo(db, pedidoId, itens, anteriores = {}) {
     if (!produto) falhaDemo('Um dos produtos esgotou. Revise o pedido.');
     const tamanho = i.tamanho_id ? tamanhos.find((t) => t.id === i.tamanho_id && t.produto_id === produto.id) : null;
     if (i.tamanho_id && !tamanho) falhaDemo('Um dos tamanhos saiu do cardápio. Lance o pedido de novo.');
-    const anterior = anteriores[chaveDoItem(produto.id, tamanho?.id)];
+    const segundo = i.segundo_produto_id ? db.produtos.find((p) => p.id === i.segundo_produto_id) : null;
+    if (i.segundo_produto_id && !segundo) falhaDemo('Um dos sabores saiu do cardápio. Lance o pedido de novo.');
+    if (segundo && segundo.id === produto.id) falhaDemo('Escolha dois sabores diferentes para o meio a meio.');
+    const anterior = anteriores[chaveDoItem(produto.id, tamanho?.id, segundo?.id)];
     if (!anterior) {
       if (!produto.disponivel || produto.arquivado) falhaDemo('Um dos produtos esgotou. Revise o pedido.');
       if (!tamanho && tamanhos.some((t) => t.produto_id === produto.id && !t.arquivado)) {
@@ -270,18 +341,28 @@ function itensDemo(db, pedidoId, itens, anteriores = {}) {
       if (tamanho && !tamanho.disponivel) falhaDemo('Um dos produtos esgotou. Revise o pedido.');
     }
     const doCadastro = tamanho ?? produto;
+    const meio = segundo && !anterior ? segundoSaborDemo(db, produto, tamanho, segundo) : null;
+    let preco = anterior ? anterior.preco : doCadastro.preco;
+    let custo = anterior ? anterior.custo : (doCadastro.custo ?? null);
+    if (meio) {
+      preco = precoMeioAMeio(meio.regra, doCadastro.preco, meio.doCadastro.preco);
+      custo = custoMeioAMeio(doCadastro.custo ?? null, meio.doCadastro.custo ?? null);
+    }
     return {
       id: novoId(),
       pedido_id: pedidoId,
       produto_id: produto.id,
       tamanho_id: tamanho?.id ?? null,
       tamanho: anterior ? (anterior.tamanho ?? tamanho?.nome ?? null) : (tamanho?.nome ?? null),
+      segundo_produto_id: segundo?.id ?? null,
+      segundo_tamanho_id: segundo ? (anterior ? (anterior.segundo_tamanho_id ?? null) : (meio.tamanho?.id ?? null)) : null,
+      segundo_sabor: segundo ? (anterior ? (anterior.segundo_sabor ?? segundo.nome) : segundo.nome) : null,
       quantidade: i.quantidade,
       observacao: limparObservacao(i.observacao),
       faltou: false,
       faltou_ingredientes: [],
-      preco_unitario: anterior ? anterior.preco : doCadastro.preco,
-      custo_unitario: anterior ? anterior.custo : (doCadastro.custo ?? null),
+      preco_unitario: preco,
+      custo_unitario: custo,
     };
   });
 }
@@ -297,12 +378,13 @@ function atualizarPedidoDemo(db, id, alteracoes) {
   return { ...db, pedidos: db.pedidos.map((p) => (p.id === id ? { ...p, ...alteracoes, atualizado_em: agora } : p)) };
 }
 
-// tamanho_id só vai quando existe: o banco sem a migração dos tamanhos não
-// conhece a chave e segue aceitando os pedidos de sempre.
+// tamanho_id e segundo_produto_id só vão quando existem: o banco sem as
+// migrações não conhece as chaves e segue aceitando os pedidos de sempre.
 function itensParaEnvio(itens) {
-  return itens.map(({ produto_id, tamanho_id, quantidade, observacao }) => ({
+  return itens.map(({ produto_id, tamanho_id, segundo_produto_id, quantidade, observacao }) => ({
     produto_id,
     ...(tamanho_id ? { tamanho_id } : {}),
+    ...(segundo_produto_id ? { segundo_produto_id } : {}),
     quantidade,
     observacao: limparObservacao(observacao),
   }));
@@ -419,10 +501,12 @@ export async function editarPedido(id, itens, versao, mesa = null, nomeMesa = nu
     }
     const anteriores = {};
     for (const i of db.itens_pedido.filter((item) => item.pedido_id === id)) {
-      anteriores[chaveDoItem(i.produto_id, i.tamanho_id)] = {
+      anteriores[chaveDoItem(i.produto_id, i.tamanho_id, i.segundo_produto_id)] = {
         preco: i.preco_unitario,
         custo: i.custo_unitario ?? null,
         tamanho: i.tamanho ?? null,
+        segundo_tamanho_id: i.segundo_tamanho_id ?? null,
+        segundo_sabor: i.segundo_sabor ?? null,
       };
     }
     const novosItens = itensDemo(db, id, itens, anteriores);
@@ -564,8 +648,11 @@ export async function marcarIngredienteFaltou(itemId, ingredienteId, faltou) {
     const item = db.itens_pedido.find((i) => i.id === itemId);
     const pedido = item && db.pedidos.find((p) => p.id === item.pedido_id);
     if (!pedido || !STATUS_NA_FILA.includes(pedido.status)) falhaDemo('Este pedido não está mais na fila.');
+    // Meio a meio: vale ingrediente de qualquer um dos dois sabores.
     const naLista = (db.produto_ingredientes ?? []).some(
-      (pi) => pi.produto_id === item.produto_id && pi.ingrediente_id === ingredienteId,
+      (pi) =>
+        (pi.produto_id === item.produto_id || (item.segundo_produto_id && pi.produto_id === item.segundo_produto_id)) &&
+        pi.ingrediente_id === ingredienteId,
     );
     const nome = (db.ingredientes ?? []).find((i) => i.id === ingredienteId)?.nome;
     if (!naLista || !nome) falhaDemo('Este ingrediente não está mais no produto. Atualize a tela.');
@@ -637,7 +724,7 @@ export async function listarPedidosAbertos() {
     ITENS_ABERTOS,
   );
   if (error) throw new Error('Não foi possível carregar os pedidos.');
-  return data.map(normalizarSupabase);
+  return (await comIngredientesDoSegundoSabor(data)).map(normalizarSupabase);
 }
 
 // Pendências do dia anterior: pedidos de dias antes de hoje (até 60 dias) que
@@ -688,7 +775,8 @@ export async function buscarPedidoComValores(id) {
     ITENS_COM_VALORES,
   );
   if (error || !data) throw new Error('Não foi possível abrir o pedido.');
-  return normalizarSupabase(data);
+  const [comLista] = await comIngredientesDoSegundoSabor([data]);
+  return normalizarSupabase(comLista);
 }
 
 export async function listarPedidosDoPeriodo(inicio, fim) {

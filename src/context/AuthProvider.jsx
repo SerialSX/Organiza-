@@ -19,6 +19,8 @@ const PERFIL_DEMO = {
   // boas-vindas apaga este valor para ver a pessoa respondendo.
   modo_atendimento: 'balcao_e_mesa',
   ...MESAS_DEMO,
+  // Como no banco: o dono escolhe ao marcar o primeiro produto meio a meio.
+  regra_meio_a_meio: null,
 };
 
 function perfilDemo() {
@@ -207,6 +209,26 @@ export function AuthProvider({ children }) {
     return { erro: null };
   }, []);
 
+  // Como cobra o meio a meio: 'mais_caro' ou 'media'. Só o dono. Vale para os
+  // pedidos novos; os feitos guardam o preço que tinham.
+  const configurarMeioAMeio = useCallback(async (regra) => {
+    if (!isSupabaseConfigured) {
+      const db = lerDemo();
+      salvarDemo({ ...db, perfil: { ...db.perfil, regra_meio_a_meio: regra } });
+      setPerfil(perfilDemo());
+      return { erro: null };
+    }
+    const { error } = await supabase.rpc('configurar_meio_a_meio', { p_regra: regra });
+    if (error) {
+      if (error.code === 'PGRST202' || error.code === '42883') {
+        return { erro: 'O banco de dados ainda não aceita o meio a meio. Avise quem cuida do sistema.' };
+      }
+      return { erro: traduzirErro(error) };
+    }
+    setPerfil((p) => ({ ...p, regra_meio_a_meio: regra }));
+    return { erro: null };
+  }, []);
+
   // Para quando um aparelho foi perdido ou um funcionário saiu com a senha.
   const sairDeTodosOsAparelhos = useCallback(async () => {
     if (!isSupabaseConfigured) return { erro: null };
@@ -259,6 +281,7 @@ export function AuthProvider({ children }) {
       confirmarSenhaAtual,
       configurarAtendimento,
       configurarMesas,
+      configurarMeioAMeio,
       sair,
       sairDeTodosOsAparelhos,
       excluirConta,
@@ -277,6 +300,7 @@ export function AuthProvider({ children }) {
       confirmarSenhaAtual,
       configurarAtendimento,
       configurarMesas,
+      configurarMeioAMeio,
       sair,
       sairDeTodosOsAparelhos,
       excluirConta,

@@ -30,6 +30,11 @@ const PERGUNTAS = [
       'Não: é um produto só, com tamanhos. No cadastro, marque "Tem tamanhos?" e dê o preço de cada um (os botões "P · M · G" preenchem os nomes). Com os ingredientes, diga quanto vai em cada tamanho e o custo de cada um sai sozinho. Na tela de pedidos aparece um botão por tamanho, com o preço; a cozinha vê o tamanho grande, antes do nome. Acabou só a G? Desligue só ela, em Produtos ou nos Esgotados da Cozinha. Na planilha, use a coluna "Tamanho" e repita o nome numa linha para cada tamanho.',
   },
   {
+    pergunta: 'Vendo pizza meio a meio. Como lanço?',
+    resposta:
+      'Em Produtos, marque "Pode ser meio a meio" em cada sabor (o cardápio pronto "Pizzaria" já vem marcado). Na primeira vez, o Organiza+ pergunta como você cobra: pelo sabor mais caro ou pela média dos dois. Dá para mudar depois em Minha conta, e vale só para os pedidos novos. No pedido, toque em "½ Meio a meio" no cartão da pizza, escolha o tamanho e a outra metade: só aparecem os sabores marcados do mesmo tamanho (G com G), e o que esgotou fica riscado. A cozinha vê "Meio a meio" com uma linha para cada metade e pode dizer o que faltou de qualquer um dos sabores. No relatório, cada sabor conta meia pizza.',
+  },
+  {
     pergunta: 'A internet caiu. Perco o pedido?',
     resposta:
       'Não. O pedido fica guardado no aparelho e vai para a cozinha sozinho quando a internet voltar, sem duplicar. A senha aparece assim que ele sair. Enquanto isso, a tela mostra quantos pedidos estão esperando.',

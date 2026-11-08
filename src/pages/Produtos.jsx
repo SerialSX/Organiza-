@@ -11,7 +11,8 @@ import Abas from '../components/ui/Abas';
 import AbaIngredientes from '../components/produtos/AbaIngredientes';
 import IngredientesDoProduto from '../components/produtos/IngredientesDoProduto';
 import ImportarCardapio from '../components/produtos/ImportarCardapio';
-import { ProductsIcon, PlusIcon, PencilIcon, TrashIcon, CloseIcon, BoxIcon, CameraIcon } from '../components/icons/AppIcons';
+import ImportarPlanilha from '../components/produtos/ImportarPlanilha';
+import { ProductsIcon, PlusIcon, PencilIcon, TrashIcon, CloseIcon, BoxIcon, CameraIcon, SheetIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
 import { useProdutos } from '../hooks/useProdutos';
 import { useIngredientes } from '../hooks/useIngredientes';
@@ -438,6 +439,7 @@ export default function Produtos() {
   // null = fechado; objeto = formulário aberto (com id quando editando)
   const [formulario, setFormulario] = useState(null);
   const [erro, setErro] = useState('');
+  // false, 'foto' (cardápio pela IA) ou 'planilha'
   const [importando, setImportando] = useState(false);
   const [mensagem, setMensagem] = useState('');
   // Produto novo que já foi criado, mas a lista de ingredientes falhou: a
@@ -471,15 +473,25 @@ export default function Produtos() {
     abrir(FORM_VAZIO);
   }
 
-  function abrirImportacao() {
+  function abrirImportacao(jeito = 'foto') {
     setErro('');
     setMensagem('');
-    setImportando(true);
+    setImportando(jeito);
   }
 
   function aoImportar(quantidade) {
     setImportando(false);
     setMensagem(quantidade === 1 ? '1 produto importado do cardápio.' : `${quantidade} produtos importados do cardápio.`);
+    recarregar();
+  }
+
+  function aoImportarPlanilha({ criados, atualizados, repetidos }) {
+    setImportando(false);
+    const partes = [];
+    if (criados) partes.push(criados === 1 ? '1 produto novo entrou no cardápio.' : `${criados} produtos novos entraram no cardápio.`);
+    if (atualizados) partes.push(atualizados === 1 ? '1 produto foi atualizado.' : `${atualizados} produtos foram atualizados.`);
+    if (repetidos) partes.push(repetidos === 1 ? '1 já estava no cardápio e não foi repetido.' : `${repetidos} já estavam no cardápio e não foram repetidos.`);
+    setMensagem(partes.join(' ') || 'Nada mudou no cardápio.');
     recarregar();
   }
 
@@ -511,9 +523,13 @@ export default function Produtos() {
       >
         {aba === 'produtos' && !formulario && !importando && produtos.length > 0 && (
           <div className="flex flex-wrap gap-3">
-            <Botao variante="secundaria" tamanho="grande" onClick={abrirImportacao}>
+            <Botao variante="secundaria" tamanho="grande" onClick={() => abrirImportacao('foto')}>
               <CameraIcon className="w-5 h-5" />
               Importar do cardápio
+            </Botao>
+            <Botao variante="secundaria" tamanho="grande" onClick={() => abrirImportacao('planilha')}>
+              <SheetIcon className="w-5 h-5" />
+              Importar planilha
             </Botao>
             <Botao cor={ACCENT} tamanho="grande" onClick={abrirNovo}>
               <PlusIcon className="w-5 h-5" />
@@ -544,7 +560,16 @@ export default function Produtos() {
       </div>
 
       <div hidden={aba !== 'produtos'}>
-        {importando && (
+        {importando === 'planilha' && (
+          <ImportarPlanilha
+            produtos={produtos}
+            negocioId={perfil.negocio_id}
+            onFechar={() => setImportando(false)}
+            onImportado={aoImportarPlanilha}
+          />
+        )}
+
+        {importando === 'foto' && (
           <ImportarCardapio
             produtos={produtos}
             negocioId={perfil.negocio_id}
@@ -580,14 +605,18 @@ export default function Produtos() {
               icon={ProductsIcon}
               accent={ACCENT}
               titulo="Nenhum produto ainda"
-              texto="Comece com um cardápio pronto e só ajuste os preços, ou cadastre um por um."
+              texto="Comece com um cardápio pronto e só ajuste os preços, importe a sua planilha ou cadastre um por um."
             >
               <CardapioPronto negocioId={perfil.negocio_id} onPronto={recarregar} onErro={setErro} />
               <Botao variante="secundaria" tamanho="grande" onClick={abrirNovo} className="mt-2">
                 <PlusIcon className="w-5 h-5" />
                 Cadastrar o primeiro produto
               </Botao>
-              <Botao variante="secundaria" tamanho="grande" onClick={abrirImportacao} className="mt-2">
+              <Botao variante="secundaria" tamanho="grande" onClick={() => abrirImportacao('planilha')} className="mt-2">
+                <SheetIcon className="w-5 h-5" />
+                Importar planilha
+              </Botao>
+              <Botao variante="secundaria" tamanho="grande" onClick={() => abrirImportacao('foto')} className="mt-2">
                 <CameraIcon className="w-5 h-5" />
                 Importar do cardápio
               </Botao>

@@ -147,6 +147,7 @@ Sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, os services usam `demoStore.js
 ### Fase 2. Produtos — pronta
 - Cadastrar, editar, marcar esgotado, excluir (arquivar) e devolver ao cardápio.
 - Ingredientes com preço de compra; cada produto diz quanto leva de cada um e o custo sai sozinho, com o lucro por unidade na hora.
+- Importar planilha (`src/components/produtos/ImportarPlanilha.jsx`): modelo .xlsx para baixar, montado no navegador (`src/lib/modeloDePlanilha.js`, abas "Cardápio" e "Como preencher"); lê .xlsx e .csv no próprio aparelho, sem biblioteca (`src/lib/lerPlanilha.js`: ZIP com DecompressionStream e XML), e explica o que fazer com .xls, PDF ou arquivo vazio. Acha as colunas pelo título (ou nome e preço sem título), junta linhas repetidas iguais, pede escolha quando o nome se repete com valores diferentes ou já está no cardápio ("Manter como está" é o padrão) e desmarca "Vai para a cozinha" do que parece bebida (`src/lib/importarPlanilha.js`). Os novos entram de uma vez (tudo ou nada) e tentar de novo não duplica. Até 300 produtos por planilha.
 
 ### Fase 3. Pedidos — pronta
 - Toque para adicionar, observação por item, busca quando o cardápio passa de 12 itens.

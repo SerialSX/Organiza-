@@ -15,7 +15,7 @@ const PERGUNTAS = [
   {
     pergunta: 'Quem cadastra o cardápio?',
     resposta:
-      'Você pode começar com um cardápio pronto do seu tipo de negócio ou tirar foto do seu cardápio. Depois é só ajustar os preços.',
+      'Você pode começar com um cardápio pronto do seu tipo de negócio, importar a sua planilha ou tirar foto do seu cardápio. Você confere tudo antes de salvar.',
   },
   {
     pergunta: 'E se a internet cair?',

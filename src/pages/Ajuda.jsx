@@ -18,8 +18,9 @@ const PERGUNTAS = [
     resposta: (
       <>
         Você, em poucos minutos: em <Link to="/produtos">Produtos</Link> dá para começar com um cardápio pronto
-        (pastelaria, hamburgueria, espetaria ou bebidas) e só ajustar os preços. Se preferir, a equipe do projeto
-        cadastra junto com você.
+        (pastelaria, hamburgueria, espetaria ou bebidas) e só ajustar os preços. Já tem os produtos numa planilha? Toque em
+        "Importar planilha": dá para baixar um modelo, e você confere tudo antes de salvar. Se preferir, a equipe do
+        projeto cadastra junto com você.
       </>
     ),
   },

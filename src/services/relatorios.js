@@ -7,8 +7,15 @@ const DIA_MS = 24 * 3600000;
 // Cancelados não entram em faturamento, ticket, lucro nem ranking: são contados
 // à parte, por motivo. O que não foi recebido (foram embora sem pagar) também
 // fica fora e é contado à parte, com o valor perdido.
+// Produto com tamanhos conta junto ("Pizza Calabresa: 30"), com o detalhe de
+// cada tamanho (P 5 · M 10 · G 15); o lucro usa o custo de cada tamanho.
 export function calcularRelatorio(todosOsPedidos, produtos) {
   const custos = Object.fromEntries(produtos.map((p) => [p.id, p.custo]));
+  const custosDosTamanhos = Object.fromEntries(produtos.flatMap((p) => (p.tamanhos ?? []).map((t) => [t.id, t.custo])));
+  // Ordem dos tamanhos no cadastro de hoje; tamanho que saiu do cardápio vai pro fim.
+  const ordemDosTamanhos = Object.fromEntries(
+    produtos.map((p) => [p.id, Object.fromEntries((p.tamanhos ?? []).map((t, i) => [t.nome.toLowerCase(), i]))]),
+  );
   const porProduto = new Map();
   const pedidos = todosOsPedidos.filter((p) => p.status !== 'cancelado' && !p.nao_recebido_em);
   const cancelados = todosOsPedidos.filter((p) => p.status === 'cancelado');
@@ -27,24 +34,37 @@ export function calcularRelatorio(todosOsPedidos, produtos) {
       const receita = item.quantidade * item.preco_unitario;
       // custo_unitario é o custo gravado no pedido. Itens sem ele (dados antigos
       // do modo demonstração) usam o custo atual do produto.
-      const custo = item.custo_unitario !== undefined ? item.custo_unitario : custos[item.produto_id];
+      const custoDoCadastro = item.tamanho_id ? custosDosTamanhos[item.tamanho_id] : custos[item.produto_id];
+      const custo = item.custo_unitario !== undefined ? item.custo_unitario : custoDoCadastro;
       const lucro = custo === null || custo === undefined ? null : item.quantidade * (item.preco_unitario - custo);
 
       faturamento += receita;
       const atual = porProduto.get(item.produto_id) ?? {
         produto_id: item.produto_id,
-        nome: item.nome,
+        nome: item.produto_nome ?? item.nome,
         quantidade: 0,
         faturamento: 0,
         lucro: null,
+        porTamanho: [],
       };
       atual.quantidade += item.quantidade;
+      if (item.tamanho) {
+        const doTamanho = atual.porTamanho.find((t) => t.nome.toLowerCase() === item.tamanho.toLowerCase());
+        if (doTamanho) doTamanho.quantidade += item.quantidade;
+        else atual.porTamanho.push({ nome: item.tamanho, quantidade: item.quantidade });
+      }
       atual.faturamento += receita;
       if (lucro !== null) atual.lucro = (atual.lucro ?? 0) + lucro;
       porProduto.set(item.produto_id, atual);
     }
   }
 
+  for (const p of porProduto.values()) {
+    const ordem = ordemDosTamanhos[p.produto_id] ?? {};
+    const posicao = (t) => ordem[t.nome.toLowerCase()] ?? 99;
+    p.porTamanho.sort((a, b) => posicao(a) - posicao(b));
+    p.detalheTamanhos = detalheDosTamanhos(p.porTamanho);
+  }
   const ranking = [...porProduto.values()].sort((a, b) => b.quantidade - a.quantidade);
   const comLucro = ranking.filter((p) => p.lucro !== null);
   const maisLucrativo = [...comLucro].sort((a, b) => b.lucro - a.lucro)[0] ?? null;
@@ -65,6 +85,11 @@ export function calcularRelatorio(todosOsPedidos, produtos) {
   };
 }
 
+// "P 5 · M 10 · G 15" (vazio para produto sem tamanhos).
+export function detalheDosTamanhos(porTamanho) {
+  return porTamanho.map((t) => `${t.nome} ${t.quantidade}`).join(' · ');
+}
+
 function celulaCsv(valor) {
   const texto = String(valor ?? '');
   return /[;"\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
@@ -77,8 +102,8 @@ function numeroCsv(valor) {
 // Separador ";" e vírgula decimal: é o que o Excel em português abre direto.
 export function rankingParaCsv(ranking) {
   const linhas = [
-    ['Produto', 'Quantidade', 'Faturamento (R$)', 'Lucro estimado (R$)'],
-    ...ranking.map((p) => [p.nome, p.quantidade, numeroCsv(p.faturamento), numeroCsv(p.lucro)]),
+    ['Produto', 'Quantidade', 'Por tamanho', 'Faturamento (R$)', 'Lucro estimado (R$)'],
+    ...ranking.map((p) => [p.nome, p.quantidade, p.detalheTamanhos ?? '', numeroCsv(p.faturamento), numeroCsv(p.lucro)]),
   ];
   return linhas.map((linha) => linha.map(celulaCsv).join(';')).join('\r\n');
 }

@@ -26,7 +26,7 @@ import { usePedidosDoDia } from '../hooks/usePedidosDoDia';
 import { usePendenciasAnteriores } from '../hooks/usePendenciasAnteriores';
 import { useFilaDeEnvio } from '../hooks/useFilaDeEnvio';
 import { useRascunhoDoPedido, novaChaveDeLinha } from '../hooks/useRascunhoDoPedido';
-import { criarPedido, editarPedido, buscarPedidoComValores, ROTULO_FORMA } from '../services/pedidos';
+import { criarPedido, editarPedido, buscarPedidoComValores, nomeComTamanho, ROTULO_FORMA } from '../services/pedidos';
 import { registrarToqueEsgotado } from '../services/produtos';
 import { dispensarSaida, guardarNaFila } from '../services/filaDeEnvio';
 import { destinoDoPedido, formatarMoeda, hojeNoNegocio, numeroDoPedido } from '../lib/formatadores';
@@ -113,8 +113,9 @@ export default function Pedidos() {
 
   // Pedido em edição: { pedido } com os itens e preços como estavam no banco.
   const [edicao, setEdicao] = useState(null);
-  // Uma linha por produto + observação: "X-Burguer" e "X-Burguer sem salada"
-  // ficam separados. [{ chave, produtoId, nome, quantidade, observacao }]
+  // Uma linha por produto, tamanho e observação: "X-Burguer" e "X-Burguer sem
+  // salada" ficam separados, e a pizza P da G também.
+  // [{ chave, produtoId, tamanhoId, nome, quantidade, observacao }]
   const [carrinho, setCarrinho] = useRascunhoDoPedido(perfil.negocio_id, Boolean(edicao));
   const [rascunhoGuardado, setRascunhoGuardado] = useState([]);
   // Balcão ou mesa. Na edição, o destino do pedido montado fica guardado à parte.
@@ -156,24 +157,46 @@ export default function Pedidos() {
   });
 
   const porId = Object.fromEntries(produtos.map((p) => [p.id, p]));
-  // Na edição, produto que já estava no pedido mantém o preço combinado e pode
-  // continuar mesmo que tenha esgotado depois (mesma regra do banco).
-  const precoCombinado = Object.fromEntries((edicao?.pedido.itens ?? []).map((i) => [i.produto_id, i.preco_unitario]));
-  const linhaValida = (linha) => linha.produtoId in precoCombinado || porId[linha.produtoId]?.disponivel;
+  const chaveDe = (produtoId, tamanhoId) => `${produtoId}|${tamanhoId ?? ''}`;
+  // Na edição, o item que já estava no pedido (produto e tamanho) mantém o
+  // preço combinado e pode continuar mesmo que tenha esgotado ou saído do
+  // cardápio depois (mesma regra do banco).
+  const precoCombinado = Object.fromEntries(
+    (edicao?.pedido.itens ?? []).map((i) => [chaveDe(i.produto_id, i.tamanho_id), i.preco_unitario]),
+  );
+  const tamanhoDa = (linha) => porId[linha.produtoId]?.tamanhos?.find((t) => t.id === linha.tamanhoId);
+  // O que a linha é hoje no cardápio: null quando não pode mais entrar.
+  function noCardapio(linha) {
+    const produto = porId[linha.produtoId];
+    if (!produto?.disponivel) return null;
+    if (!linha.tamanhoId) return produto.tamanhos?.length ? null : produto;
+    const tamanho = tamanhoDa(linha);
+    return tamanho?.disponivel ? tamanho : null;
+  }
+  const linhaValida = (linha) => chaveDe(linha.produtoId, linha.tamanhoId) in precoCombinado || noCardapio(linha) !== null;
   const itens = carregando
     ? []
-    : carrinho
-        .filter(linhaValida)
-        .map((linha) => ({ ...linha, preco: precoCombinado[linha.produtoId] ?? porId[linha.produtoId].preco }));
-  const foraDoCardapio = carregando ? [] : [...new Set(carrinho.filter((l) => !linhaValida(l)).map((l) => l.nome))];
+    : carrinho.filter(linhaValida).map((linha) => ({
+        ...linha,
+        preco: precoCombinado[chaveDe(linha.produtoId, linha.tamanhoId)] ?? noCardapio(linha).preco,
+      }));
+  // Saiu do pedido: esgotou, ou o produto mudou de tamanhos (rascunho antigo).
+  const invalidas = carregando ? [] : carrinho.filter((l) => !linhaValida(l));
+  const mudouNoCardapio = (l) =>
+    porId[l.produtoId]?.disponivel && (l.tamanhoId ? !tamanhoDa(l) : porId[l.produtoId].tamanhos?.length > 0);
+  const foraDoCardapio = [...new Set(invalidas.filter((l) => !mudouNoCardapio(l)).map((l) => l.nome))];
+  const tamanhosMudaram = [...new Set(invalidas.filter(mudouNoCardapio).map((l) => l.nome))];
   const totalItens = itens.reduce((s, i) => s + i.quantidade, 0);
   const total = itens.reduce((s, i) => s + i.quantidade * i.preco, 0);
   // Em centavos, para a ordem da soma não criar diferença de 0,0000001.
   const totalPago = edicao ? totalDoPedido(edicao.pedido) : 0;
   const valorMudou = Math.round(total * 100) !== Math.round(totalPago * 100);
+  // Quanto já tem no pedido: por produto e por tamanho ("produto|tamanho").
   const quantidadePorProduto = {};
   for (const linha of itens) {
     quantidadePorProduto[linha.produtoId] = (quantidadePorProduto[linha.produtoId] ?? 0) + linha.quantidade;
+    const chave = chaveDe(linha.produtoId, linha.tamanhoId);
+    quantidadePorProduto[chave] = (quantidadePorProduto[chave] ?? 0) + linha.quantidade;
   }
 
   const { fila, prontos } = separarPedidos(abertos);
@@ -231,19 +254,33 @@ export default function Pedidos() {
     }
   }
 
-  function adicionar(produto) {
+  // tamanho: o botão do tamanho que tocaram (produto com tamanhos).
+  function adicionar(produto, tamanho = null) {
+    const tamanhoId = tamanho?.id ?? null;
     mexerNoCarrinho((c) => {
-      const semObservacao = c.find((l) => l.produtoId === produto.id && !l.observacao.trim());
+      const semObservacao = c.find(
+        (l) => l.produtoId === produto.id && (l.tamanhoId ?? null) === tamanhoId && !l.observacao.trim(),
+      );
       if (semObservacao) {
         return c.map((l) => (l === semObservacao ? { ...l, quantidade: l.quantidade + 1 } : l));
       }
-      return [...c, { chave: novaChaveDeLinha(), produtoId: produto.id, nome: produto.nome, quantidade: 1, observacao: '' }];
+      return [
+        ...c,
+        {
+          chave: novaChaveDeLinha(),
+          produtoId: produto.id,
+          tamanhoId,
+          nome: nomeComTamanho(produto.nome, tamanho?.nome),
+          quantidade: 1,
+          observacao: '',
+        },
+      ];
     });
   }
 
   // Tocou num esgotado: avisa e conta a venda que teria saído errada.
-  function tocouEsgotado(produto) {
-    setAviso(`${produto.nome} está esgotado. Ofereça outra opção ao cliente.`);
+  function tocouEsgotado(produto, tamanho = null) {
+    setAviso(`${nomeComTamanho(produto.nome, tamanho?.nome)} está esgotado. Ofereça outra opção ao cliente.`);
     registrarToqueEsgotado(produto.id);
   }
 
@@ -278,6 +315,7 @@ export default function Pedidos() {
         completo.itens.map((i) => ({
           chave: novaChaveDeLinha(),
           produtoId: i.produto_id,
+          tamanhoId: i.tamanho_id ?? null,
           nome: i.nome,
           quantidade: i.quantidade,
           observacao: i.observacao ?? '',
@@ -347,7 +385,12 @@ export default function Pedidos() {
     setErro('');
     setAviso('');
     setEnviando(true);
-    const paraEnviar = itens.map(({ produtoId, quantidade, observacao }) => ({ produto_id: produtoId, quantidade, observacao }));
+    const paraEnviar = itens.map(({ produtoId, tamanhoId, quantidade, observacao }) => ({
+      produto_id: produtoId,
+      tamanho_id: tamanhoId ?? null,
+      quantidade,
+      observacao,
+    }));
     const linhas = itens.map(({ nome, quantidade, observacao }) => ({ nome, quantidade, observacao }));
     try {
       if (edicao) {
@@ -563,6 +606,12 @@ export default function Pedidos() {
               {foraDoCardapio.length > 0 && (
                 <Aviso>
                   {foraDoCardapio.join(', ')} {foraDoCardapio.length === 1 ? 'esgotou e saiu' : 'esgotaram e saíram'} do pedido.
+                </Aviso>
+              )}
+              {tamanhosMudaram.length > 0 && (
+                <Aviso>
+                  Os tamanhos de {tamanhosMudaram.join(', ')} mudaram no cardápio e {tamanhosMudaram.length === 1 ? 'ele saiu' : 'eles saíram'}{' '}
+                  do pedido. Toque de novo no tamanho certo.
                 </Aviso>
               )}
             </div>

@@ -1,5 +1,6 @@
-import { lerValor, valorParaCampo } from './formatadores';
+import { formatarMoeda, lerValor, valorParaCampo } from './formatadores';
 import { ErroDePlanilha } from './lerPlanilha';
+import { LIMITE_NOME_TAMANHO, MAXIMO_DE_TAMANHOS, MINIMO_DE_TAMANHOS, limparNomeTamanho } from './tamanhos';
 
 // Transforma as linhas da planilha em produtos para conferir. Nada é salvo
 // aqui: a tela mostra tudo e o dono decide.
@@ -25,6 +26,7 @@ const CABECALHO = {
   preco: /^(preco|precos|valor|venda|r\$)/,
   custo: /^custo/,
   cozinha: /cozinha/,
+  tamanho: /^tamanho/,
 };
 
 const SIM = new Set(['sim', 's', 'x', 'yes', 'y', '1', 'true', 'verdadeiro', 'vai']);
@@ -67,7 +69,15 @@ function acharCabecalho(linhas) {
     if (nome < 0) continue;
     const custo = celulas.findIndex((c) => CABECALHO.custo.test(c));
     const cozinha = celulas.findIndex((c) => CABECALHO.cozinha.test(c));
-    return { linha: i, nome, preco, custo: custo < 0 ? null : custo, cozinha: cozinha < 0 ? null : cozinha };
+    const tamanho = celulas.findIndex((c, j) => j !== nome && CABECALHO.tamanho.test(c));
+    return {
+      linha: i,
+      nome,
+      preco,
+      custo: custo < 0 ? null : custo,
+      cozinha: cozinha < 0 ? null : cozinha,
+      tamanho: tamanho < 0 ? null : tamanho,
+    };
   }
   return null;
 }
@@ -84,7 +94,65 @@ function colunasSemCabecalho(linha) {
   return { nome, preco: preco < 0 ? null : preco };
 }
 
-export function interpretarPlanilha(linhas) {
+function semTamanhoDaLinha(item) {
+  const copia = { ...item };
+  delete copia.tamanho;
+  return copia;
+}
+
+let chaveDeTamanho = 0;
+function tamanhoDaLinha(item) {
+  chaveDeTamanho += 1;
+  return { chave: `t${chaveDeTamanho}`, linha: item.linha, nome: item.tamanho, preco: item.preco, custo: item.custo };
+}
+
+const mesmoTamanho = (a, b) => chaveDoNome(a.nome) === chaveDoNome(b.nome) && a.preco === b.preco && a.custo === b.custo;
+
+// Coluna "Tamanho": as linhas com o mesmo nome viram um produto só, com um
+// tamanho por linha (linha do mesmo nome sem tamanho entra com o tamanho em
+// branco, para o dono preencher). Um tamanho só não é tamanho: vira produto
+// de preço único com o tamanho no nome ("Açaí 500 ml").
+// comTamanhos false (banco sem a migração dos tamanhos): todo tamanho vai
+// para o nome, como antes.
+function juntarTamanhos(itens, comTamanhos) {
+  const comTamanho = new Set(itens.filter((i) => i.tamanho && chaveDoNome(i.nome)).map((i) => chaveDoNome(i.nome)));
+  const noNome = (i) => ({ ...i, nome: `${i.nome} ${i.tamanho}`.slice(0, LIMITE_DO_NOME) });
+  if (!comTamanhos || !comTamanho.size) return itens.map((i) => (i.tamanho ? noNome(i) : i));
+
+  const juntos = new Map();
+  const saida = [];
+  for (const item of itens) {
+    const chave = chaveDoNome(item.nome);
+    if (!comTamanho.has(chave)) {
+      saida.push(item);
+      continue;
+    }
+    let produto = juntos.get(chave);
+    if (!produto) {
+      produto = { ...item, preco: '', custo: '', tamanhos: [], repetidas: [], linhas: [] };
+      delete produto.tamanho;
+      juntos.set(chave, produto);
+      saida.push(produto);
+    }
+    produto.linhas.push(item);
+    const tamanho = tamanhoDaLinha(item);
+    // A mesma linha colada duas vezes entra uma vez só.
+    if (produto.tamanhos.some((t) => mesmoTamanho(t, tamanho))) produto.repetidas.push(item.linha);
+    else produto.tamanhos.push(tamanho);
+  }
+  return saida.map((p) => {
+    if (!p.tamanhos) return p;
+    const { linhas, ...produto } = p;
+    if (produto.tamanhos.length > 1) return produto;
+    // Um tamanho só: produto de preço único, com o tamanho no nome.
+    const [unico] = produto.tamanhos;
+    const original = linhas.find((l) => l.linha === unico.linha);
+    return { ...noNome(original), umTamanho: unico.nome || null, repetidas: produto.repetidas };
+  });
+}
+
+// comTamanhos: o banco aceita tamanhos (aceitaTamanhos() do serviço).
+export function interpretarPlanilha(linhas, { comTamanhos = true } = {}) {
   const cabecalho = acharCabecalho(linhas);
   const inicio = cabecalho ? cabecalho.linha + 1 : 0;
   const itens = [];
@@ -103,6 +171,7 @@ export function interpretarPlanilha(linhas) {
     const brutoCusto = cabecalho?.custo === null || !cabecalho ? null : linha[cabecalho.custo];
     const custo = lerNumero(brutoCusto);
     const cozinhaDaPlanilha = cabecalho?.cozinha === null || !cabecalho ? null : lerSimNao(linha[cabecalho.cozinha]);
+    const tamanho = cabecalho?.tamanho === null || !cabecalho ? '' : limparNomeTamanho(textoDe(linha[cabecalho.tamanho]));
 
     itens.push({
       linha: i + 1,
@@ -112,6 +181,7 @@ export function interpretarPlanilha(linhas) {
       vaiParaCozinha: cozinhaDaPlanilha ?? !pareceBebida(nome),
       cozinhaAdivinhada: cozinhaDaPlanilha === null,
       nomeLongo: nome.length > LIMITE_DO_NOME,
+      tamanho,
     });
   }
 
@@ -125,10 +195,34 @@ export function interpretarPlanilha(linhas) {
       `Essa planilha tem ${itens.length} linhas com produto. O limite é ${LIMITE_DE_PRODUTOS} de uma vez: divida em duas planilhas.`,
     );
   }
-  return { itens, temCusto: Boolean(cabecalho && cabecalho.custo !== null) };
+  const juntos = juntarTamanhos(itens, comTamanhos);
+  if (juntos.length > LIMITE_DE_PRODUTOS) {
+    throw new ErroDePlanilha(
+      `Essa planilha tem ${juntos.length} produtos. O limite é ${LIMITE_DE_PRODUTOS} de uma vez: divida em duas planilhas.`,
+    );
+  }
+  return {
+    // O tamanho da linha já foi usado para juntar: não segue no item.
+    itens: juntos.map(semTamanhoDaLinha),
+    temCusto: Boolean(cabecalho && cabecalho.custo !== null),
+  };
 }
 
-const mesmoItem = (a, b) => a.preco === b.preco && a.custo === b.custo && a.vaiParaCozinha === b.vaiParaCozinha;
+const textoDosTamanhos = (tamanhos) => JSON.stringify((tamanhos ?? []).map((t) => [chaveDoNome(t.nome), t.preco, t.custo]));
+const mesmoItem = (a, b) =>
+  a.preco === b.preco &&
+  a.custo === b.custo &&
+  a.vaiParaCozinha === b.vaiParaCozinha &&
+  textoDosTamanhos(a.tamanhos) === textoDosTamanhos(b.tamanhos);
+
+// "P R$ 35,00 · G R$ 55,00" ou o preço único; para as escolhas da revisão.
+export function precoDoItem(item) {
+  if (item.tamanhos) {
+    return item.tamanhos.map((t) => `${t.nome || '?'} ${lerValor(t.preco) > 0 ? formatarMoeda(lerValor(t.preco)) : 'sem preço'}`).join(' · ');
+  }
+  const valor = lerValor(item.preco);
+  return valor > 0 ? formatarMoeda(valor) : 'sem preço';
+}
 
 // Junta as linhas pelo nome: o que aparece mais de uma vez (com valores
 // diferentes) e o que já está no cardápio viram uma escolha do dono.
@@ -145,7 +239,7 @@ export function montarRevisao(itens, produtos) {
     // A planilha não disse se vai para a cozinha: vale o que já está no cardápio.
     if (existente && item.cozinhaAdivinhada) item = { ...item, vaiParaCozinha: existente.vai_para_cozinha !== false };
     if (!grupo) {
-      grupos.set(id, { id, ocorrencias: [item], repetidasIguais: [], existente });
+      grupos.set(id, { id, ocorrencias: [item], repetidasIguais: [...(item.repetidas ?? [])], existente });
     } else if (grupo.ocorrencias.some((o) => mesmoItem(o, item))) {
       grupo.repetidasIguais.push(item.linha);
     } else {
@@ -160,44 +254,106 @@ export function montarRevisao(itens, produtos) {
   }));
 }
 
+function erroDoPreco(texto) {
+  const preco = lerValor(texto);
+  if (!Number.isFinite(preco) || preco <= 0) return 'Digite um preço maior que zero, como 12,50.';
+  if (preco > PRECO_MAXIMO) return 'Esse preço está alto demais. Confira.';
+  return null;
+}
+
+function erroDoCusto(texto) {
+  if (texto.trim() === '') return null;
+  const custo = lerValor(texto);
+  return !Number.isFinite(custo) || custo < 0 || custo > PRECO_MAXIMO ? 'Digite um valor como 6,00 ou deixe em branco.' : null;
+}
+
+// Erros de uma linha escolhida, com as mesmas regras do formulário de produto.
+// Com tamanhos, os erros de cada um vêm como "tamanho-nome-<chave>",
+// "tamanho-preco-<chave>" e "tamanho-custo-<chave>".
+export function errosDoItem(item, { exigirNome = true } = {}) {
+  const erros = {};
+  if (exigirNome && !item.nome.trim()) erros.nome = 'Digite o nome do produto.';
+  if (item.tamanhos) {
+    if (item.tamanhos.length < MINIMO_DE_TAMANHOS) erros.tamanhos = 'Um produto com tamanhos precisa de 2 ou mais. Adicione outro tamanho.';
+    if (item.tamanhos.length > MAXIMO_DE_TAMANHOS) erros.tamanhos = `Um produto pode ter até ${MAXIMO_DE_TAMANHOS} tamanhos. Tire os que sobram.`;
+    const vistos = new Set();
+    for (const t of item.tamanhos) {
+      const nome = limparNomeTamanho(t.nome);
+      if (!nome) erros[`tamanho-nome-${t.chave}`] = 'Digite o tamanho, como P ou 500 ml.';
+      else if (nome.length > LIMITE_NOME_TAMANHO) erros[`tamanho-nome-${t.chave}`] = `Use até ${LIMITE_NOME_TAMANHO} letras no tamanho.`;
+      else if (vistos.has(chaveDoNome(nome))) erros[`tamanho-nome-${t.chave}`] = `O tamanho "${nome}" aparece duas vezes. Deixe um só.`;
+      vistos.add(chaveDoNome(nome));
+      const preco = erroDoPreco(t.preco);
+      if (preco) erros[`tamanho-preco-${t.chave}`] = preco;
+      const custo = erroDoCusto(t.custo);
+      if (custo) erros[`tamanho-custo-${t.chave}`] = custo;
+    }
+    return erros;
+  }
+  const preco = erroDoPreco(item.preco);
+  if (preco) erros.preco = preco;
+  const custo = erroDoCusto(item.custo);
+  if (custo) erros.custo = custo;
+  return erros;
+}
+
 // Precisa de atenção: o dono tem que olhar antes de salvar.
 export function precisaDeAtencao(grupo) {
   if (grupo.existente || grupo.ocorrencias.length > 1) return true;
   const [item] = grupo.ocorrencias;
-  const preco = lerValor(item.preco);
-  return !item.nome || item.nomeLongo || !(preco > 0 && preco <= PRECO_MAXIMO) || (item.custo !== '' && !(lerValor(item.custo) >= 0));
+  if (item.umTamanho !== undefined || item.nomeLongo) return true;
+  return Object.keys(errosDoItem(item)).length > 0;
 }
 
-// Erros de uma linha escolhida, com as mesmas regras do formulário de produto.
-export function errosDoItem(item, { exigirNome = true } = {}) {
-  const erros = {};
-  const preco = lerValor(item.preco);
-  if (exigirNome && !item.nome.trim()) erros.nome = 'Digite o nome do produto.';
-  if (!Number.isFinite(preco) || preco <= 0) erros.preco = 'Digite um preço maior que zero, como 12,50.';
-  else if (preco > PRECO_MAXIMO) erros.preco = 'Esse preço está alto demais. Confira.';
-  if (item.custo.trim() !== '') {
-    const custo = lerValor(item.custo);
-    if (!Number.isFinite(custo) || custo < 0 || custo > PRECO_MAXIMO) erros.custo = 'Digite um valor como 6,00 ou deixe em branco.';
-  }
-  return erros;
-}
+const arredondar = (v) => Math.round(v * 100) / 100;
 
 // O que salvar, a partir das escolhas: produtos novos e os que já existiam e
-// o dono mandou atualizar.
+// o dono mandou atualizar. Com tamanhos, o novo vem com tamanhos (sem preço) e
+// o atualizado traz a lista nova de tamanhos ([] desliga os tamanhos).
 export function oQueSalvar(grupos) {
   const novos = [];
   const atualizar = [];
   for (const g of grupos) {
     if (typeof g.escolha !== 'number') continue;
     const item = g.ocorrencias[g.escolha];
-    const custo = item.custo.trim() === '' ? null : Math.round(lerValor(item.custo) * 100) / 100;
+    if (item.tamanhos) {
+      const tamanhos = item.tamanhos.map((t) => ({
+        nome: limparNomeTamanho(t.nome),
+        preco: arredondar(lerValor(t.preco)),
+        custo: t.custo.trim() === '' ? null : arredondar(lerValor(t.custo)),
+      }));
+      if (g.existente) {
+        // Os tamanhos que já existem (mesmo nome) continuam os mesmos.
+        const atuais = new Map((g.existente.tamanhos ?? []).map((t) => [chaveDoNome(t.nome), t]));
+        atualizar.push({
+          grupo: g.id,
+          id: g.existente.id,
+          alteracoes: { vai_para_cozinha: item.vaiParaCozinha },
+          tamanhos: tamanhos.map((t) => {
+            const atual = atuais.get(chaveDoNome(t.nome));
+            // Custo em branco na planilha não apaga o custo que já estava lá.
+            return { ...t, id: atual?.id ?? null, custo: t.custo ?? atual?.custo ?? null, disponivel: atual?.disponivel ?? true };
+          }),
+        });
+      } else {
+        novos.push({ grupo: g.id, nome: item.nome.trim().replace(/\s+/g, ' '), vai_para_cozinha: item.vaiParaCozinha, tamanhos });
+      }
+      continue;
+    }
+    const custo = item.custo.trim() === '' ? null : arredondar(lerValor(item.custo));
     const dados = {
-      preco: Math.round(lerValor(item.preco) * 100) / 100,
+      preco: arredondar(lerValor(item.preco)),
       vai_para_cozinha: item.vaiParaCozinha,
     };
     if (g.existente) {
       // Custo em branco na planilha não apaga o custo que já estava lá.
-      atualizar.push({ grupo: g.id, id: g.existente.id, alteracoes: custo === null ? dados : { ...dados, custo } });
+      // Já tinha tamanhos: a planilha com preço único desliga os tamanhos.
+      atualizar.push({
+        grupo: g.id,
+        id: g.existente.id,
+        alteracoes: custo === null ? dados : { ...dados, custo },
+        ...(g.existente.tamanhos?.length ? { tamanhos: [] } : {}),
+      });
     } else {
       novos.push({ grupo: g.id, nome: item.nome.trim().replace(/\s+/g, ' '), ...dados, custo });
     }

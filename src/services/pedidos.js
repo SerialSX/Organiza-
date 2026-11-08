@@ -23,28 +23,37 @@ const NIVEIS_DE_CAMPOS = [
 // Pedidos abertos aparecem na Cozinha: só o que é preciso para preparar,
 // sem preço nem custo. Os ingredientes do produto são as opções do "Faltou".
 const CAMPOS_ITEM = 'id, produto_id, quantidade, observacao, faltou, faltou_ingredientes';
+// Migração 2026-11-13 (tamanhos): o tamanho escolhido (id e nome copiado).
+const CAMPOS_DO_TAMANHO = ', tamanho_id, tamanho';
 const PRODUTO_DO_ITEM = 'produtos ( nome, vai_para_cozinha, produto_ingredientes ( ingrediente_id, ingredientes ( nome ) ) )';
-const ITENS_ABERTOS = `itens_pedido ( ${CAMPOS_ITEM}, ${PRODUTO_DO_ITEM} )`;
-const ITENS_COM_VALORES = `itens_pedido ( ${CAMPOS_ITEM}, preco_unitario, custo_unitario, ${PRODUTO_DO_ITEM} )`;
+const ITENS_ABERTOS = (t) => `itens_pedido ( ${CAMPOS_ITEM}${t}, ${PRODUTO_DO_ITEM} )`;
+const ITENS_COM_VALORES = (t) => `itens_pedido ( ${CAMPOS_ITEM}${t}, preco_unitario, custo_unitario, ${PRODUTO_DO_ITEM} )`;
 // Caixa, contas das mesas e relatórios: sem a lista de ingredientes de cada
 // produto (só a Cozinha e a edição usam), que pesa em todo pedido do dia.
-const ITENS_DO_PERIODO = `itens_pedido ( ${CAMPOS_ITEM}, preco_unitario, custo_unitario, produtos ( nome, vai_para_cozinha ) )`;
+const ITENS_DO_PERIODO = (t) =>
+  `itens_pedido ( ${CAMPOS_ITEM}${t}, preco_unitario, custo_unitario, produtos ( nome, vai_para_cozinha ) )`;
 
 // Banco ainda sem uma migração: pede só as colunas que ele tem, para a fila,
 // a cozinha e o caixa continuarem funcionando (o aviso de banco desatualizado
 // aparece para a equipe).
 let nivelDoBanco = 0;
+let itensComTamanho = true;
 
 // 42703 / PGRST204: coluna que não existe, ou seja, banco ainda sem a migração.
 export function colunaInexistente(error) {
   return error?.code === '42703' || error?.code === 'PGRST204' || /does not exist/i.test(error?.message ?? '');
 }
 
+// itens: função que monta a parte dos itens (com ou sem as colunas do tamanho).
+// A migração dos tamanhos é a mais nova: sem ela, tira primeiro o tamanho e
+// só depois desce os níveis das colunas do pedido.
 async function consultarPedidos(montar, itens) {
   for (;;) {
-    const resposta = await montar(`${NIVEIS_DE_CAMPOS[nivelDoBanco]}, ${itens}`);
-    if (!colunaInexistente(resposta.error) || nivelDoBanco === NIVEIS_DE_CAMPOS.length - 1) return resposta;
-    nivelDoBanco++;
+    const resposta = await montar(`${NIVEIS_DE_CAMPOS[nivelDoBanco]}, ${itens(itensComTamanho ? CAMPOS_DO_TAMANHO : '')}`);
+    if (!colunaInexistente(resposta.error)) return resposta;
+    if (itensComTamanho) itensComTamanho = false;
+    else if (nivelDoBanco < NIVEIS_DE_CAMPOS.length - 1) nivelDoBanco++;
+    else return resposta;
   }
 }
 
@@ -127,12 +136,23 @@ function porNome(a, b) {
   return a.nome.localeCompare(b.nome, 'pt-BR');
 }
 
+// "Pizza Calabresa (G)": o que aparece na conta, no caixa e nos resumos.
+export function nomeComTamanho(produto, tamanho) {
+  return tamanho ? `${produto} (${tamanho})` : produto;
+}
+
 // ingredientes: [{ id, nome }] do produto, hoje
 function normalizarItem(i, nome, ingredientes = []) {
+  const tamanho = i.tamanho ?? null;
   return {
     id: i.id,
     produto_id: i.produto_id,
-    nome,
+    // tamanho_id: o tamanho escolhido (para editar); tamanho: o nome gravado
+    // no pedido, que não muda se o tamanho for renomeado ou removido.
+    tamanho_id: i.tamanho_id ?? null,
+    tamanho,
+    produto_nome: nome,
+    nome: nomeComTamanho(nome, tamanho),
     quantidade: i.quantidade,
     observacao: i.observacao ?? null,
     faltou: Boolean(i.faltou),
@@ -225,25 +245,43 @@ function falhaDemo(mensagem) {
   throw new Error(mensagem);
 }
 
+// Mesma chave do editar_pedido no banco: produto e tamanho.
+function chaveDoItem(produtoId, tamanhoId) {
+  return `${produtoId}|${tamanhoId ?? ''}`;
+}
+
+// Mesmas regras (e textos) do gravar_itens_pedido no banco.
 function itensDemo(db, pedidoId, itens, anteriores = {}) {
   if (!itens.length || itens.length > 100) falhaDemo('O pedido precisa ter de 1 a 100 itens.');
+  const tamanhos = db.produto_tamanhos ?? [];
   return itens.map((i) => {
-    const produto = db.produtos.find((p) => p.id === i.produto_id);
-    const jaEstava = Boolean(produto && anteriores[produto.id]);
-    if (!produto || (!jaEstava && (!produto.disponivel || produto.arquivado))) {
-      falhaDemo('Um dos produtos esgotou. Revise o pedido.');
-    }
     if (!(i.quantidade >= 1 && i.quantidade <= 999)) falhaDemo('A quantidade precisa ficar entre 1 e 999.');
+    const produto = db.produtos.find((p) => p.id === i.produto_id);
+    if (!produto) falhaDemo('Um dos produtos esgotou. Revise o pedido.');
+    const tamanho = i.tamanho_id ? tamanhos.find((t) => t.id === i.tamanho_id && t.produto_id === produto.id) : null;
+    if (i.tamanho_id && !tamanho) falhaDemo('Um dos tamanhos saiu do cardápio. Lance o pedido de novo.');
+    const anterior = anteriores[chaveDoItem(produto.id, tamanho?.id)];
+    if (!anterior) {
+      if (!produto.disponivel || produto.arquivado) falhaDemo('Um dos produtos esgotou. Revise o pedido.');
+      if (!tamanho && tamanhos.some((t) => t.produto_id === produto.id && !t.arquivado)) {
+        falhaDemo(`Escolha o tamanho de ${produto.nome}. Revise o pedido.`);
+      }
+      if (tamanho?.arquivado) falhaDemo(`O tamanho ${tamanho.nome} de ${produto.nome} saiu do cardápio. Lance o pedido de novo.`);
+      if (tamanho && !tamanho.disponivel) falhaDemo('Um dos produtos esgotou. Revise o pedido.');
+    }
+    const doCadastro = tamanho ?? produto;
     return {
       id: novoId(),
       pedido_id: pedidoId,
       produto_id: produto.id,
+      tamanho_id: tamanho?.id ?? null,
+      tamanho: anterior ? (anterior.tamanho ?? tamanho?.nome ?? null) : (tamanho?.nome ?? null),
       quantidade: i.quantidade,
       observacao: limparObservacao(i.observacao),
       faltou: false,
       faltou_ingredientes: [],
-      preco_unitario: jaEstava ? anteriores[produto.id].preco : produto.preco,
-      custo_unitario: jaEstava ? anteriores[produto.id].custo : (produto.custo ?? null),
+      preco_unitario: anterior ? anterior.preco : doCadastro.preco,
+      custo_unitario: anterior ? anterior.custo : (doCadastro.custo ?? null),
     };
   });
 }
@@ -259,9 +297,12 @@ function atualizarPedidoDemo(db, id, alteracoes) {
   return { ...db, pedidos: db.pedidos.map((p) => (p.id === id ? { ...p, ...alteracoes, atualizado_em: agora } : p)) };
 }
 
+// tamanho_id só vai quando existe: o banco sem a migração dos tamanhos não
+// conhece a chave e segue aceitando os pedidos de sempre.
 function itensParaEnvio(itens) {
-  return itens.map(({ produto_id, quantidade, observacao }) => ({
+  return itens.map(({ produto_id, tamanho_id, quantidade, observacao }) => ({
     produto_id,
+    ...(tamanho_id ? { tamanho_id } : {}),
     quantidade,
     observacao: limparObservacao(observacao),
   }));
@@ -378,7 +419,11 @@ export async function editarPedido(id, itens, versao, mesa = null, nomeMesa = nu
     }
     const anteriores = {};
     for (const i of db.itens_pedido.filter((item) => item.pedido_id === id)) {
-      anteriores[i.produto_id] = { preco: i.preco_unitario, custo: i.custo_unitario ?? null };
+      anteriores[chaveDoItem(i.produto_id, i.tamanho_id)] = {
+        preco: i.preco_unitario,
+        custo: i.custo_unitario ?? null,
+        tamanho: i.tamanho ?? null,
+      };
     }
     const novosItens = itensDemo(db, id, itens, anteriores);
     const somar = (lista) => lista.reduce((s, i) => s + i.quantidade * (i.preco_unitario ?? 0), 0);

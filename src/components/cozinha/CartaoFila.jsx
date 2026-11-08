@@ -34,7 +34,17 @@ function ItemDaFila({ item, grande, onFaltou, onFaltouIngrediente }) {
         </span>
         <span className="flex-1 min-w-0">
           <span className="block font-medium text-[var(--text-primary)] break-words" style={{ textDecoration: riscado }}>
-            {item.nome}
+            {/* O tamanho vem antes e grande: a pizza G não pode sair como P. */}
+            {item.tamanho && (
+              <span
+                className={`mr-2 inline-flex min-w-10 items-center justify-center rounded-lg px-2 align-middle font-extrabold text-[var(--sobre-destaque)] ${grande ? 'h-11 text-2xl' : 'h-9 text-xl'}`}
+                style={{ backgroundColor: 'var(--color-accent-pedidos)' }}
+                aria-label={`tamanho ${item.tamanho}`}
+              >
+                {item.tamanho}
+              </span>
+            )}
+            {item.tamanho ? item.produto_nome : item.nome}
           </span>
           {item.observacao && (
             <span

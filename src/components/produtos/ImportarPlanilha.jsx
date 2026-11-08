@@ -1,14 +1,22 @@
 import { useId, useMemo, useRef, useState } from 'react';
 import Aviso from '../ui/Aviso';
 import Botao from '../ui/Botao';
-import Campo from '../ui/Campo';
+import Campo, { classeCampo } from '../ui/Campo';
 import Carregando from '../ui/Carregando';
-import { CloseIcon, DownloadIcon, SheetIcon } from '../icons/AppIcons';
-import { criarProdutos, atualizarProduto } from '../../services/produtos';
+import { CloseIcon, DownloadIcon, PlusIcon, SheetIcon, TrashIcon } from '../icons/AppIcons';
+import { criarProdutos, atualizarProduto, salvarTamanhosDoProduto, aceitaTamanhos } from '../../services/produtos';
 import { lerArquivoDePlanilha, ErroDePlanilha } from '../../lib/lerPlanilha';
 import { baixarModelo } from '../../lib/modeloDePlanilha';
-import { interpretarPlanilha, montarRevisao, precisaDeAtencao, errosDoItem, oQueSalvar, chaveDoNome } from '../../lib/importarPlanilha';
-import { formatarMoeda, lerValor } from '../../lib/formatadores';
+import {
+  interpretarPlanilha,
+  montarRevisao,
+  precisaDeAtencao,
+  errosDoItem,
+  oQueSalvar,
+  chaveDoNome,
+  precoDoItem,
+} from '../../lib/importarPlanilha';
+import { faixaDePreco, MAXIMO_DE_TAMANHOS, LIMITE_NOME_TAMANHO } from '../../lib/tamanhos';
 
 const ACCENT = 'var(--color-accent-produtos)';
 const ACEITA =
@@ -17,9 +25,92 @@ const ACEITA =
 const opcao =
   'cursor-pointer rounded-xl border-2 px-4 py-3 flex items-center gap-2 min-h-12 text-[var(--text-primary)] transition-colors has-focus-visible:outline-3 has-focus-visible:outline-offset-2 has-focus-visible:outline-[var(--cor-foco)]';
 
-function precoParaTexto(texto) {
-  const valor = lerValor(texto);
-  return valor > 0 ? formatarMoeda(valor) : 'sem preço';
+let novoTamanho = 0;
+
+// Os tamanhos de um produto da planilha (uma linha da planilha por tamanho).
+function TamanhosDaPlanilha({ tamanhos, prefixo, temCusto, erros, desabilitado, onMudar }) {
+  const mudar = (chave, campo, valor) => onMudar(tamanhos.map((t) => (t.chave === chave ? { ...t, [campo]: valor } : t)));
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-semibold text-[var(--text-primary)]">Tamanhos</p>
+      {erros?.tamanhos && <p className="text-sm font-medium text-[var(--texto-cozinha)]">{erros.tamanhos}</p>}
+      <ul className="flex flex-col gap-2">
+        {tamanhos.map((t, i) => {
+          const rotulo = t.nome.trim() || `tamanho ${i + 1}`;
+          const erro = erros?.[`tamanho-nome-${t.chave}`] || erros?.[`tamanho-preco-${t.chave}`] || erros?.[`tamanho-custo-${t.chave}`];
+          return (
+            <li key={t.chave} className="flex flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  name={`tamanho-nome-${t.chave}-${prefixo}`}
+                  value={t.nome}
+                  onChange={(e) => mudar(t.chave, 'nome', e.target.value)}
+                  placeholder="Tamanho"
+                  maxLength={LIMITE_NOME_TAMANHO}
+                  autoComplete="off"
+                  aria-label={`Nome do tamanho ${i + 1}`}
+                  aria-invalid={erros?.[`tamanho-nome-${t.chave}`] ? true : undefined}
+                  disabled={desabilitado}
+                  className={`${classeCampo.replace('w-full', '')} w-28`}
+                />
+                <input
+                  name={`tamanho-preco-${t.chave}-${prefixo}`}
+                  value={t.preco}
+                  onChange={(e) => mudar(t.chave, 'preco', e.target.value)}
+                  placeholder="Preço"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  aria-label={`Preço do tamanho ${rotulo}`}
+                  aria-invalid={erros?.[`tamanho-preco-${t.chave}`] ? true : undefined}
+                  disabled={desabilitado}
+                  className={`${classeCampo.replace('w-full', '')} w-28 tabular-nums`}
+                />
+                {temCusto && (
+                  <input
+                    name={`tamanho-custo-${t.chave}-${prefixo}`}
+                    value={t.custo}
+                    onChange={(e) => mudar(t.chave, 'custo', e.target.value)}
+                    placeholder="Custo"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    aria-label={`Custo do tamanho ${rotulo}`}
+                    aria-invalid={erros?.[`tamanho-custo-${t.chave}`] ? true : undefined}
+                    disabled={desabilitado}
+                    className={`${classeCampo.replace('w-full', '')} w-28 tabular-nums`}
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => onMudar(tamanhos.filter((x) => x.chave !== t.chave))}
+                  aria-label={`Tirar o tamanho ${rotulo}`}
+                  disabled={desabilitado}
+                  className="w-11 h-11 inline-flex items-center justify-center rounded-xl text-[var(--texto-cozinha)] hover:bg-[var(--surface-card-hover)]"
+                >
+                  <TrashIcon className="w-5 h-5" />
+                </button>
+                <span className="text-xs text-[var(--text-secondary)]">{t.linha ? `linha ${t.linha}` : 'novo'}</span>
+              </div>
+              {erro && <p className="text-sm font-medium text-[var(--texto-cozinha)]">{erro}</p>}
+            </li>
+          );
+        })}
+      </ul>
+      {tamanhos.length < MAXIMO_DE_TAMANHOS && (
+        <Botao
+          variante="secundaria"
+          className="self-start"
+          disabled={desabilitado}
+          onClick={() => {
+            novoTamanho += 1;
+            onMudar([...tamanhos, { chave: `novo-${novoTamanho}`, linha: null, nome: '', preco: '', custo: '' }]);
+          }}
+        >
+          <PlusIcon className="w-5 h-5" />
+          Adicionar tamanho
+        </Botao>
+      )}
+    </div>
+  );
 }
 
 function plural(n, um, varios) {
@@ -29,9 +120,18 @@ function plural(n, um, varios) {
 // Os campos de uma linha da planilha: nome (só de produto novo), preço, custo
 // (se a planilha tinha a coluna) e se vai para a cozinha.
 function CamposDoItem({ item, prefixo, temCusto, comNome, erros, desabilitado, onMudar }) {
+  const comTamanhos = Boolean(item.tamanhos);
   return (
     <div className="flex flex-col gap-3">
-      <div className={`grid grid-cols-1 gap-3 ${temCusto ? 'sm:grid-cols-[1fr_9rem_9rem]' : 'sm:grid-cols-[1fr_10rem]'}`}>
+      {item.umTamanho !== undefined && (
+        <p className="text-sm text-[var(--text-secondary)]">
+          Na planilha ele só tinha {item.umTamanho ? `o tamanho ${item.umTamanho}` : 'um tamanho'}: entra como produto de preço único, com o
+          tamanho no nome.
+        </p>
+      )}
+      <div
+        className={`grid grid-cols-1 gap-3 ${comTamanhos ? '' : temCusto ? 'sm:grid-cols-[1fr_9rem_9rem]' : 'sm:grid-cols-[1fr_10rem]'}`}
+      >
         {comNome ? (
           <Campo
             rotulo="Nome"
@@ -45,21 +145,32 @@ function CamposDoItem({ item, prefixo, temCusto, comNome, erros, desabilitado, o
             disabled={desabilitado}
           />
         ) : (
-          <span className="hidden sm:block" />
+          !comTamanhos && <span className="hidden sm:block" />
         )}
-        <Campo
-          rotulo="Preço (R$)"
-          name={`preco-${prefixo}`}
-          value={item.preco}
-          onChange={(e) => onMudar('preco', e.target.value)}
-          placeholder="0,00"
-          inputMode="decimal"
-          autoComplete="off"
-          erro={erros?.preco}
-          dica={item.preco === '' ? 'A planilha não tinha o preço.' : undefined}
-          disabled={desabilitado}
-        />
-        {temCusto && (
+        {comTamanhos ? (
+          <TamanhosDaPlanilha
+            tamanhos={item.tamanhos}
+            prefixo={prefixo}
+            temCusto={temCusto}
+            erros={erros}
+            desabilitado={desabilitado}
+            onMudar={(tamanhos) => onMudar('tamanhos', tamanhos)}
+          />
+        ) : (
+          <Campo
+            rotulo="Preço (R$)"
+            name={`preco-${prefixo}`}
+            value={item.preco}
+            onChange={(e) => onMudar('preco', e.target.value)}
+            placeholder="0,00"
+            inputMode="decimal"
+            autoComplete="off"
+            erro={erros?.preco}
+            dica={item.preco === '' ? 'A planilha não tinha o preço.' : undefined}
+            disabled={desabilitado}
+          />
+        )}
+        {temCusto && !comTamanhos && (
           <Campo
             rotulo="Custo (R$)"
             name={`custo-${prefixo}`}
@@ -138,19 +249,20 @@ function LinhaComEscolha({ grupo, indice, temCusto, erros, desabilitado, onEscol
   const escolhido = typeof escolha === 'number' ? ocorrencias[escolha] : null;
   const opcoes = [
     existente
-      ? { valor: 'manter', rotulo: `Manter como está (${formatarMoeda(existente.preco)})` }
+      ? { valor: 'manter', rotulo: `Manter como está (${faixaDePreco(existente)})` }
       : { valor: 'nenhuma', rotulo: 'Não importar' },
     ...ocorrencias.map((o, i) => ({
       valor: i,
-      rotulo: `${existente ? 'Usar o da planilha' : 'Usar a linha'} ${o.linha}: ${precoParaTexto(o.preco)}`,
+      rotulo: `${existente ? 'Usar o da planilha' : 'Usar a linha'} ${o.linha}: ${precoDoItem(o)}`,
     })),
   ];
+  const desligaTamanhos = Boolean(existente?.tamanhos?.length && escolhido && !escolhido.tamanhos);
   return (
     <li className="rounded-xl border-2 p-4 flex flex-col gap-3" style={{ borderColor: erros?.escolha ? 'var(--texto-cozinha)' : 'var(--border-subtle)' }}>
       <fieldset className="flex flex-col gap-2 min-w-0" disabled={desabilitado}>
         <legend className="font-semibold text-[var(--text-primary)] mb-2">
           {existente
-            ? `"${nome}" já está no cardápio por ${formatarMoeda(existente.preco)}.`
+            ? `"${nome}" já está no cardápio por ${faixaDePreco(existente)}.`
             : `"${nome}" aparece ${ocorrencias.length} vezes na planilha, com valores diferentes. Qual vale?`}
         </legend>
         {opcoes.map((o, i) => {
@@ -178,6 +290,12 @@ function LinhaComEscolha({ grupo, indice, temCusto, erros, desabilitado, onEscol
         })}
         {erros?.escolha && <p className="text-sm font-medium text-[var(--texto-cozinha)]">{erros.escolha}</p>}
       </fieldset>
+      {desligaTamanhos && (
+        <Aviso tipo="info">
+          No cardápio ele tem tamanhos ({existente.tamanhos.map((t) => t.nome).join(', ')}). Usar a planilha deixa um preço só, e os
+          tamanhos saem do cardápio. Os pedidos já feitos não mudam.
+        </Aviso>
+      )}
       {escolhido && (
         <CamposDoItem
           item={escolhido}
@@ -218,7 +336,9 @@ export default function ImportarPlanilha({ produtos, negocioId, onFechar, onImpo
     setErro('');
     setEtapa('lendo');
     try {
-      const { itens, temCusto: comCusto } = interpretarPlanilha(await lerArquivoDePlanilha(arquivo));
+      const { itens, temCusto: comCusto } = interpretarPlanilha(await lerArquivoDePlanilha(arquivo), {
+        comTamanhos: aceitaTamanhos(),
+      });
       setGrupos(montarRevisao(itens, produtos).map((g) => ({ ...g, atencao: precisaDeAtencao(g) })));
       setTemCusto(comCusto);
       setNomeArquivo(arquivo.name);
@@ -292,9 +412,12 @@ export default function ImportarPlanilha({ produtos, negocioId, onFechar, onImpo
     if (!primeiro) return;
     const [indice, e] = primeiro;
     const form = formulario.current;
+    const campo = Object.keys(e).find((k) => k !== 'escolha' && k !== 'tamanhos');
     const alvo = e.escolha
       ? form.querySelector(`[data-escolha="escolha-${indice}"]`)
-      : form.elements.namedItem(`${e.nome ? 'nome' : e.preco ? 'preco' : 'custo'}-${indice}`);
+      : campo
+        ? form.elements.namedItem(`${campo}-${indice}`)
+        : form.querySelector(`[name^="tamanho-nome-"][name$="-${indice}"]`);
     alvo?.focus();
   }
 
@@ -322,7 +445,10 @@ export default function ImportarPlanilha({ produtos, negocioId, onFechar, onImpo
     let atualizados = 0;
     for (const a of atualizar) {
       try {
+        // Desligar os tamanhos vem antes do preço único; ligar vem depois.
+        if (a.tamanhos?.length === 0) await salvarTamanhosDoProduto(a.id, []);
         await atualizarProduto(a.id, a.alteracoes);
+        if (a.tamanhos?.length) await salvarTamanhosDoProduto(a.id, a.tamanhos);
       } catch (falha) {
         // O que já entrou sai da lista; o resto fica para tentar de novo.
         setGrupos((lista) => lista.filter((g) => !salvos.has(g.id)));

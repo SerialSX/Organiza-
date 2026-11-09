@@ -26,3 +26,8 @@ it('DIN-04: a promoção selecionada acompanha a regra e o desconto',()=>{
   expect(promocaoDasMetades('media',b,a)).toBe('Camarão');
   expect(promocaoDasMetades('media',{...a,preco:79},{...b,preco:30,promocao:'Mussarela'})).toBe('Mussarela');
 });
+it('DIN-04: mais caro fica com a promoção da metade de preço normal maior, mesmo abaixo da outra',()=>{
+  const camarao={preco:45,normal:80,promocao:'Semana do Camarão'},mussarela={preco:50,normal:50,promocao:null};
+  expect(promocaoDasMetades('mais_caro',camarao,mussarela)).toBe('Semana do Camarão');
+  expect(promocaoDasMetades('mais_caro',mussarela,camarao)).toBe('Semana do Camarão');
+});

@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { usePedidosDoDia } from './usePedidosDoDia';
-import { usePedidosAbertos } from './usePedidosAbertos';
+import { CONFERENCIA_LONGA, usePedidosAbertos } from './usePedidosAbertos';
 import { usePendenciasAnteriores } from './usePendenciasAnteriores';
 import * as pedidos from '../services/pedidos';
 vi.mock('../context/useAuth',()=>({useAuth:()=>({perfil:{negocio_id:'n'}})}));
@@ -57,4 +57,25 @@ it('CAR-01: Pedidos parado por um minuto só carrega uma vez com tempo real',asy
   await act(()=>{callback({new:{dia:'2026-11-08'}});});
   await act(()=>vi.advanceTimersByTimeAsync(500));
   expect(pedidos.listarPedidosDoPeriodo).toHaveBeenCalledTimes(2);
+});
+
+it('Cozinha confere a cada 8 s sem tempo real e a cada 30 s com ele; Início e Pedidos usam os longos',async()=>{
+  vi.useFakeTimers();pedidos.listarPedidosAbertos.mockResolvedValue([]);
+  let status;
+  pedidos.assinarPedidos.mockImplementation((_,__,s)=>{status=s;return ()=>{};});
+  function Cozinha(){estado=usePedidosAbertos();return null;}
+  await act(()=>root.render(<Cozinha/>));
+  await act(()=>{status(false);});
+  await act(()=>vi.advanceTimersByTimeAsync(16000));
+  expect(pedidos.listarPedidosAbertos).toHaveBeenCalledTimes(3);
+  await act(()=>{status(true);});
+  await act(()=>vi.advanceTimersByTimeAsync(30000));
+  expect(pedidos.listarPedidosAbertos).toHaveBeenCalledTimes(4);
+  await act(()=>root.unmount());root=createRoot(host);vi.clearAllMocks();
+  pedidos.listarPedidosAbertos.mockResolvedValue([]);
+  function Inicio(){estado=usePedidosAbertos(CONFERENCIA_LONGA);return null;}
+  await act(()=>root.render(<Inicio/>));
+  await act(()=>{status(true);});
+  await act(()=>vi.advanceTimersByTimeAsync(60000));
+  expect(pedidos.listarPedidosAbertos).toHaveBeenCalledTimes(1);
 });

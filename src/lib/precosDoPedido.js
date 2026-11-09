@@ -1,9 +1,8 @@
 // Mesma escolha da promoção feita por gravar_itens_pedido.
 export function promocaoDasMetades(regra, a, b) {
   if (regra === 'mais_caro') {
-    if (a.preco > b.preco) return a.promocao;
-    if (b.preco > a.preco) return b.promocao;
-    return a.promocao ?? b.promocao;
+    if (a.normal !== b.normal) return a.normal > b.normal ? a.promocao : b.promocao;
+    return a.preco >= b.preco ? a.promocao : b.promocao;
   }
   return a.normal-a.preco >= b.normal-b.preco ? a.promocao : b.promocao;
 }

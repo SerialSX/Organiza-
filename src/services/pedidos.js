@@ -1078,7 +1078,6 @@ export function assinarPedidos(negocioId, callback, aoMudarConexao) {
   // Toda mudança de pedido (criação, edição de itens, "faltou", status,
   // pagamento) termina atualizando a linha em pedidos depois dos itens, então
   // essa tabela basta para avisar as telas.
-  let conectou = false;
   const canal = supabase
     .channel(`pedidos-${negocioId}-${novoId()}`)
     .on(
@@ -1091,9 +1090,9 @@ export function assinarPedidos(negocioId, callback, aoMudarConexao) {
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         aoMudarConexao?.(true);
-        // A montagem já carregou; só a reconexão precisa repetir imediatamente.
-        if (conectou) callback();
-        conectou = true;
+        // Também na primeira conexão: um pedido feito entre a carga da tela e
+        // a conexão do canal não gera evento.
+        callback();
       } else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
         aoMudarConexao?.(false);
       }

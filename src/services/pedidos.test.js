@@ -81,9 +81,10 @@ describe('editar pedido', () => {
   it('mantém o preço combinado e aceita item que esgotou depois', async () => {
     const p = await novoPedido();
     produto('xb', { preco: 99, disponivel: false });
-    await editarPedido(p.id, [{ produto_id: 'xb', quantidade: 3 }], null);
+    await expect(editarPedido(p.id, [{ produto_id: 'xb', quantidade: 3 }], null)).rejects.toThrow('esgotou');
+    await editarPedido(p.id, [{ produto_id: 'xb', quantidade: 1 }], null);
     const editado = await buscarPedidoComValores(p.id);
-    expect(editado.itens[0]).toMatchObject({ quantidade: 3, preco_unitario: 18.5 });
+    expect(editado.itens[0]).toMatchObject({ quantidade: 1, preco_unitario: 18.5 });
     expect(editado.alterado_em).not.toBeNull();
   });
 

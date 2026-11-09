@@ -2,6 +2,7 @@
 // aparelho e são reenviados com a mesma chave de envio: se o primeiro envio
 // chegou ao banco antes da queda, o reenvio devolve o mesmo pedido em vez de
 // criar outro.
+import { agoraDoServidor } from '../lib/relogioServidor';
 const prefixo = 'organiza-fila-envio-';
 
 function chave(negocioId) {
@@ -30,7 +31,7 @@ function gravar(negocioId, fila) {
 // envio: { chaveEnvio, itens, mesa, nomeMesa, identificacao, formaPagamento, resumo }
 export function guardarNaFila(negocioId, envio) {
   const fila = lerFila(negocioId).filter((e) => e.chaveEnvio !== envio.chaveEnvio);
-  gravar(negocioId, [...fila, { ...envio, guardadoEm: new Date().toISOString(), erro: null }]);
+  gravar(negocioId, [...fila, { ...envio, guardadoEm: new Date(agoraDoServidor()).toISOString(), erro: null }]);
 }
 
 export function tirarDaFila(negocioId, chaveEnvio) {

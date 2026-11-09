@@ -99,6 +99,7 @@ export default function Home() {
         descricao="Pedidos de dias anteriores que ficaram sem entregar ou sem receber. Nada foi cancelado sozinho: diga o que aconteceu com cada um. O caixa daquele dia fica como não fechado até resolver."
         idTitulo="pendencias"
         mostrarDia
+        comDevolucoes
       />
 
       {esquecidosHoje.length > 0 && (

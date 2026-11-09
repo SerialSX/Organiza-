@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AppShell from '../components/ui/AppShell';
 import PageHeader from '../components/ui/PageHeader';
@@ -46,9 +46,11 @@ import {
   situacaoDoCombo,
   textoDasEscolhas,
 } from '../lib/combos';
+import { itensDoCarrinho } from '../lib/itensDoCarrinho';
+import { precoDaEdicao, promocaoDasMetades } from '../lib/precosDoPedido';
 import { precoEmPromocao } from '../lib/promocoes';
 import { nomeDoItem, precoMeioAMeio, tamanhoQueCombina } from '../lib/meioAMeio';
-import { dispensarSaida, guardarNaFila } from '../services/filaDeEnvio';
+import { guardarNaFila } from '../services/filaDeEnvio';
 import { destinoDoPedido, formatarMoeda, hojeNoNegocio, numeroDoPedido } from '../lib/formatadores';
 import { podeEditar } from '../lib/pedidoStatus';
 import { separarPedidos } from '../lib/fila';
@@ -69,10 +71,6 @@ function irPara(id, foco = null) {
   const alvo = document.getElementById(id);
   alvo?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   (foco ? alvo?.querySelector(foco) : null)?.focus({ preventScroll: true });
-}
-
-function novaChaveEnvio() {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function resumo(itens) {
@@ -111,7 +109,7 @@ export default function Pedidos() {
   const agora = useAgora();
   const comCombos = aceitaCombos();
   const { pedidos: abertos } = usePedidosAbertos();
-  const { pedidos: doDia, carregando: carregandoDia } = usePedidosDoDia();
+  const { pedidos: doDia, carregando: carregandoDia } = usePedidosDoDia(null, { comContas: false, comEncerramento: false });
   const { pedidos: anteriores, carregando: carregandoAnteriores } = usePendenciasAnteriores();
   // ?resolver=2026-11-07: veio do "Encerrar o dia" do Caixa com coisa em aberto.
   const [parametros] = useSearchParams();
@@ -146,7 +144,7 @@ export default function Pedidos() {
   // salada" ficam separados, e a pizza P da G também.
   // [{ chave, produtoId, tamanhoId, segundoId (meio a meio), nome, quantidade, observacao }]
   // Combo: [{ chave, comboId, escolhas: [{ produtoId, tamanhoId, segundoId }], nome, detalhe, quantidade, observacao }]
-  const [carrinho, setCarrinho] = useRascunhoDoPedido(perfil.negocio_id, Boolean(edicao));
+  const [carrinho, setCarrinho, chaveEnvio, garantirChave, concluirEnvio] = useRascunhoDoPedido(perfil.negocio_id, Boolean(edicao));
   const [rascunhoGuardado, setRascunhoGuardado] = useState([]);
   // Balcão ou mesa. Na edição, o destino do pedido montado fica guardado à parte.
   const [destino, setDestino] = useState(inicial);
@@ -163,7 +161,6 @@ export default function Pedidos() {
   // para não cobrir o fim da página (contas abertas, pedidos de hoje).
   const [barraOcultaDe, setBarraOcultaDe] = useState(null);
   const barraEnviado = Boolean(enviado) && barraOcultaDe !== enviado;
-  const chaveEnvio = useRef(null);
 
   useEffect(() => {
     if (!enviado) return undefined;
@@ -176,11 +173,10 @@ export default function Pedidos() {
   const aoSairDaFila = useCallback(
     (pedido, envio) => {
       setEnviado({ ...pedido, itens: envio.linhas ?? [], resumoDaFila: envio.resumo ?? '' });
-      dispensarSaida(perfil.negocio_id, envio.chaveEnvio);
     },
-    [perfil.negocio_id],
+    [],
   );
-  const { fila: filaDeEnvio, tentarAgora, descartar } = useFilaDeEnvio({
+  const { fila: filaDeEnvio, tentarAgora, tentarDeNovo, descartar } = useFilaDeEnvio({
     negocioId: perfil.negocio_id,
     usuarioId: perfil.id,
     onEnviado: aoSairDaFila,
@@ -204,7 +200,11 @@ export default function Pedidos() {
           l.itens.map((i) => ({ produtoId: i.produto_id, tamanhoId: i.tamanho_id, segundoId: i.segundo_produto_id })),
         )
       : chaveDe(l.item.produto_id, l.item.tamanho_id, l.item.segundo_produto_id);
-    precoCombinado[chave] = l.combo ? l.preco_unitario : l.item.preco_unitario;
+    (precoCombinado[chave] ??= []).push({
+      preco: l.combo ? l.preco_unitario : l.item.preco_unitario,
+      quantidade: l.combo ? l.quantidade : l.item.quantidade,
+    });
+    precoCombinado[chave].sort((a,b)=>a.preco-b.preco);
     promocaoCombinada[chave] = (l.combo ? l.itens[0].promocao : l.item.promocao) ?? null;
   }
   // O preço de agora: { preco, normal, promocao } com a promoção que vale agora.
@@ -265,7 +265,7 @@ export default function Pedidos() {
     // Mesma regra do banco: cada metade com a promoção dela, e a regra por cima.
     const preco = precoMeioAMeio(regraMeioAMeio, doPrimeiro.preco, doSegundo.preco);
     const cheio = precoMeioAMeio(regraMeioAMeio, doPrimeiro.normal, doSegundo.normal);
-    return { preco, promocao: preco < cheio ? (doPrimeiro.promocao ?? doSegundo.promocao) : null };
+    return { preco, promocao: preco < cheio ? promocaoDasMetades(regraMeioAMeio, doPrimeiro, doSegundo) : null };
   }
   const linhaValida = (linha) => chaveDaLinha(linha) in precoCombinado || noCardapio(linha) !== null;
   const itens = carregando
@@ -273,11 +273,14 @@ export default function Pedidos() {
     : carrinho.filter(linhaValida).map((linha) => {
         const chave = chaveDaLinha(linha);
         const combinado = chave in precoCombinado;
-        const hoje = combinado ? null : noCardapio(linha);
+        const hoje = noCardapio(linha);
+        const valores = precoDaEdicao(linha.quantidade, precoCombinado[chave], hoje?.preco);
         return {
           ...linha,
-          preco: combinado ? precoCombinado[chave] : hoje.preco,
-          promocao: combinado ? promocaoCombinada[chave] : (hoje.promocao?.nome ?? null),
+          ...valores,
+          preco: valores.totalLinha / linha.quantidade,
+          excedenteIndisponivel: valores.excedente > 0 && !hoje,
+          promocao: combinado ? promocaoCombinada[chave] : (hoje?.promocao?.nome ?? null),
         };
       });
   // Saiu do pedido: esgotou, ou o produto mudou de tamanhos (rascunho antigo),
@@ -365,16 +368,13 @@ export default function Pedidos() {
     Boolean(edicao) && !edicaoPerdida && (pedidoAgora.alterado_em ?? null) !== (edicao.pedido.alterado_em ?? null);
 
   function mexerNoCarrinho(atualizar) {
-    setEnviado(null);
+    setEnviado(anterior => anterior?.resumoDaFila ? anterior : null);
     setAviso('');
-    // Mudou o pedido: o próximo envio é outro, com outra chave.
-    chaveEnvio.current = null;
     setCarrinho(atualizar);
   }
 
   function mexerNoDestino(novo) {
     setEnviado(null);
-    chaveEnvio.current = null;
     setErroMesa('');
     setDestino(novo);
   }
@@ -545,7 +545,7 @@ export default function Pedidos() {
   // O pedido ficou pronto durante a edição: os itens viram um pedido novo.
   function lancarComoNovo() {
     setEdicao(null);
-    chaveEnvio.current = null;
+    concluirEnvio();
   }
 
   function limparDetalhes() {
@@ -568,6 +568,10 @@ export default function Pedidos() {
 
   async function enviar() {
     if (!itens.length || enviando) return;
+    if (itens.some(i=>i.excedenteIndisponivel)) {
+      setErro('Um dos produtos esgotou. Revise o pedido.');
+      return;
+    }
     const mesa = destinoAtual.tipo === 'mesa' ? Number(destinoAtual.mesa) : null;
     const nomeMesa = mesa ? (destinoAtual.nomeMesa ?? null) : null;
     if (destinoAtual.tipo === 'mesa' && !(mesa >= 1 && mesa <= 999)) {
@@ -593,27 +597,7 @@ export default function Pedidos() {
     setErro('');
     setAviso('');
     setEnviando(true);
-    // O instante dos preços na tela: o banco usa a promoção que valia nele,
-    // mesmo que o pedido saia depois (guardado sem internet).
-    const promocaoEm = comCombos ? agora.toISOString() : null;
-    const paraEnviar = itens.map(({ comboId, escolhas, produtoId, tamanhoId, segundoId, quantidade, observacao }) =>
-      comboId
-        ? {
-            combo_id: comboId,
-            partes: escolhas.map((e) => ({ produto_id: e.produtoId, tamanho_id: e.tamanhoId ?? null, segundo_produto_id: e.segundoId ?? null })),
-            quantidade,
-            observacao,
-            promocao_em: promocaoEm,
-          }
-        : {
-            produto_id: produtoId,
-            tamanho_id: tamanhoId ?? null,
-            segundo_produto_id: segundoId ?? null,
-            quantidade,
-            observacao,
-            promocao_em: promocaoEm,
-          },
-    );
+    const paraEnviar = itensDoCarrinho(itens);
     const linhas = itens.map(({ nome, quantidade, observacao }) => ({ nome, quantidade, observacao }));
     try {
       if (edicao) {
@@ -623,7 +607,7 @@ export default function Pedidos() {
         setCarrinho(rascunhoGuardado);
         setDestino(destinoGuardado);
       } else {
-        chaveEnvio.current ??= novaChaveEnvio();
+        garantirChave();
         const pedido = await criarPedido({
           negocioId: perfil.negocio_id,
           usuarioId: perfil.id,
@@ -636,7 +620,7 @@ export default function Pedidos() {
         });
         setCarrinho([]);
         limparDetalhes();
-        chaveEnvio.current = null;
+        concluirEnvio();
         // Próximo pedido: mesmo tipo (quem atende no salão segue de mesa em
         // mesa), com o número em branco para não ir para a mesa errada.
         setDestino((d) => ({ ...d, mesa: '', nomeMesa: null }));
@@ -658,7 +642,7 @@ export default function Pedidos() {
         });
         setCarrinho([]);
         limparDetalhes();
-        chaveEnvio.current = null;
+        concluirEnvio();
         setEnviado({ guardado: true });
       } else {
         // A chave continua a mesma: tentar de novo não duplica o pedido.
@@ -729,7 +713,7 @@ export default function Pedidos() {
         </div>
       )}
 
-      <FilaDeEnvio fila={filaDeEnvio} onTentar={tentarAgora} onDescartar={descartar} />
+      <FilaDeEnvio fila={filaDeEnvio} onTentar={tentarAgora} onTentarDeNovo={tentarDeNovo} onDescartar={descartar} />
 
       {mapaAtivo && produtos.length > 0 && <SugestaoDeMesas />}
       {mapaAtivo && produtos.length > 0 && (

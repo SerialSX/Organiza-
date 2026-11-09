@@ -11,17 +11,23 @@ export function usePedidosAbertos() {
   const [erro, setErro] = useState('');
   const [conectado, setConectado] = useState(true);
   const agendado = useRef(null);
+  const seq = useRef(0);
 
   const recarregar = useCallback(async () => {
+    if (!negocioId) return;
+    const n = ++seq.current;
     try {
-      setPedidos(await listarPedidosAbertos());
+      const novos = await listarPedidosAbertos();
+      if (n !== seq.current) return;
+      setPedidos(novos);
       setErro('');
     } catch (e) {
+      if (n !== seq.current) return;
       setErro(e.message);
     } finally {
-      setCarregando(false);
+      if (n === seq.current) setCarregando(false);
     }
-  }, []);
+  }, [negocioId]);
 
   useEffect(() => {
     if (!negocioId) return undefined;
@@ -37,16 +43,17 @@ export function usePedidosAbertos() {
       setConectado,
     );
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- contador de requisições, não uma referência DOM
+      seq.current++;
       clearTimeout(agendado.current);
       cancelar();
     };
   }, [negocioId, recarregar]);
 
-  // Rede de segurança: mesmo com o tempo real ligado, confere a cada 30 s; com
-  // ele caído, a cada 8 s, para a fila não ficar parada sem ninguém perceber.
+  // Com tempo real confere a cada 3 minutos; desconectado, a cada 30 segundos.
   useEffect(() => {
     if (!negocioId) return undefined;
-    const id = setInterval(recarregar, conectado ? 30000 : 8000);
+    const id = setInterval(recarregar, conectado ? 180000 : 30000);
     return () => clearInterval(id);
   }, [negocioId, conectado, recarregar]);
 

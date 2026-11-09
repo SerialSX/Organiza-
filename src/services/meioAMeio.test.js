@@ -116,9 +116,10 @@ describe('pedido meio a meio', () => {
     await mudarDisponivelDoTamanho(t.por.G, false);
     regra('media');
     let completo = await buscarPedidoComValores(p.id);
-    await editarPedido(p.id, [{ produto_id: 'cal', tamanho_id: t.cal.G, segundo_produto_id: 'por', quantidade: 3 }], completo.alterado_em);
+    await expect(editarPedido(p.id, [{ produto_id: 'cal', tamanho_id: t.cal.G, segundo_produto_id: 'por', quantidade: 3 }], completo.alterado_em)).rejects.toThrow('esgotou');
+    await editarPedido(p.id, [{ produto_id: 'cal', tamanho_id: t.cal.G, segundo_produto_id: 'por', quantidade: 1 }], completo.alterado_em);
     completo = await buscarPedidoComValores(p.id);
-    expect(completo.itens.map((i) => [i.quantidade, i.preco_unitario, i.segundo_tamanho_id])).toEqual([[3, 60, t.por.G]]);
+    expect(completo.itens.map((i) => [i.quantidade, i.preco_unitario, i.segundo_tamanho_id])).toEqual([[1, 60, t.por.G]]);
     await editarPedido(p.id, [{ produto_id: 'cal', tamanho_id: t.cal.G, segundo_produto_id: 'mus', quantidade: 1 }], completo.alterado_em);
     completo = await buscarPedidoComValores(p.id);
     expect(completo.itens.map((i) => [i.segundo_sabor, i.preco_unitario, i.custo_unitario])).toEqual([['Mussarela', 53.5, null]]);

@@ -77,7 +77,6 @@ function rotulo(saida) {
 // número aparece grande lá mesmo.
 export function SaidasDaFila({ perfil }) {
   const negocioId = perfil?.negocio_id;
-  const { pathname } = useLocation();
   const [saidas, setSaidas] = useState(() => (negocioId ? lerSaidas(negocioId) : []));
 
   useEffect(() => {
@@ -87,7 +86,7 @@ export function SaidasDaFila({ perfil }) {
     return assinarSaidas(() => setSaidas(lerSaidas(negocioId)));
   }, [negocioId]);
 
-  if (!saidas.length || pathname === '/pedidos') return null;
+  if (!saidas.length) return null;
 
   return (
     <div role="region" aria-label="Pedidos que estavam esperando a internet" className="flex flex-col">

@@ -208,7 +208,7 @@ await ok('editar mantém o preço combinado do G, mesmo com o preço novo', asyn
   const [v] = await db.query('select alterado_em from public.pedidos where id = $1', [pedidoG.id]).then((r) => r.rows);
   await dono(U1, 'select public.editar_pedido($1, $2::jsonb, $3)', [
     pedidoG.id,
-    JSON.stringify([{ produto_id: pizza, tamanho_id: G, quantidade: 2 }, { produto_id: pastel, quantidade: 2 }]),
+    JSON.stringify([{ produto_id: pizza, tamanho_id: G, quantidade: 1 }, { produto_id: pastel, quantidade: 2 }]),
     v.alterado_em,
   ]);
   igual(await itensDo(pedidoG.id), [
@@ -246,7 +246,7 @@ await ok('tirar o M: pedido aberto com M continua e pode ser editado', async () 
   igual(t.map((x) => x.nome), ['P', 'G'], 'ativos');
   igual((await tamanhosDe(pizza)).filter((x) => x.arquivado).map((x) => x.nome), ['M'], 'M arquivado');
   const [v] = await db.query('select alterado_em from public.pedidos where id = $1', [pedidoM.id]).then((r) => r.rows);
-  await dono(U1, 'select public.editar_pedido($1, $2::jsonb, $3)', [pedidoM.id, JSON.stringify([{ produto_id: pizza, tamanho_id: M, quantidade: 3 }]), v.alterado_em]);
+  await dono(U1, 'select public.editar_pedido($1, $2::jsonb, $3)', [pedidoM.id, JSON.stringify([{ produto_id: pizza, tamanho_id: M, quantidade: 1 }]), v.alterado_em]);
   igual((await itensDo(pedidoM.id)).map((i) => [i.tamanho, i.preco]), [['M', 42]], 'M mantido');
 });
 await erro('pedido novo com o M que saiu (guardado sem internet, por exemplo)', 'O tamanho M de Pizza Calabresa saiu do cardápio', () =>

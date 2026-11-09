@@ -30,9 +30,13 @@ export default function LinhaDoPedido({ linha, onQuantidade, onObservacao }) {
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0">
           <p className="font-medium text-[var(--text-primary)] break-words">{nome}</p>
+          {linha.quantidadeAntiga > 0 && linha.excedente > 0 && (
+            <p className="text-sm">{linha.quantidadeAntiga} pelo preço combinado, {linha.excedente} pelo preço de hoje</p>
+          )}
+          {linha.excedenteIndisponivel && <p className="text-sm">O excedente esgotou. Diminua a quantidade.</p>}
           {detalhe && <p className="text-sm text-[var(--text-secondary)] break-words">{detalhe}</p>}
           <p className="text-sm tabular-nums text-[var(--text-secondary)]">
-            {formatarMoeda(preco * quantidade)}
+            {formatarMoeda(linha.totalLinha ?? preco * quantidade)}
             {promocao && <span className="font-semibold text-[var(--color-brand-orange)]"> · {promocao}</span>}
           </p>
         </div>

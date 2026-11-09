@@ -691,7 +691,7 @@ export async function criarPedido({
   }
   const { data, error } = resposta;
   if (error && ehFalhaDeRede(error)) throw new SemInternet();
-  if (error) throw Object.assign(new Error(mensagemDoBanco(error, 'Não foi possível enviar o pedido. Tente de novo.')), { code: error.code });
+  if (error) throw Object.assign(new Error(mensagemDoBanco(error, 'Não foi possível enviar o pedido. Tente de novo.')), { code: error.code, status: resposta.status });
   return normalizarPedido(data, []);
 }
 

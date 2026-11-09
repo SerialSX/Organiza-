@@ -68,8 +68,6 @@ function Rotas() {
   }, [perfil]);
   // Dois avisos de erro: o de dentro mostra o menu; se o erro for no próprio
   // menu, o de fora mostra o aviso simples, em vez da tela em branco.
-  // Dois avisos de erro: o de dentro mostra o menu; se o erro for no próprio
-  // menu, o de fora mostra o aviso simples, em vez da tela em branco.
   return <ErroDaTela key={pathname}><ErroDaTela comMenu={Boolean(perfil)}>
             <Suspense fallback={<TelaCarregando />}>
               <Routes>

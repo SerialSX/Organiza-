@@ -18,9 +18,16 @@ export function useRascunhoDoPedido(negocioId, pausado) {
     gravarRascunho(negocioId,carrinho,chaveEnvio.current);
     return chaveEnvio.current;
   }
+  // Mudou o conteúdo (itens ou destino), muda a chave: o próximo envio é outro
+  // pedido, e não pode receber de volta o que já chegou ao banco.
+  function trocarChave() {
+    if (chaveEnvio.current === null) return;
+    chaveEnvio.current=null;
+    gravarRascunho(negocioId,carrinho,null);
+  }
   function concluirEnvio() {
     chaveEnvio.current=null;
     gravarRascunho(negocioId,[],null);
   }
-  return [carrinho,setCarrinho,chaveEnvio,garantirChave,concluirEnvio];
+  return [carrinho,setCarrinho,chaveEnvio,garantirChave,concluirEnvio,trocarChave];
 }

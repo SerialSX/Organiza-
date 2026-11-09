@@ -13,6 +13,9 @@ it.each([
   ['rede',()=>Promise.reject(new TypeError('Failed to fetch')),false],
   ['503',()=>Promise.resolve({error:{code:'503',message:'<html>Unavailable</html>'}}),false],
   ['P0001',()=>Promise.resolve({error:{code:'P0001',message:'Produto esgotou.'}}),true],
+  ['PostgREST',()=>Promise.resolve({error:{code:'PGRST202',message:'Could not find the function'}}),true],
+  ['forma antiga',()=>Promise.resolve({error:{code:'23514',message:'violates check constraint'}}),true],
+  ['504 com status',()=>Promise.resolve({error:{status:504,message:'Gateway Timeout'}}),false],
 ])('TEL-04: %s só é definitivo quando o banco recusa',async(_,resposta,definitivo)=>{
   rpc.mockImplementation(resposta);
   guardarNaFila('n',{chaveEnvio:'k',itens:[{produto_id:'x',quantidade:1}]});

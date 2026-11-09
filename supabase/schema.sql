@@ -706,9 +706,10 @@ begin
         -- Sem o custo de um dos sabores, o custo do item fica sem saber.
         v_custo := round(v_custo / 2 + v_custo_2 / 2, 2);
         if v_preco < v_preco_cheio then
-          -- Mais caro: a metade que determinou o preço; empate prefere promoção.
+          -- Mais caro: o desconto vem da metade de preço normal maior (é ela que dá o
+          -- preço cheio); com preços normais iguais, a de preço efetivo maior.
           -- Média: a metade que teve o maior desconto, antes de combinar os preços.
-          if (v_regra = 'mais_caro' and (v_efetivo > v_efetivo_2 or (v_efetivo = v_efetivo_2 and v_efetivo < v_normal_1)))
+          if (v_regra = 'mais_caro' and (v_normal_1 > v_preco_2 or (v_normal_1 = v_preco_2 and v_efetivo >= v_efetivo_2)))
              or (v_regra = 'media' and v_normal_1 - v_efetivo >= v_preco_2 - v_efetivo_2) then
             v_promocao_id := v_promocao.promocao_id;
             v_promocao_nome := v_promocao.promocao;

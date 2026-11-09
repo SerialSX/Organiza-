@@ -21,7 +21,7 @@ import ResolverPendencias from '../components/fimDoDia/ResolverPendencias';
 import { OrdersIcon, ProductsIcon, SendIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
 import { useProdutos } from '../hooks/useProdutos';
-import { usePedidosAbertos } from '../hooks/usePedidosAbertos';
+import { CONFERENCIA_LONGA, usePedidosAbertos } from '../hooks/usePedidosAbertos';
 import { usePedidosDoDia } from '../hooks/usePedidosDoDia';
 import { usePendenciasAnteriores } from '../hooks/usePendenciasAnteriores';
 import { useFilaDeEnvio } from '../hooks/useFilaDeEnvio';
@@ -108,7 +108,7 @@ export default function Pedidos() {
   // A promoção começa e acaba com a tela aberta.
   const agora = useAgora();
   const comCombos = aceitaCombos();
-  const { pedidos: abertos } = usePedidosAbertos();
+  const { pedidos: abertos } = usePedidosAbertos(CONFERENCIA_LONGA);
   const { pedidos: doDia, carregando: carregandoDia } = usePedidosDoDia(null, { comContas: false, comEncerramento: false });
   const { pedidos: anteriores, carregando: carregandoAnteriores } = usePendenciasAnteriores();
   // ?resolver=2026-11-07: veio do "Encerrar o dia" do Caixa com coisa em aberto.
@@ -144,7 +144,7 @@ export default function Pedidos() {
   // salada" ficam separados, e a pizza P da G também.
   // [{ chave, produtoId, tamanhoId, segundoId (meio a meio), nome, quantidade, observacao }]
   // Combo: [{ chave, comboId, escolhas: [{ produtoId, tamanhoId, segundoId }], nome, detalhe, quantidade, observacao }]
-  const [carrinho, setCarrinho, chaveEnvio, garantirChave, concluirEnvio] = useRascunhoDoPedido(perfil.negocio_id, Boolean(edicao));
+  const [carrinho, setCarrinho, chaveEnvio, garantirChave, concluirEnvio, trocarChave] = useRascunhoDoPedido(perfil.negocio_id, Boolean(edicao));
   const [rascunhoGuardado, setRascunhoGuardado] = useState([]);
   // Balcão ou mesa. Na edição, o destino do pedido montado fica guardado à parte.
   const [destino, setDestino] = useState(inicial);
@@ -368,12 +368,14 @@ export default function Pedidos() {
     Boolean(edicao) && !edicaoPerdida && (pedidoAgora.alterado_em ?? null) !== (edicao.pedido.alterado_em ?? null);
 
   function mexerNoCarrinho(atualizar) {
+    trocarChave();
     setEnviado(anterior => anterior?.resumoDaFila ? anterior : null);
     setAviso('');
     setCarrinho(atualizar);
   }
 
   function mexerNoDestino(novo) {
+    trocarChave();
     setEnviado(null);
     setErroMesa('');
     setDestino(novo);

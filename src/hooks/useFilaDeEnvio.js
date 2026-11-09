@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { criarPedido } from '../services/pedidos';
+import { criarPedido, SemInternet } from '../services/pedidos';
 import { assinarFila, lerFila, marcarErroNaFila, registrarSaida, tirarDaFila } from '../services/filaDeEnvio';
 import { agoraDoServidor } from '../lib/relogioServidor';
 import { hojeNoNegocio } from '../lib/formatadores';
@@ -7,6 +7,16 @@ import { hojeNoNegocio } from '../lib/formatadores';
 const INTERVALO_MS = 10000;
 const EVENTO_ENVIADO = 'organiza-fila-enviado';
 export const ERRO_OUTRO_DIA = 'Pedido de outro dia: confira com o cliente e descarte.';
+
+// Falta de internet ou servidor fora do ar por um momento (502, 503, 504,
+// página HTML no lugar da resposta): o pedido espera e tenta de novo. Qualquer
+// outro erro (o banco recusou, dado que não serve mais) vira erro na fila, com
+// "Descartar" e "Tentar de novo", para não travar os pedidos de trás.
+export function ehPassageiro(e) {
+  if (e instanceof SemInternet || e?.semInternet) return true;
+  if (/^5\d\d$/.test(String(e?.status ?? e?.code ?? ''))) return true;
+  return /<html/i.test(e?.message ?? '');
+}
 
 // Um reenvio por vez no aparelho, mesmo com o hook em mais de um lugar (o
 // AppShell de toda tela e a tela de Pedidos).
@@ -80,8 +90,8 @@ export function useFilaDeEnvio({ negocioId, usuarioId, onEnviado }) {
           });
           window.dispatchEvent(new CustomEvent(EVENTO_ENVIADO, { detail: { negocioId, pedido, envio } }));
         } catch (e) {
-          // Ainda sem internet: para e tenta mais tarde, na mesma ordem.
-          if (e.code !== 'P0001') break;
+          // Sem internet ou servidor fora do ar: para e tenta mais tarde, na mesma ordem.
+          if (ehPassageiro(e)) break;
           marcarErroNaFila(negocioId, envio.chaveEnvio, e.message);
         }
       }

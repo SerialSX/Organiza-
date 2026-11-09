@@ -13,6 +13,8 @@ await ok('DIN-01: criação offline mantém a promoção de duas horas atrás; e
     ((now() at time zone 'America/Fortaleza') - interval '6 hours')::time as inicio,
     ((now() at time zone 'America/Fortaleza') - interval '1 hour')::time as fim,
     (now() - interval '2 hours')::text as atras2, (now() - interval '5 hours')::text as atras5`)).rows;
+  // A promoção começa 6 h atrás: só testa quando isso cai no mesmo dia de trabalho, depois das 5h.
+  if (inicio < '05:00' || fim < inicio) return console.log('      (pulado: perto da virada do dia)');
   await dono(U1, 'select public.salvar_promocao(null,$1,$2::int[],$3::time,$4::time,$5::jsonb)', ['Ontem',[0,1,2,3,4,5,6],inicio,fim,JSON.stringify([{produto_id:produto,preco:5}])]);
   const offline = await pedir([item(1,{promocao_em:atras2})]);
   igual(Number((await itensDo(offline))[0].preco_unitario),5,'preço offline');
@@ -68,6 +70,16 @@ await ok('DIN-04: meio a meio registra a promoção que determina o preço', asy
       const [i] = await itensDo(p);
       igual([Number(i.preco_unitario),Number(i.preco_cheio),i.promocao_id],[preco,cheio,promo],regra);
     }
+  }
+  await dono(U1,'delete from public.promocoes where id=$1',[promo]);
+});
+await ok('DIN-04: mais caro com a promoção abaixo do outro sabor continua com a promoção', async () => {
+  const [{id:a},{id:b}] = await dono(U1,"insert into public.produtos(negocio_id,nome,preco,meio_a_meio) values ($1,'Camarão grande',80,true),($1,'Mussarela grande',50,true) returning id",[negocio]);
+  const [{id:promo}] = await dono(U1,"select public.salvar_promocao(null,'Semana do Camarão','{0,1,2,3,4,5,6}',null,null,$1::jsonb) as id",[JSON.stringify([{produto_id:a,preco:45}])]);
+  await dono(U1,'select public.configurar_meio_a_meio($1)',['mais_caro']);
+  for (const [primeiro,segundo] of [[a,b],[b,a]]) {
+    const [i] = await itensDo(await pedir([{produto_id:primeiro,segundo_produto_id:segundo,quantidade:1}]));
+    igual([Number(i.preco_unitario),Number(i.preco_cheio),i.promocao_id],[50,80,promo],'camarão a 45 com mussarela a 50');
   }
   await dono(U1,'delete from public.promocoes where id=$1',[promo]);
 });

@@ -3,7 +3,13 @@ import { useAuth } from '../context/useAuth';
 import { useRecarregarAoVoltar } from './useRecarregarAoVoltar';
 import { listarPedidosAbertos, assinarPedidos } from '../services/pedidos';
 
-export function usePedidosAbertos() {
+// Conferência de segurança além do tempo real. A Cozinha usa os intervalos
+// curtos (o pedido não pode demorar a aparecer); Início e Pedidos passam os
+// longos, porque só olham a lista.
+export const CONFERENCIA_COZINHA = { comTempoReal: 30000, semTempoReal: 8000 };
+export const CONFERENCIA_LONGA = { comTempoReal: 180000, semTempoReal: 30000 };
+
+export function usePedidosAbertos({ comTempoReal, semTempoReal } = CONFERENCIA_COZINHA) {
   const { perfil } = useAuth();
   const negocioId = perfil?.negocio_id;
   const [pedidos, setPedidos] = useState([]);
@@ -50,12 +56,11 @@ export function usePedidosAbertos() {
     };
   }, [negocioId, recarregar]);
 
-  // Com tempo real confere a cada 3 minutos; desconectado, a cada 30 segundos.
   useEffect(() => {
     if (!negocioId) return undefined;
-    const id = setInterval(recarregar, conectado ? 180000 : 30000);
+    const id = setInterval(recarregar, conectado ? comTempoReal : semTempoReal);
     return () => clearInterval(id);
-  }, [negocioId, conectado, recarregar]);
+  }, [negocioId, conectado, recarregar, comTempoReal, semTempoReal]);
 
   useRecarregarAoVoltar(recarregar);
 

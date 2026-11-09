@@ -466,6 +466,11 @@ set search_path = ''
 as $$
 declare
   v_item jsonb;
+  v_lote jsonb;
+  v_lotes jsonb;
+  v_restantes jsonb;
+  v_falta int;
+  v_usar int;
   v_produto public.produtos;
   v_tamanho public.produto_tamanhos;
   v_tamanho_id uuid;
@@ -492,6 +497,7 @@ declare
   v_preco_cheio numeric(10, 2);
   v_efetivo numeric(10, 2);
   v_efetivo_2 numeric(10, 2);
+  v_normal_1 numeric(10, 2);
 begin
   if p_itens is null or jsonb_typeof(p_itens) <> 'array'
      or jsonb_array_length(p_itens) not between 1 and 100 then
@@ -499,6 +505,44 @@ begin
   end if;
 
   for v_item in select value from jsonb_array_elements(p_itens) loop
+    -- Divide a quantidade entre os lotes já combinados e o excedente de hoje.
+    -- Atualiza o saldo local também quando o payload repete a mesma chave.
+    if v_item ? 'combo_id' and jsonb_typeof(v_item -> 'partes') = 'array' then
+      select 'c|' || (v_item ->> 'combo_id') || '|' || string_agg(
+        (e.value ->> 'produto_id') || '|' || coalesce(e.value ->> 'tamanho_id', '') || '|' || coalesce(e.value ->> 'segundo_produto_id', ''),
+        ';' order by e.ordinality) into v_chave
+      from jsonb_array_elements(v_item -> 'partes') with ordinality e;
+    else
+      v_chave := (v_item ->> 'produto_id') || '|' || coalesce(v_item ->> 'tamanho_id', '') || '|' || coalesce(v_item ->> 'segundo_produto_id', '');
+    end if;
+    v_lotes := p_anteriores -> v_chave -> 'lotes';
+    if v_lotes is not null then
+      if jsonb_typeof(v_item -> 'quantidade') is distinct from 'number' then
+        raise exception 'Item do pedido inválido.';
+      end if;
+      v_falta := (v_item ->> 'quantidade')::int;
+      if v_falta not between 1 and 999 then
+        raise exception 'A quantidade precisa ficar entre 1 e 999.';
+      end if;
+      v_restantes := '[]'::jsonb;
+      for v_lote in select value from jsonb_array_elements(v_lotes) loop
+        v_usar := least(v_falta, (v_lote ->> 'quantidade')::int);
+        if v_usar > 0 then
+          perform public.gravar_itens_pedido(p_pedido_id, p_negocio_id,
+            jsonb_build_array(v_item || jsonb_build_object('quantidade', v_usar)), jsonb_build_object(v_chave, v_lote));
+          v_falta := v_falta - v_usar;
+        end if;
+        if (v_lote ->> 'quantidade')::int > v_usar then
+          v_restantes := v_restantes || jsonb_build_array(v_lote || jsonb_build_object('quantidade', (v_lote ->> 'quantidade')::int - v_usar));
+        end if;
+      end loop;
+      p_anteriores := jsonb_set(p_anteriores, array[v_chave, 'lotes'], v_restantes);
+      if v_falta > 0 then
+        perform public.gravar_itens_pedido(p_pedido_id, p_negocio_id,
+          jsonb_build_array(v_item || jsonb_build_object('quantidade', v_falta)), '{}');
+      end if;
+      continue;
+    end if;
     if jsonb_typeof(v_item) = 'object' and v_item ? 'combo_id' then
       perform public.gravar_combo_do_pedido(p_pedido_id, p_negocio_id, v_item, coalesce(p_anteriores, '{}'::jsonb));
       continue;
@@ -656,13 +700,17 @@ begin
         select * into v_promocao_2
         from public.preco_em_promocao(p_negocio_id, v_segundo.id, v_segundo_tamanho_id, null, v_momento);
         v_efetivo_2 := case when v_promocao_2.preco < v_preco_2 then v_promocao_2.preco else v_preco_2 end;
+        v_normal_1 := v_preco;
         v_preco_cheio := case when v_regra = 'mais_caro' then greatest(v_preco, v_preco_2) else round((v_preco + v_preco_2) / 2, 2) end;
         v_preco := case when v_regra = 'mais_caro' then greatest(v_efetivo, v_efetivo_2) else round((v_efetivo + v_efetivo_2) / 2, 2) end;
         -- Sem o custo de um dos sabores, o custo do item fica sem saber.
         v_custo := round(v_custo / 2 + v_custo_2 / 2, 2);
         if v_preco < v_preco_cheio then
-          -- A promoção da primeira metade, se baixou o preço dela; senão a da segunda.
-          if v_promocao.preco < v_preco then
+          -- Mais caro: o desconto vem da metade de preço normal maior (é ela que dá o
+          -- preço cheio); com preços normais iguais, a de preço efetivo maior.
+          -- Média: a metade que teve o maior desconto, antes de combinar os preços.
+          if (v_regra = 'mais_caro' and (v_normal_1 > v_preco_2 or (v_normal_1 = v_preco_2 and v_efetivo >= v_efetivo_2)))
+             or (v_regra = 'media' and v_normal_1 - v_efetivo >= v_preco_2 - v_efetivo_2) then
             v_promocao_id := v_promocao.promocao_id;
             v_promocao_nome := v_promocao.promocao;
           else
@@ -682,11 +730,13 @@ begin
 
     insert into public.itens_pedido (
       pedido_id, produto_id, quantidade, preco_unitario, custo_unitario, observacao, tamanho_id, tamanho,
-      segundo_produto_id, segundo_tamanho_id, segundo_sabor, promocao_id, promocao, preco_cheio
+      segundo_produto_id, segundo_tamanho_id, segundo_sabor, promocao_id, promocao, preco_cheio, faltou, faltou_ingredientes
     )
     values (
       p_pedido_id, v_produto.id, v_quantidade, v_preco, v_custo, v_observacao, v_tamanho_id, v_nome_tamanho,
-      v_segundo_id, v_segundo_tamanho_id, v_segundo_sabor, v_promocao_id, v_promocao_nome, v_preco_cheio
+      v_segundo_id, v_segundo_tamanho_id, v_segundo_sabor, v_promocao_id, v_promocao_nome, v_preco_cheio,
+      coalesce((p_anteriores -> v_chave ->> 'faltou')::boolean, false),
+      array(select jsonb_array_elements_text(coalesce(p_anteriores -> v_chave -> 'faltou_ingredientes', '[]'::jsonb)))
     );
   end loop;
 end;
@@ -860,53 +910,41 @@ begin
     raise exception 'Outra pessoa alterou este pedido agora há pouco. Abra o pedido de novo para ver como ficou.';
   end if;
 
-  -- Chave: produto, tamanho e segundo sabor. Trocar a P pela G, ou trocar um
-  -- dos sabores, é um item novo, com o preço de hoje. O preço da promoção que
-  -- já acabou continua no item que já estava.
-  select coalesce(
-    jsonb_object_agg(
-      produto_id::text || '|' || coalesce(tamanho_id::text, '') || '|' || coalesce(segundo_produto_id::text, ''),
-      jsonb_build_object(
-        'preco', preco_unitario, 'custo', custo_unitario, 'tamanho', tamanho,
-        'segundo_tamanho_id', segundo_tamanho_id, 'segundo_sabor', segundo_sabor,
-        'promocao_id', promocao_id, 'promocao', promocao, 'preco_cheio', preco_cheio
-      )
-    ),
-    '{}'::jsonb
-  )
-  into v_anteriores
-  from public.itens_pedido where pedido_id = p_pedido_id and combo_id is null;
-
-  -- Combos: a chave é o combo e o que foi escolhido em cada parte (a mesma do
-  -- gravar_combo_do_pedido). O mesmo combo com as mesmas escolhas volta igual.
-  select v_anteriores || coalesce(jsonb_object_agg(c.chave, c.valor), '{}'::jsonb)
-  into v_anteriores
-  from (
-    select
-      'c|' || i.combo_id::text || '|' || string_agg(
-        i.produto_id::text || '|' || coalesce(i.tamanho_id::text, '') || '|' || coalesce(i.segundo_produto_id::text, ''),
-        ';' order by i.combo_parte
-      ) as chave,
-      jsonb_build_object(
-        'nome', min(i.combo_nome),
-        'linhas', jsonb_agg(
-          jsonb_build_object(
+  -- Cada chave guarda os lotes e suas quantidades; uma nova edição não
+  -- perde os preços diferentes de um aumento anterior. Consome os mais baratos primeiro.
+  select coalesce(jsonb_object_agg(chave, jsonb_build_object('lotes', lotes)), '{}')
+  into v_anteriores from (
+    select chave, jsonb_agg(valor order by preco) as lotes from (
+      select produto_id::text || '|' || coalesce(tamanho_id::text, '') || '|' || coalesce(segundo_produto_id::text, '') as chave,
+        preco_unitario as preco,
+        jsonb_build_object('quantidade', quantidade,
+          'faltou', faltou, 'faltou_ingredientes', faltou_ingredientes,
+          'preco', preco_unitario, 'custo', custo_unitario, 'tamanho', tamanho,
+          'segundo_tamanho_id', segundo_tamanho_id, 'segundo_sabor', segundo_sabor,
+          'promocao_id', promocao_id, 'promocao', promocao, 'preco_cheio', preco_cheio) as valor
+      from public.itens_pedido where pedido_id = p_pedido_id and combo_id is null
+      union all
+      select 'c|' || i.combo_id::text || '|' || string_agg(
+          i.produto_id::text || '|' || coalesce(i.tamanho_id::text, '') || '|' || coalesce(i.segundo_produto_id::text, ''),
+          ';' order by i.combo_parte),
+        sum(i.preco_unitario),
+        jsonb_build_object('quantidade', min(i.quantidade), 'nome', min(i.combo_nome),
+          'linhas', jsonb_agg(jsonb_build_object(
             'produto_id', i.produto_id, 'tamanho_id', i.tamanho_id, 'tamanho', i.tamanho,
             'segundo_produto_id', i.segundo_produto_id, 'segundo_tamanho_id', i.segundo_tamanho_id,
             'segundo_sabor', i.segundo_sabor, 'preco', i.preco_unitario, 'custo', i.custo_unitario,
             'promocao_id', i.promocao_id, 'promocao', i.promocao, 'preco_cheio', i.preco_cheio,
-            'parte', i.combo_parte
-          )
-          order by i.combo_parte
-        )
-      ) as valor
-    from public.itens_pedido i
-    where i.pedido_id = p_pedido_id and i.combo_id is not null
-    group by i.combo_grupo, i.combo_id
-  ) c;
+            'faltou', i.faltou, 'faltou_ingredientes', i.faltou_ingredientes,
+            'parte', i.combo_parte) order by i.combo_parte))
+      from public.itens_pedido i where i.pedido_id = p_pedido_id and i.combo_id is not null
+      group by i.combo_grupo, i.combo_id
+    ) originais group by chave
+  ) agrupados;
   select coalesce(sum(quantidade * preco_unitario), 0) into v_total_antes
   from public.itens_pedido where pedido_id = p_pedido_id;
 
+  -- Edição usa a hora do servidor. A janela offline só vale na criação.
+  select jsonb_agg(value - 'promocao_em') into p_itens from jsonb_array_elements(p_itens);
   delete from public.itens_pedido where pedido_id = p_pedido_id;
   perform public.gravar_itens_pedido(p_pedido_id, v_pedido.negocio_id, p_itens, v_anteriores);
 
@@ -2005,7 +2043,7 @@ begin
 
   insert into public.contas_mesa (negocio_id, dia, mesa, nome_mesa, consumo, taxa_servico, servico, jeito, criado_por)
   values (
-    v_negocio_id, public.dia_do_negocio(v_negocio_id), v_mesa, v_nome_mesa, v_consumo,
+    v_negocio_id, (select min(p.dia) from public.pedidos p where p.id = any (p_pedido_ids)), v_mesa, v_nome_mesa, v_consumo,
     case when v_servico > 0 then v_taxa else 0 end, v_servico, p_jeito, (select auth.uid())
   )
   returning id into v_conta_id;
@@ -3002,6 +3040,8 @@ as $$
 declare
   v_momento timestamptz;
 begin
+  -- Janela de 12 horas exclusivamente para criação de pedidos da fila offline.
+  -- editar_pedido remove promocao_em antes de gravar os itens.
   if jsonb_typeof(p_item -> 'promocao_em') is distinct from 'string' then
     return now();
   end if;
@@ -3427,7 +3467,7 @@ begin
       insert into public.itens_pedido (
         pedido_id, produto_id, quantidade, preco_unitario, custo_unitario, observacao, tamanho_id, tamanho,
         segundo_produto_id, segundo_tamanho_id, segundo_sabor,
-        combo_id, combo_nome, combo_grupo, combo_parte, promocao_id, promocao, preco_cheio
+        combo_id, combo_nome, combo_grupo, combo_parte, promocao_id, promocao, preco_cheio, faltou, faltou_ingredientes
       )
       values (
         p_pedido_id, (v_linha ->> 'produto_id')::uuid, v_quantidade, (v_linha ->> 'preco')::numeric,
@@ -3436,7 +3476,9 @@ begin
         v_combo.id, v_anterior ->> 'nome', v_grupo, (v_linha ->> 'parte')::smallint,
         -- A promoção pode ter sido apagada depois: fica só o nome.
         (select id from public.promocoes where id::text = v_linha ->> 'promocao_id'),
-        v_linha ->> 'promocao', (v_linha ->> 'preco_cheio')::numeric
+        v_linha ->> 'promocao', (v_linha ->> 'preco_cheio')::numeric,
+        coalesce((v_linha ->> 'faltou')::boolean, false),
+        array(select jsonb_array_elements_text(coalesce(v_linha -> 'faltou_ingredientes', '[]'::jsonb)))
       );
     end loop;
     return;
@@ -3612,7 +3654,7 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select 20261115;
+  select 20261116;
 $$;
 
 revoke all on function public.versao_do_banco() from public;

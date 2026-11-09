@@ -155,7 +155,7 @@ describe('pedido', () => {
     let completo = await buscarPedidoComValores(pedido.id);
     await editarPedido(pedido.id, [{ produto_id: 'pz', tamanho_id: p.id, quantidade: 2 }], completo.alterado_em);
     completo = await buscarPedidoComValores(pedido.id);
-    expect(completo.itens.map((i) => [i.tamanho, i.quantidade, i.preco_unitario])).toEqual([['P', 2, 35]]);
+    expect(completo.itens.map((i) => [i.tamanho, i.quantidade, i.preco_unitario])).toEqual([['P', 1, 35], ['Pequena', 1, 40]]);
     await editarPedido(pedido.id, [{ produto_id: 'pz', tamanho_id: g.id, quantidade: 2 }], completo.alterado_em);
     completo = await buscarPedidoComValores(pedido.id);
     expect(completo.itens.map((i) => [i.tamanho, i.preco_unitario])).toEqual([['G', 55]]);
@@ -169,9 +169,10 @@ describe('pedido', () => {
       { id: g.id, nome: 'G', preco: 55 },
     ]);
     const completo = await buscarPedidoComValores(pedido.id);
-    await editarPedido(pedido.id, [{ produto_id: 'pz', tamanho_id: m.id, quantidade: 3 }], completo.alterado_em);
+    await expect(editarPedido(pedido.id, [{ produto_id: 'pz', tamanho_id: m.id, quantidade: 3 }], completo.alterado_em)).rejects.toThrow('saiu do cardápio');
+    await editarPedido(pedido.id, [{ produto_id: 'pz', tamanho_id: m.id, quantidade: 1 }], completo.alterado_em);
     expect((await buscarPedidoComValores(pedido.id)).itens.map((i) => [i.nome, i.quantidade, i.preco_unitario])).toEqual([
-      ['Pizza Calabresa (M)', 3, 45],
+      ['Pizza Calabresa (M)', 1, 45],
     ]);
   });
 });

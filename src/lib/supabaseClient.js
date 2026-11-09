@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { fetchComRelogio } from './relogioServidor';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -11,4 +12,4 @@ export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 const demoPermitido = import.meta.env.DEV || import.meta.env.VITE_MODO_DEMO === 'true';
 export const configuracaoAusente = !isSupabaseConfigured && !demoPermitido;
 
-export const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseAnonKey) : null;
+export const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseAnonKey, { global: { fetch: fetchComRelogio } }) : null;

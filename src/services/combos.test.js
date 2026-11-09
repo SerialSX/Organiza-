@@ -82,8 +82,8 @@ describe('pedido com combo', () => {
     await salvarCombo({ id: comboX, nome: 'Combo X', preco: 35, partes: [parte(['x']), parte(['bat']), parte(['refri'], ['suco'])] });
     const completo = await buscarPedidoComValores(p.id);
     await editarPedido(p.id, [{ combo_id: comboX, partes: escolha('x', 'bat', 'refri'), quantidade: 3 }], completo.alterado_em);
-    const [combo] = agruparItens(await itens(p.id));
-    expect(combo).toMatchObject({ quantidade: 3, preco_unitario: 30 });
+    const grupos = agruparItens(await itens(p.id));
+    expect(grupos.map(c=>[c.quantidade,c.preco_unitario])).toEqual([[1,30],[2,35]]);
   });
 });
 
@@ -125,7 +125,7 @@ describe('promoções', () => {
     await mudarAtivaDaPromocao(id, false);
     const completo = await buscarPedidoComValores(p.id);
     await editarPedido(p.id, [{ produto_id: 'x', quantidade: 3 }], completo.alterado_em);
-    expect((await itens(p.id))[0]).toMatchObject({ quantidade: 3, preco_unitario: 15, promocao: 'Dia do X' });
+    expect((await itens(p.id)).map(i=>[i.quantidade,i.preco_unitario])).toEqual([[2,15],[1,18]]);
     const novo = await pedir([{ produto_id: 'x', quantidade: 1 }]);
     expect((await itens(novo.id))[0]).toMatchObject({ preco_unitario: 18, promocao: null });
 

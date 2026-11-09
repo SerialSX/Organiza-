@@ -198,3 +198,10 @@ describe('faltasNoPeriodo', () => {
     ]);
   });
 });
+
+it('DIN-07: barra diária exclui o que não foi recebido', () => {
+  const dia='2026-11-08', base={dia,status:'entregue'};
+  const lista=[{...base,itens:[{quantidade:1,preco_unitario:70}]},{...base,nao_recebido_em:'2026-11-08T20:00:00Z',itens:[{quantidade:1,preco_unitario:30}]}];
+  const inicio=inicioDoDia(dia);
+  expect(faturamentoPorDia(lista,inicio,new Date(inicio.getTime()+86400000))[0].valor).toBe(70);
+});

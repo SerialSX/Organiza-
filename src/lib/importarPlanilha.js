@@ -24,7 +24,7 @@ export const chaveDoNome = normalizar;
 const CABECALHO = {
   nome: /^(produto|produtos|nome|item|itens|descricao|sabor|lanche|prato|cardapio)\b/,
   preco: /^(preco|precos|valor|venda|r\$)/,
-  custo: /^custo/,
+  custo: /custo/,
   cozinha: /cozinha/,
   tamanho: /^tamanho/,
   meio: /meio/,
@@ -63,10 +63,16 @@ function acharCabecalho(linhas) {
   for (let i = 0; i < Math.min(10, linhas.length); i++) {
     // "R$ 9,00" é preço, não título de coluna.
     const celulas = linhas[i].map((c) => (typeof c === 'string' && !pareceValor(c) ? normalizar(c) : ''));
-    const preco = celulas.findIndex((c) => CABECALHO.preco.test(c));
+    const precos = celulas.map((c,j)=>({c,j})).filter(({c})=>CABECALHO.preco.test(c) && !CABECALHO.custo.test(c));
+    const preco = (precos.find(({c})=>/venda/.test(c)) ?? precos[0])?.j ?? -1;
     if (preco < 0) continue;
-    let nome = celulas.findIndex((c) => CABECALHO.nome.test(c));
-    if (nome < 0) nome = celulas.findIndex((c, j) => j !== preco && c !== '');
+    const temTexto = j => {
+      const valores=linhas.slice(i+1).map(l=>l[j]).filter(v=>v !== null && v !== undefined && String(v).trim() !== '');
+      return !valores.length || valores.some(v=>!pareceValor(v));
+    };
+    let nome = celulas.findIndex((c,j) => /^(produto|produtos|nome|descricao)\b/.test(c) && temTexto(j));
+    if (nome < 0) nome = celulas.findIndex((c,j)=>CABECALHO.nome.test(c) && temTexto(j));
+    if (nome < 0) nome = celulas.findIndex((c,j)=>j!==preco && c!=='' && !CABECALHO.custo.test(c) && temTexto(j));
     if (nome < 0) continue;
     const custo = celulas.findIndex((c) => CABECALHO.custo.test(c));
     const cozinha = celulas.findIndex((c) => CABECALHO.cozinha.test(c));

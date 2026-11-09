@@ -218,7 +218,7 @@ await erro('tamanho do segundo sabor esgotado', 'O sabor Portuguesa esgotou no t
 await ok('editar mantém o preço combinado, mesmo com o sabor esgotado e a regra mudada', async () => {
   await regra(U1, 'mais_caro');
   const depois = await editar(U1, pedidoMedia, [
-    { produto_id: calabresa, tamanho_id: t.calabresa.G, segundo_produto_id: portuguesa, quantidade: 3 },
+    { produto_id: calabresa, tamanho_id: t.calabresa.G, segundo_produto_id: portuguesa, quantidade: 1 },
     { produto_id: broto1, segundo_produto_id: broto2, quantidade: 1 },
   ]);
   pedidoMedia = depois;
@@ -238,7 +238,7 @@ await ok('trocar um sabor é item novo, com o preço de hoje', async () => {
 await ok('sabor renomeado: o item guarda o nome de quando foi pedido', async () => {
   await dono(U1, `update public.produtos set nome = 'Muçarela' where id = $1`, [mussarela]);
   const depois = await editar(U1, pedidoMedia, [
-    { produto_id: calabresa, tamanho_id: t.calabresa.G, segundo_produto_id: mussarela, quantidade: 2 },
+    { produto_id: calabresa, tamanho_id: t.calabresa.G, segundo_produto_id: mussarela, quantidade: 1 },
   ]);
   pedidoMedia = depois;
   igual((await itensDo(depois.id)).map((i) => i.segundo_sabor), ['Mussarela'], 'nome');

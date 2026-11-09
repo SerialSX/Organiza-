@@ -88,7 +88,7 @@ export async function fecharContaMesa(ids, { jeito, cobrarServico, pagamentos = 
     const agora = new Date().toISOString();
     const conta = {
       id: novoId(),
-      dia: hojeNoNegocio(),
+      dia: pedidos.map(p => p.dia ?? hojeNoNegocio(new Date(p.criado_em))).sort()[0],
       mesa: maisNovo.mesa,
       nome_mesa: maisNovo.nome_mesa ?? null,
       consumo: consumo / 100,

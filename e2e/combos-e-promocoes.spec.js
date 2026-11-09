@@ -172,7 +172,8 @@ test('combo em promoção: editar depois de pausar mantém o preço; o relatóri
   await expect(carrinho.getByText('X-Burguer, Batata frita, Refrigerante lata')).toBeVisible();
   await expect(carrinho).toContainText('Combo do dia');
   await carrinho.getByRole('button', { name: 'Mais um Combo X' }).click();
-  await expect(carrinho).toContainText('R$ 50,00');
+  await expect(carrinho).toContainText('R$ 55,00');
+  await expect(carrinho).toContainText('1 pelo preço combinado, 1 pelo preço de hoje');
   await carrinho.getByRole('button', { name: 'Salvar alterações' }).click();
   await expect(page.getByRole('complementary', { name: 'Pedido' })).toBeVisible();
 
@@ -182,8 +183,8 @@ test('combo em promoção: editar depois de pausar mantém o preço; o relatóri
   await expect(combos).toContainText('2 vendidos');
   const promocoes = page.getByRole('region', { name: 'Promoções' });
   await expect(promocoes).toContainText('Combo do dia');
-  await expect(promocoes).toContainText('2 vendas');
-  await expect(promocoes).toContainText('R$ 10,00 de desconto');
+  await expect(promocoes).toContainText('1 venda');
+  await expect(promocoes).toContainText('R$ 5,00 de desconto');
   await expect(page.getByText('sendo 2 em combo').first()).toBeVisible();
   await semProblemasDeAcessibilidade(page);
 });

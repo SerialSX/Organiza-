@@ -137,12 +137,12 @@ await ok('editar: preço antigo mantido e produto esgotado que já estava contin
   await rpc(U1, 'editar_pedido($1::uuid, $2::jsonb, (select alterado_em from public.pedidos where id = $1::uuid))', [
     pedido.id,
     JSON.stringify([
-      { produto_id: xb, quantidade: 3 },
+      { produto_id: xb, quantidade: 2 },
       { produto_id: refri, quantidade: 1, observacao: 'gelado' },
     ]),
   ]);
   const itens = await como(U1, 'select produto_id, quantidade, preco_unitario::float as p from public.itens_pedido where pedido_id = $1 order by p desc', [pedido.id]);
-  igual(itens.map((i) => [i.quantidade, i.p]), [[3, 18.5], [1, 6]], 'itens editados');
+  igual(itens.map((i) => [i.quantidade, i.p]), [[2, 18.5], [1, 6]], 'itens editados');
   const p = await como(U1, 'select alterado_em is not null as alterado from public.pedidos where id = $1', [pedido.id]);
   igual(p[0].alterado, true, 'alterado_em');
 });

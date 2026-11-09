@@ -190,8 +190,8 @@ function diaDoPedido(pedido) {
 export function faturamentoPorDia(pedidos, inicio, fim) {
   const totais = new Map();
   for (const pedido of pedidos) {
-    // Cancelado não é venda: fica fora, como nos totais.
-    if (pedido.status === 'cancelado') continue;
+    // Cancelado ou não recebido não é venda: fica fora, como nos totais.
+    if (pedido.status === 'cancelado' || pedido.nao_recebido_em) continue;
     const chave = diaDoPedido(pedido);
     const valor = pedido.itens.reduce((s, i) => s + i.quantidade * i.preco_unitario, 0);
     const atual = totais.get(chave) ?? { valor: 0, pedidos: 0 };

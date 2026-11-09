@@ -11,7 +11,10 @@ import { usePedidosDoDia } from '../hooks/usePedidosDoDia';
 import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
 import { registrarPagamento, FORMAS_DE_PAGAMENTO, ROTULO_FORMA } from '../services/pedidos';
 import { desfazerContaMesa } from '../services/mesas';
-import { desfazerNaoRecebido, marcarDevolvido } from '../services/fimDoDia';
+import { desfazerNaoRecebido } from '../services/fimDoDia';
+import ADevolver from '../components/fimDoDia/ADevolver';
+import { usePendenciasAnteriores } from '../hooks/usePendenciasAnteriores';
+import { aDevolver } from '../lib/fimDoDia';
 import EncerrarDia from '../components/fimDoDia/EncerrarDia';
 import { nomeDaMesa } from '../lib/mesas';
 import { fecharCaixa, totalDoPedido } from '../lib/caixa';
@@ -140,36 +143,6 @@ function ContaRecebida({ conta, onErro }) {
 }
 
 // Pedido pago e cancelado: o dinheiro ainda vai voltar para o cliente.
-function ADevolver({ pedido, onErro }) {
-  const [salvando, setSalvando] = useState(false);
-  const forma = ROTULO_FORMA[pedido.forma_pagamento] ?? pedido.forma_pagamento;
-
-  async function devolvi() {
-    setSalvando(true);
-    onErro('');
-    try {
-      await marcarDevolvido(pedido.id);
-    } catch (e) {
-      onErro(e.message);
-      setSalvando(false);
-    }
-  }
-
-  return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-      <span className="font-bold tabular-nums text-[var(--text-primary)]">{numeroDoPedido(pedido)}</span>
-      {pedido.identificacao && <span className="font-medium text-[var(--text-primary)] break-words">{pedido.identificacao}</span>}
-      <span className="text-sm tabular-nums text-[var(--text-secondary)]">
-        pago{forma ? ` em ${forma}` : ''}, cancelado às {formatarHora(pedido.cancelado_em)}
-      </span>
-      <span className="ml-auto font-semibold tabular-nums text-[var(--text-primary)]">{formatarMoeda(totalDoPedido(pedido))}</span>
-      <Botao variante="secundaria" onClick={devolvi} disabled={salvando} aria-label={`Devolvi o dinheiro do pedido ${numeroDoPedido(pedido)}`}>
-        Devolvi
-      </Botao>
-    </li>
-  );
-}
-
 // Foram embora sem pagar: a mesa inteira (ou o pedido do balcão) junta.
 function agruparNaoRecebidos(pedidos) {
   const grupos = new Map();
@@ -220,6 +193,8 @@ export default function Caixa() {
   const dia = diaEscolhido(aba);
   const { pedidos, contas, encerramento, carregando, erro: erroCarga, recarregar } = usePedidosDoDia(dia);
   const [erro, setErro] = useState('');
+  const { pedidos: anteriores } = usePendenciasAnteriores();
+  const devolucoesAnteriores = anteriores.filter(aDevolver);
   const caixa = fecharCaixa(pedidos, contas);
   const recebimentos = caixa.recebidos.length + caixa.contas.length;
   const titulo = dataLonga.format(new Date(`${dia}T12:00:00Z`));
@@ -242,6 +217,12 @@ export default function Caixa() {
         </div>
       )}
 
+      {aba === 'hoje' && devolucoesAnteriores.length > 0 && (
+        <section aria-labelledby="devolucoes-anteriores" className="mb-6">
+          <h2 id="devolucoes-anteriores" className="text-lg font-bold">A devolver de dias anteriores</h2>
+          <ul>{devolucoesAnteriores.map((p) => <ADevolver key={p.id} pedido={p} onErro={setErro} />)}</ul>
+        </section>
+      )}
       {carregando ? (
         <Carregando texto="Somando o caixa…" />
       ) : pedidos.length === 0 ? (

@@ -3,9 +3,10 @@ import { CANCELADO_VISIVEL_MINUTOS, MOTIVOS_CANCELAMENTO, STATUS_ABERTOS, STATUS
 import { hojeNoNegocio } from '../lib/formatadores';
 import { lerDemo, salvarDemo, assinarDemo, novoId } from './demoStore';
 import { limparNomeMesa } from '../lib/mesas';
-import { emAberto } from '../lib/fimDoDia';
+import { emAberto, aDevolver } from '../lib/fimDoDia';
 import { custoMeioAMeio, nomeDoItem, precoMeioAMeio, tamanhoQueCombina } from '../lib/meioAMeio';
 import { chaveDoCombo, dividirPreco } from '../lib/combos';
+import { promocaoDasMetades } from '../lib/precosDoPedido';
 import { precoEmPromocao } from '../lib/promocoes';
 
 const CAMPOS_PEDIDO_BASE =
@@ -311,7 +312,7 @@ function montarDemo(db, filtro, { comValores }) {
 }
 
 function falhaDemo(mensagem) {
-  throw new Error(mensagem);
+  throw Object.assign(new Error(mensagem), { code: 'P0001' });
 }
 
 // Mesma chave do editar_pedido no banco: produto, tamanho e segundo sabor.
@@ -461,6 +462,23 @@ function itensDemo(db, pedidoId, itens, anteriores = {}) {
   const tamanhos = db.produto_tamanhos ?? [];
   const promocoes = promocoesDemo(db);
   return itens.flatMap((i) => {
+    const chave = i.combo_id
+      ? chaveDoCombo(i.combo_id, (i.partes ?? []).map(p=>({produtoId:p.produto_id,tamanhoId:p.tamanho_id,segundoId:p.segundo_produto_id})))
+      : chaveDoItem(i.produto_id,i.tamanho_id,i.segundo_produto_id);
+    const lotes = anteriores[chave]?.lotes;
+    if (lotes) {
+      if (!(i.quantidade >= 1 && i.quantidade <= 999)) falhaDemo('A quantidade precisa ficar entre 1 e 999.');
+      let falta = i.quantidade;
+      const linhas = [];
+      for (const lote of lotes) {
+        const usar = Math.min(falta,lote.quantidade);
+        if (usar > 0) linhas.push(...itensDemo(db,pedidoId,[{...i,quantidade:usar}],{[chave]:lote}));
+        lote.quantidade -= usar;
+        falta -= usar;
+      }
+      if (falta > 0) linhas.push(...itensDemo(db,pedidoId,[{...i,quantidade:falta}]));
+      return linhas;
+    }
     if (i.combo_id) return comboDemo(db, pedidoId, i, anteriores);
     if (!(i.quantidade >= 1 && i.quantidade <= 999)) falhaDemo('A quantidade precisa ficar entre 1 e 999.');
     const produto = db.produtos.find((p) => p.id === i.produto_id);
@@ -499,7 +517,9 @@ function itensDemo(db, pedidoId, itens, anteriores = {}) {
         const cheio = precoMeioAMeio(meio.regra, doCadastro.preco, meio.doCadastro.preco);
         preco = precoMeioAMeio(meio.regra, promo1?.preco ?? doCadastro.preco, promo2?.preco ?? meio.doCadastro.preco);
         custo = custoMeioAMeio(doCadastro.custo ?? null, meio.doCadastro.custo ?? null);
-        const usada = promo1 ?? promo2;
+        const usada = promocaoDasMetades(meio.regra,
+          {normal:doCadastro.preco,preco:promo1?.preco ?? doCadastro.preco,promocao:promo1},
+          {normal:meio.doCadastro.preco,preco:promo2?.preco ?? meio.doCadastro.preco,promocao:promo2});
         if (preco < cheio && usada) {
           precoCheio = cheio;
           promocao = usada.promocao;
@@ -525,8 +545,8 @@ function itensDemo(db, pedidoId, itens, anteriores = {}) {
       segundo_sabor: segundo ? (anterior ? (anterior.segundo_sabor ?? segundo.nome) : segundo.nome) : null,
       quantidade: i.quantidade,
       observacao: limparObservacao(i.observacao),
-      faltou: false,
-      faltou_ingredientes: [],
+      faltou: anterior?.faltou ?? false,
+      faltou_ingredientes: anterior?.faltou_ingredientes ?? [],
       preco_unitario: preco,
       custo_unitario: custo,
     };
@@ -581,6 +601,20 @@ function itensParaEnvio(itens) {
 // identificacao: nome do cliente para chamar (opcional).
 // formaPagamento: como o cliente pagou, quando paga na hora (balcão).
 // nomeMesa: nome da mesa extra ("Varanda"); só vale com mesa.
+async function enviarComLimite(chamada) {
+  const controller = new AbortController();
+  const requisicao = typeof chamada.abortSignal === 'function' ? chamada.abortSignal(controller.signal) : chamada;
+  let timer;
+  try {
+    return await Promise.race([
+      requisicao,
+      new Promise((_, rejeitar) => {
+        timer = setTimeout(() => { rejeitar(new SemInternet()); controller.abort(); }, 15000);
+      }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
 export async function criarPedido({
   negocioId,
   usuarioId,
@@ -641,7 +675,7 @@ export async function criarPedido({
 
   let resposta;
   try {
-    resposta = await supabase.rpc('criar_pedido', {
+    resposta = await enviarComLimite(supabase.rpc('criar_pedido', {
       p_itens: itensParaEnvio(itens),
       p_chave_envio: chaveEnvio,
       p_mesa: mesaDoPedido,
@@ -650,14 +684,14 @@ export async function criarPedido({
       // Banco sem a migração das mesas não conhece o parâmetro: só manda
       // quando há nome (mesa extra), que só aparece com o mapa das mesas.
       ...(nomeDaMesaExtra ? { p_nome_mesa: nomeDaMesaExtra } : {}),
-    });
+    }));
   } catch (e) {
     if (ehFalhaDeRede(e)) throw new SemInternet();
     throw e;
   }
   const { data, error } = resposta;
   if (error && ehFalhaDeRede(error)) throw new SemInternet();
-  if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível enviar o pedido. Tente de novo.'));
+  if (error) throw Object.assign(new Error(mensagemDoBanco(error, 'Não foi possível enviar o pedido. Tente de novo.')), { code: error.code });
   return normalizarPedido(data, []);
 }
 
@@ -682,9 +716,16 @@ export async function editarPedido(id, itens, versao, mesa = null, nomeMesa = nu
     // Mesmas chaves do editar_pedido: os itens fora de combo por produto,
     // tamanho e segundo sabor; os combos pelo combo e pelas escolhas.
     const anteriores = {};
+    const guardarAnterior = (chave, lote) => {
+      (anteriores[chave] ??= { lotes: [] }).lotes.push(lote);
+      anteriores[chave].lotes.sort((a,b) => (a.preco ?? a.linhas.reduce((s,l)=>s+l.preco_unitario,0)) - (b.preco ?? b.linhas.reduce((s,l)=>s+l.preco_unitario,0)));
+    };
     const doPedido = db.itens_pedido.filter((item) => item.pedido_id === id);
     for (const i of doPedido.filter((item) => !item.combo_grupo)) {
-      anteriores[chaveDoItem(i.produto_id, i.tamanho_id, i.segundo_produto_id)] = {
+      guardarAnterior(chaveDoItem(i.produto_id, i.tamanho_id, i.segundo_produto_id), {
+        quantidade: i.quantidade,
+        faltou: i.faltou,
+        faltou_ingredientes: i.faltou_ingredientes,
         preco: i.preco_unitario,
         custo: i.custo_unitario ?? null,
         tamanho: i.tamanho ?? null,
@@ -693,7 +734,7 @@ export async function editarPedido(id, itens, versao, mesa = null, nomeMesa = nu
         promocao_id: i.promocao_id ?? null,
         promocao: i.promocao ?? null,
         preco_cheio: i.preco_cheio ?? null,
-      };
+      });
     }
     for (const grupo of new Set(doPedido.filter((i) => i.combo_grupo).map((i) => i.combo_grupo))) {
       const partes = doPedido.filter((i) => i.combo_grupo === grupo).sort((a, b) => a.combo_parte - b.combo_parte);
@@ -701,7 +742,8 @@ export async function editarPedido(id, itens, versao, mesa = null, nomeMesa = nu
         partes[0].combo_id,
         partes.map((p) => ({ produtoId: p.produto_id, tamanhoId: p.tamanho_id, segundoId: p.segundo_produto_id })),
       );
-      anteriores[chave] = {
+      guardarAnterior(chave, {
+        quantidade: partes[0].quantidade,
         nome: partes[0].combo_nome,
         linhas: partes.map((p) => ({
           produto_id: p.produto_id,
@@ -716,10 +758,12 @@ export async function editarPedido(id, itens, versao, mesa = null, nomeMesa = nu
           promocao: p.promocao ?? null,
           preco_cheio: p.preco_cheio ?? null,
           combo_parte: p.combo_parte,
+          faltou: p.faltou,
+          faltou_ingredientes: p.faltou_ingredientes,
         })),
-      };
+      });
     }
-    const novosItens = itensDemo(db, id, itens, anteriores);
+    const novosItens = itensDemo(db, id, itens.map(i => ({...i, promocao_em: null})), anteriores);
     const somar = (lista) => lista.reduce((s, i) => s + i.quantidade * (i.preco_unitario ?? 0), 0);
     const mudouValor = Math.round(somar(novosItens) * 100) !== Math.round(somar(db.itens_pedido.filter((i) => i.pedido_id === id)) * 100);
     // Mesma regra do editar_pedido: pago na conta da mesa não muda de valor
@@ -945,7 +989,7 @@ const DIAS_DE_PENDENCIAS = 60;
 export async function listarPendenciasAnteriores() {
   const hoje = hojeNoNegocio();
   if (!isSupabaseConfigured) {
-    return montarDemo(lerDemo(), (p) => p.dia && p.dia < hoje && emAberto(p), { comValores: true });
+    return montarDemo(lerDemo(), (p) => p.dia && p.dia < hoje && (emAberto(p) || aDevolver(p)), { comValores: true });
   }
 
   const inicio = new Date(`${hoje}T12:00:00Z`);
@@ -956,13 +1000,12 @@ export async function listarPendenciasAnteriores() {
         .from('pedidos')
         .select(campos)
         .lt('dia', hoje)
-        .gte('dia', inicio.toISOString().slice(0, 10))
-        .neq('status', 'cancelado')
+
         // Banco sem a migração do fim do dia não tem o "não recebido".
         .or(
           campos.includes('nao_recebido_em')
-            ? `status.in.(${STATUS_ABERTOS.join(',')}),and(pago_em.is.null,nao_recebido_em.is.null)`
-            : `status.in.(${STATUS_ABERTOS.join(',')}),pago_em.is.null`,
+            ? `and(dia.gte.${inicio.toISOString().slice(0, 10)},status.neq.cancelado,or(status.in.(${STATUS_ABERTOS.join(',')}),and(pago_em.is.null,nao_recebido_em.is.null))),and(status.eq.cancelado,pago_em.not.is.null,conta_id.is.null,or(devolucao.eq.a_devolver,devolucao.is.null))`
+            : `and(dia.gte.${inicio.toISOString().slice(0, 10)},status.neq.cancelado,or(status.in.(${STATUS_ABERTOS.join(',')}),pago_em.is.null))`,
         )
         .order('criado_em', { ascending: true })
         .limit(500),
@@ -1027,7 +1070,10 @@ export async function listarPedidosDoPeriodo(inicio, fim) {
 // aoMudarConexao(true|false): o tempo real caiu ou voltou. Sem ele, a tela não
 // sabe que parou de receber pedidos novos.
 export function assinarPedidos(negocioId, callback, aoMudarConexao) {
-  if (!isSupabaseConfigured) return assinarDemo(callback);
+  if (!isSupabaseConfigured) {
+    aoMudarConexao?.(true);
+    return assinarDemo(callback);
+  }
 
   // Toda mudança de pedido (criação, edição de itens, "faltou", status,
   // pagamento) termina atualizando a linha em pedidos depois dos itens, então
@@ -1044,6 +1090,8 @@ export function assinarPedidos(negocioId, callback, aoMudarConexao) {
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         aoMudarConexao?.(true);
+        // Também na primeira conexão: um pedido feito entre a carga da tela e
+        // a conexão do canal não gera evento.
         callback();
       } else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
         aoMudarConexao?.(false);

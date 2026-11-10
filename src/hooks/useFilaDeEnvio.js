@@ -14,7 +14,7 @@ export const ERRO_OUTRO_DIA = 'Pedido de outro dia: confira com o cliente e desc
 // "Descartar" e "Tentar de novo", para não travar os pedidos de trás.
 export function ehPassageiro(e) {
   if (e instanceof SemInternet || e?.semInternet) return true;
-  if (/^5\d\d$/.test(String(e?.status ?? e?.code ?? ''))) return true;
+  if (/^50[234]$/.test(String(e?.status ?? e?.code ?? ''))) return true;
   return /<html/i.test(e?.message ?? '');
 }
 

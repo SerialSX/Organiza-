@@ -34,3 +34,21 @@ it('pedido B depois do reload não reaproveita a chave do pedido A',async()=>{
   expect(estado[3]()).not.toBe(chaveDeA);
   await act(()=>root.unmount());localStorage.clear();
 });
+it('mexer num pedido em edição não troca o rascunho do pedido novo',async()=>{
+  globalThis.IS_REACT_ACT_ENVIRONMENT=true;localStorage.clear();
+  const host=document.createElement('div');let root=createRoot(host),estado;
+  function Tela({pausado}){estado=useRascunhoDoPedido('n',pausado);return null;}
+  await act(()=>root.render(<Tela pausado={false}/>));
+  await act(()=>estado[1]([{produtoId:'a',quantidade:1}]));
+  const chaveDeA=estado[3]();
+  // Abriu a edição de outro pedido e mudou a quantidade (o mexerNoCarrinho chama trocarChave).
+  await act(()=>root.render(<Tela pausado/>));
+  await act(()=>estado[1]([{produtoId:'x',quantidade:5}]));
+  await act(()=>{estado[5]();estado[1]([{produtoId:'x',quantidade:6}]);});
+  // Recarregou antes de salvar a edição: o pedido novo volta como estava.
+  await act(()=>root.unmount());root=createRoot(host);
+  await act(()=>root.render(<Tela pausado={false}/>));
+  expect(estado[0]).toEqual([{produtoId:'a',quantidade:1}]);
+  expect(estado[3]()).toBe(chaveDeA);
+  await act(()=>root.unmount());localStorage.clear();
+});

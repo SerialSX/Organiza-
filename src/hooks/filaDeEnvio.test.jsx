@@ -16,6 +16,10 @@ it.each([
   ['PostgREST',()=>Promise.resolve({error:{code:'PGRST202',message:'Could not find the function'}}),true],
   ['forma antiga',()=>Promise.resolve({error:{code:'23514',message:'violates check constraint'}}),true],
   ['504 com status',()=>Promise.resolve({error:{status:504,message:'Gateway Timeout'}}),false],
+  // Como o postgrest-js responde de verdade: o status vem na resposta, não no erro.
+  ['502 com página HTML',()=>Promise.resolve({data:null,error:{message:'<html><body>502 Bad Gateway</body></html>'},status:502}),false],
+  ['503 PGRST002',()=>Promise.resolve({data:null,error:{code:'PGRST002',message:'Could not query the database for the schema cache. Retrying.'},status:503}),false],
+  ['500 erro interno',()=>Promise.resolve({data:null,error:{code:'XX000',message:'internal error'},status:500}),true],
 ])('TEL-04: %s só é definitivo quando o banco recusa',async(_,resposta,definitivo)=>{
   rpc.mockImplementation(resposta);
   guardarNaFila('n',{chaveEnvio:'k',itens:[{produto_id:'x',quantidade:1}]});

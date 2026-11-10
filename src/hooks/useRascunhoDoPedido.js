@@ -21,7 +21,7 @@ export function useRascunhoDoPedido(negocioId, pausado) {
   // Mudou o conteúdo (itens ou destino), muda a chave: o próximo envio é outro
   // pedido, e não pode receber de volta o que já chegou ao banco.
   function trocarChave() {
-    if (chaveEnvio.current === null) return;
+    if (pausado || chaveEnvio.current === null) return;
     chaveEnvio.current=null;
     gravarRascunho(negocioId,carrinho,null);
   }

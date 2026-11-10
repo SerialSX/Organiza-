@@ -150,19 +150,36 @@ function arquivosDoZip(bytes) {
         throw new ErroDePlanilha('Este navegador não abre arquivos .xlsx. Atualize o navegador ou salve a planilha como .csv.');
       }
       const fluxo = new Blob([dados]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-      return new Response(fluxo).text();
+      // Limite do conteúdo descompactado: um .xlsx de 5 MB pode virar centenas
+      // de MB (zip bomb ou milhões de células vazias) e travar o celular.
+      const leitor = fluxo.getReader();
+      const partes = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await leitor.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > LIMITE_DESCOMPACTADO) {
+          await leitor.cancel();
+          throw new ErroDePlanilha('Essa planilha é grande demais para abrir aqui. Apague as linhas e colunas sem uso ou salve como .csv.');
+        }
+        partes.push(value);
+      }
+      return new TextDecoder('utf-8').decode(await new Blob(partes).arrayBuffer());
     },
   };
 }
 
+const LIMITE_DESCOMPACTADO = 40 * 1024 * 1024;
 const ENTIDADES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
 function decodificarXml(texto) {
   return texto.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (inteira, e) => {
     if (e[0] === '#') {
       const codigo = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-      return Number.isFinite(codigo) ? String.fromCodePoint(codigo) : inteira;
+      return Number.isFinite(codigo) && codigo >= 0 && codigo <= 0x10ffff ? String.fromCodePoint(codigo) : inteira;
     }
-    return ENTIDADES[e] ?? inteira;
+    // Object.hasOwn: "&constructor;" não pode virar o texto de uma função.
+    return Object.hasOwn(ENTIDADES, e) ? ENTIDADES[e] : inteira;
   });
 }
 

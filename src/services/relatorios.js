@@ -146,7 +146,10 @@ export function detalheDosTamanhos(porTamanho) {
 }
 
 function celulaCsv(valor) {
-  const texto = String(valor ?? '');
+  let texto = String(valor ?? '');
+  // Nome começando com = + - @ (ou tab/CR) vira fórmula no Excel/LibreOffice:
+  // o apóstrofo faz a planilha mostrar como texto (injeção de fórmula em CSV).
+  if (typeof valor === 'string' && /^[=+@\t\r-]/.test(texto)) texto = `'${texto}`;
   return /[;"\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
 
@@ -191,7 +194,8 @@ export function faturamentoPorDia(pedidos, inicio, fim) {
   const totais = new Map();
   for (const pedido of pedidos) {
     // Cancelado não é venda: fica fora, como nos totais.
-    if (pedido.status === 'cancelado') continue;
+    // Não recebido (cliente foi embora sem pagar) também fica fora, como nos totais.
+    if (pedido.status === 'cancelado' || pedido.nao_recebido_em) continue;
     const chave = diaDoPedido(pedido);
     const valor = pedido.itens.reduce((s, i) => s + i.quantidade * i.preco_unitario, 0);
     const atual = totais.get(chave) ?? { valor: 0, pedidos: 0 };

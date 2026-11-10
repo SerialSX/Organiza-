@@ -275,10 +275,18 @@ export default function Acompanhar() {
     if (pagina) document.title = pagina.nome;
   }, [pagina]);
 
+  // Senha que está na tela agora: a resposta de uma consulta antiga (rede
+  // lenta) não pode sobrescrever nem apagar a senha nova.
+  const numeroAtual = useRef(numero);
+  useEffect(() => {
+    numeroAtual.current = numero;
+  }, [numero]);
+
   const consultar = useCallback(async () => {
     if (!numero) return;
     try {
       const resposta = await acompanharPedido(codigo, numero);
+      if (numeroAtual.current !== numero) return;
       setAviso('');
       if (!resposta.encontrado) {
         setErroNumero(`Não achamos a senha ${formatarSenha(numero)} hoje. Confira com o atendente.`);

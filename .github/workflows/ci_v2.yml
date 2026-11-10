@@ -164,7 +164,7 @@ jobs:
         run: |
           echo "Processando feature: $feature_name"
           # Fazer merge da PR para dev e apagar a branch
-          gh pr merge "$PR_NUMBER" \
+          gh pr merge "$PR_NUMBER" --match-head-commit "$HEAD_SHA" \
             --merge \
             --delete-branch \
             --subject "feat: merge $feature_name into dev" \
@@ -175,7 +175,7 @@ jobs:
         run: |
           echo "Processando bugfix: $bugfix_name"
           # Fazer merge da PR para dev e apagar a branch
-          gh pr merge "$PR_NUMBER" \
+          gh pr merge "$PR_NUMBER" --match-head-commit "$HEAD_SHA" \
             --merge \
             --delete-branch \
             --subject "fix: merge $bugfix_name into dev" \
@@ -187,10 +187,10 @@ jobs:
           echo "Processando branch: $HEAD_REF"
           if [[ "$HEAD_REF" == "main" || "$HEAD_REF" == "dev" ]]; then
             # main e dev são permanentes: só faz o merge, sem apagar
-            gh pr merge "$PR_NUMBER" --merge
+            gh pr merge "$PR_NUMBER" --match-head-commit "$HEAD_SHA" --merge
           else
             # Fazer merge da PR na base e apagar a branch
-            gh pr merge "$PR_NUMBER" --merge --delete-branch
+            gh pr merge "$PR_NUMBER" --match-head-commit "$HEAD_SHA" --merge --delete-branch
           fi
 
       - name: Processar release
@@ -199,7 +199,7 @@ jobs:
           echo "Processando release: v$version"
 
           # Fazer merge da PR para main
-          gh pr merge "$PR_NUMBER" \
+          gh pr merge "$PR_NUMBER" --match-head-commit "$HEAD_SHA" \
             --merge \
             --subject "release: v$version" \
             --body "Release v$version"
@@ -230,7 +230,7 @@ jobs:
           echo "Processando hotfix: v$version"
 
           # Fazer merge da PR para main
-          gh pr merge "$PR_NUMBER" \
+          gh pr merge "$PR_NUMBER" --match-head-commit "$HEAD_SHA" \
             --merge \
             --subject "hotfix: v$version" \
             --body "Hotfix v$version"

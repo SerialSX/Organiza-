@@ -8,7 +8,12 @@ function chave(negocioId) {
   return `${prefixo}${negocioId}`;
 }
 
+// Cópia em memória usada quando o localStorage falha (cheio ou bloqueado):
+// sem ela o pedido sumia da fila enquanto a tela dizia que foi guardado.
+const memoria = new Map();
+
 export function lerFila(negocioId) {
+  if (memoria.has(negocioId)) return memoria.get(negocioId);
   try {
     const salvo = JSON.parse(localStorage.getItem(chave(negocioId)));
     return Array.isArray(salvo) ? salvo : [];
@@ -21,8 +26,10 @@ function gravar(negocioId, fila) {
   try {
     if (fila.length) localStorage.setItem(chave(negocioId), JSON.stringify(fila));
     else localStorage.removeItem(chave(negocioId));
+    memoria.delete(negocioId);
   } catch {
     // sem localStorage: a fila vale enquanto a tela estiver aberta
+    memoria.set(negocioId, fila);
   }
   window.dispatchEvent(new Event('organiza-fila-envio'));
 }

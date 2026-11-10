@@ -153,9 +153,15 @@ export class SemInternet extends Error {
   }
 }
 
-function ehFalhaDeRede(error) {
+// Falha passageira (rede, tempo esgotado, servidor fora do ar, excesso de
+// pedidos, sessão vencida): o pedido fica na fila e é reenviado com a mesma
+// chave, que não duplica. Erro de regra do banco (P0001) não entra aqui.
+const TEMPO_LIMITE_MS = 20000;
+function ehFalhaDeRede(error, status) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-  return !error?.code && /fetch|network|load failed|timeout/i.test(error?.message ?? '');
+  if (status === 408 || status === 429 || (status >= 500 && status < 600)) return true;
+  if (['57014', 'PGRST301', 'PGRST303'].includes(error?.code) || ['AbortError', 'TimeoutError'].includes(error?.name)) return true;
+  return !error?.code && /fetch|network|load failed|timeout|timed out|aborted|gateway|unavailable|jwt expired/i.test(error?.message ?? '');
 }
 
 function numeroOuNull(valor) {
@@ -641,7 +647,7 @@ export async function criarPedido({
 
   let resposta;
   try {
-    resposta = await supabase.rpc('criar_pedido', {
+    resposta = supabase.rpc('criar_pedido', {
       p_itens: itensParaEnvio(itens),
       p_chave_envio: chaveEnvio,
       p_mesa: mesaDoPedido,
@@ -651,12 +657,15 @@ export async function criarPedido({
       // quando há nome (mesa extra), que só aparece com o mapa das mesas.
       ...(nomeDaMesaExtra ? { p_nome_mesa: nomeDaMesaExtra } : {}),
     });
+    // Sem tempo-limite, uma conexão travada deixava "Enviando…" e a fila presos.
+    if (resposta.abortSignal) resposta = resposta.abortSignal(AbortSignal.timeout(TEMPO_LIMITE_MS));
+    resposta = await resposta;
   } catch (e) {
     if (ehFalhaDeRede(e)) throw new SemInternet();
     throw e;
   }
-  const { data, error } = resposta;
-  if (error && ehFalhaDeRede(error)) throw new SemInternet();
+  const { data, error, status } = resposta;
+  if (error && ehFalhaDeRede(error, status)) throw new SemInternet();
   if (error) throw new Error(mensagemDoBanco(error, 'Não foi possível enviar o pedido. Tente de novo.'));
   return normalizarPedido(data, []);
 }

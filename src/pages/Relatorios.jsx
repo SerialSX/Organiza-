@@ -6,17 +6,19 @@ import Abas from '../components/ui/Abas';
 import Botao from '../components/ui/Botao';
 import Carregando from '../components/ui/Carregando';
 import EstadoVazio from '../components/ui/EstadoVazio';
-import { ReportsIcon, MoneyIcon, OrdersIcon, TrendIcon, TrophyIcon, BoxIcon, DownloadIcon } from '../components/icons/AppIcons';
+import { ReportsIcon, MoneyIcon, OrdersIcon, TrendIcon, TrophyIcon, BoxIcon, DownloadIcon, ClockIcon, ComboIcon, TagIcon } from '../components/icons/AppIcons';
 import { useProdutos } from '../hooks/useProdutos';
 import { useAbaNoEndereco } from '../hooks/useAbaNoEndereco';
 import { listarPedidosDoPeriodo } from '../services/pedidos';
 import {
   calcularRelatorio,
+  formatarQuantidade,
   faltasNoPeriodo,
   faturamentoPorDia,
   intervaloDoPeriodo,
   pedidosPorHora,
   rankingParaCsv,
+  tempoAtePronto,
 } from '../services/relatorios';
 import { formatarMoeda } from '../lib/formatadores';
 import { rotuloDoMotivo } from '../lib/pedidoStatus';
@@ -32,8 +34,10 @@ const PERIODOS = [
 
 const diaCurto = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
 
+// Meio a meio conta meia: "1,5 unidade", "2,5 unidades".
 function plural(n, singular, varios) {
-  return `${n} ${n === 1 ? singular : varios}`;
+  const um = n === 1 || (!Number.isInteger(n) && n < 2);
+  return `${formatarQuantidade(n)} ${um ? singular : varios}`;
 }
 
 function Indicador({ icon: Icon, cor, rotulo, valor, detalhe }) {
@@ -234,6 +238,10 @@ function Ranking({ ranking }) {
               />
             </div>
             <p className="ml-9 text-xs tabular-nums text-[var(--text-secondary)]">
+              {p.detalheTamanhos && <span className="block font-semibold text-[var(--text-primary)]">{p.detalheTamanhos}</span>}
+              {p.emCombo > 0 && (
+                <span className="block font-semibold text-[var(--text-primary)]">sendo {formatarQuantidade(p.emCombo)} em combo</span>
+              )}
               {formatarMoeda(p.faturamento)} vendidos
               {p.lucro !== null && `, ${formatarMoeda(p.lucro)} de lucro`}
             </p>
@@ -244,10 +252,73 @@ function Ranking({ ranking }) {
   );
 }
 
-function baixarCsv(ranking, periodo) {
+// Combos vendidos no período: quantos, quanto faturaram e o lucro (o custo
+// do combo é a soma do custo das partes).
+function Combos({ combos }) {
+  return (
+    <section aria-labelledby="titulo-combos" className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-5">
+      <div className="flex items-center gap-3 mb-1">
+        <ComboIcon className="w-6 h-6 text-[var(--texto-laranja)]" />
+        <h2 id="titulo-combos" className="text-lg font-semibold text-[var(--text-primary)]">
+          Combos
+        </h2>
+      </div>
+      <p className="text-sm text-[var(--text-secondary)] mb-4">
+        Cada produto do combo também conta na lista de reposição, abaixo.
+      </p>
+      <ul className="flex flex-col gap-3">
+        {combos.map((c) => (
+          <li key={c.chave} className="flex flex-col gap-0.5">
+            <div className="flex items-baseline gap-3">
+              <span className="flex-1 min-w-0 font-semibold text-[var(--text-primary)] break-words">{c.nome}</span>
+              <span className="text-sm font-bold tabular-nums text-[var(--text-primary)]">{plural(c.quantidade, 'vendido', 'vendidos')}</span>
+            </div>
+            <p className="text-xs tabular-nums text-[var(--text-secondary)]">
+              {formatarMoeda(c.faturamento)} vendidos
+              {c.lucro !== null && `, ${formatarMoeda(c.lucro)} de lucro`}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// Promoções do período: quantas vendas e quanto de desconto deram.
+function Promocoes({ promocoes, desconto }) {
+  return (
+    <section aria-labelledby="titulo-promocoes" className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-5">
+      <div className="flex items-center gap-3 mb-1">
+        <TagIcon className="w-6 h-6 text-[var(--texto-laranja)]" />
+        <h2 id="titulo-promocoes" className="text-lg font-semibold text-[var(--text-primary)]">
+          Promoções
+        </h2>
+      </div>
+      <p className="text-sm text-[var(--text-secondary)] mb-4">
+        {formatarMoeda(desconto)} de desconto no período, comparado ao preço normal.
+      </p>
+      <ul className="flex flex-col gap-3">
+        {promocoes.map((p) => (
+          <li key={p.chave} className="flex flex-col gap-0.5">
+            <div className="flex items-baseline gap-3">
+              <span className="flex-1 min-w-0 font-semibold text-[var(--text-primary)] break-words">{p.nome}</span>
+              <span className="text-sm font-bold tabular-nums text-[var(--text-primary)]">{plural(p.vendas, 'venda', 'vendas')}</span>
+            </div>
+            <p className="text-xs tabular-nums text-[var(--text-secondary)]">
+              {formatarMoeda(p.faturamento)} vendidos, {formatarMoeda(p.desconto)} de desconto
+            </p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function baixarCsv(relatorio, periodo) {
   // O BOM faz o Excel reconhecer UTF-8 e mostrar os acentos certos.
   const BOM = String.fromCharCode(0xfeff);
-  const arquivo = new Blob([BOM, rankingParaCsv(ranking)], { type: 'text/csv;charset=utf-8' });
+  const csv = rankingParaCsv(relatorio.ranking, relatorio.combos, relatorio.promocoes);
+  const arquivo = new Blob([BOM, csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(arquivo);
   const link = document.createElement('a');
   const hoje = new Date().toLocaleDateString('sv-SE');
@@ -258,11 +329,19 @@ function baixarCsv(ranking, periodo) {
 }
 
 function textoCancelados(relatorio) {
-  if (!relatorio.totalCancelados) return null;
-  const motivos = Object.entries(relatorio.canceladosPorMotivo)
-    .map(([motivo, n]) => `${rotuloDoMotivo(motivo)}: ${n}`)
-    .join(', ');
-  return `Fora da conta: ${plural(relatorio.totalCancelados, 'cancelado', 'cancelados')} (${motivos}).`;
+  const partes = [];
+  if (relatorio.totalCancelados) {
+    const motivos = Object.entries(relatorio.canceladosPorMotivo)
+      .map(([motivo, n]) => `${rotuloDoMotivo(motivo)}: ${n}`)
+      .join(', ');
+    partes.push(`${plural(relatorio.totalCancelados, 'cancelado', 'cancelados')} (${motivos})`);
+  }
+  if (relatorio.totalNaoRecebidos) {
+    partes.push(
+      `${plural(relatorio.totalNaoRecebidos, 'não recebido', 'não recebidos')} (foram embora sem pagar ${formatarMoeda(relatorio.valorNaoRecebido)})`,
+    );
+  }
+  return partes.length ? `Fora da conta: ${partes.join('; ')}.` : null;
 }
 
 export default function Relatorios() {
@@ -286,6 +365,7 @@ export default function Relatorios() {
   const { inicio, fim } = intervaloDoPeriodo(periodo);
   const horas = periodo === 'hoje' ? pedidosPorHora(dados.pedidos) : [];
   const faltas = faltasNoPeriodo(dados.pedidos);
+  const tempo = tempoAtePronto(dados.pedidos);
 
   return (
     <AppShell largura="max-w-6xl">
@@ -293,8 +373,12 @@ export default function Relatorios() {
 
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <Abas opcoes={PERIODOS} valor={periodo} onMudar={setPeriodo} cor={ACCENT} rotulo="Período" />
+        <Botao para="/caixa" cor={ACCENT} className="ml-auto">
+          <MoneyIcon className="w-5 h-5" />
+          Fechar o caixa
+        </Botao>
         {!carregando && relatorio.ranking.length > 0 && (
-          <Botao variante="secundaria" className="ml-auto" onClick={() => baixarCsv(relatorio.ranking, periodo)}>
+          <Botao variante="secundaria" onClick={() => baixarCsv(relatorio, periodo)}>
             <DownloadIcon className="w-5 h-5" />
             Baixar planilha
           </Botao>
@@ -305,7 +389,7 @@ export default function Relatorios() {
 
       {carregando ? (
         <Carregando texto="Calculando…" />
-      ) : relatorio.totalPedidos + relatorio.totalCancelados === 0 ? (
+      ) : relatorio.totalPedidos + relatorio.totalCancelados + relatorio.totalNaoRecebidos === 0 ? (
         <EstadoVazio
           icon={ReportsIcon}
           accent={ACCENT}
@@ -337,6 +421,16 @@ export default function Relatorios() {
             />
           </div>
 
+          {tempo && (
+            <Indicador
+              icon={ClockIcon}
+              cor="var(--color-accent-cozinha)"
+              rotulo="Tempo até ficar pronto"
+              valor={`${tempo.medianaMin} min`}
+              detalhe={`Metade dos pedidos fica pronta em até ${tempo.medianaMin} min. ${tempo.acimaDe15}% passaram de 15 min (${tempo.quantos} ${tempo.quantos === 1 ? 'pedido' : 'pedidos'}).`}
+            />
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Destaque
               icon={TrophyIcon}
@@ -359,6 +453,13 @@ export default function Relatorios() {
           {horas.length > 0 && <GraficoPorHora horas={horas} />}
 
           {faltas.length > 0 && <Faltas faltas={faltas} />}
+
+          {(relatorio.combos.length > 0 || relatorio.promocoes.length > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {relatorio.combos.length > 0 && <Combos combos={relatorio.combos} />}
+              {relatorio.promocoes.length > 0 && <Promocoes promocoes={relatorio.promocoes} desconto={relatorio.descontoDasPromocoes} />}
+            </div>
+          )}
 
           <Ranking ranking={relatorio.ranking} />
         </div>

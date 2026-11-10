@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import TelaDeAcesso from '../components/TelaDeAcesso';
+import PerguntasAntesDeComecar from '../components/PerguntasAntesDeComecar';
 import Campo from '../components/ui/Campo';
 import CampoSenha from '../components/ui/CampoSenha';
 import Botao from '../components/ui/Botao';
@@ -113,6 +114,7 @@ export default function Cadastro() {
     <TelaDeAcesso
       titulo="Criar conta"
       subtitulo="Cadastre seu negócio no Organiza+"
+      lateral={<PerguntasAntesDeComecar />}
       rodape={
         <>
           Já tem conta?{' '}

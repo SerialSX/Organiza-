@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { calcularRelatorio, faltasNoPeriodo, faturamentoPorDia, intervaloDoPeriodo, pedidosPorHora, rankingParaCsv } from './relatorios';
+import { calcularRelatorio, faltasNoPeriodo, faturamentoPorDia, intervaloDoPeriodo, pedidosPorHora, rankingParaCsv, tempoAtePronto } from './relatorios';
+import { inicioDoDia } from '../lib/formatadores';
 
 const produtos = [
   { id: 'x', nome: 'X-Burguer', preco: 18.5, custo: 9 },
@@ -87,17 +88,17 @@ describe('calcularRelatorio', () => {
 });
 
 describe('intervaloDoPeriodo', () => {
-  const agora = new Date(2026, 8, 24, 15, 30);
+  const agora = new Date('2026-09-24T15:30:00-03:00');
 
-  it('hoje vai da meia-noite até a meia-noite seguinte', () => {
+  it('hoje vai do início do dia de trabalho até o início do seguinte (fuso de Fortaleza)', () => {
     const { inicio, fim } = intervaloDoPeriodo('hoje', agora);
-    expect(inicio).toEqual(new Date(2026, 8, 24));
-    expect(fim).toEqual(new Date(2026, 8, 25));
+    expect(inicio.toISOString()).toBe('2026-09-24T03:00:00.000Z');
+    expect(fim.toISOString()).toBe('2026-09-25T03:00:00.000Z');
   });
 
   it('semana cobre os últimos 7 dias incluindo hoje', () => {
     const { inicio } = intervaloDoPeriodo('semana', agora);
-    expect(inicio).toEqual(new Date(2026, 8, 18));
+    expect(inicio.toISOString()).toBe('2026-09-18T03:00:00.000Z');
   });
 });
 
@@ -108,34 +109,58 @@ describe('rankingParaCsv', () => {
       { nome: 'Suco; grande', quantidade: 1, faturamento: 8, lucro: null },
     ]);
     expect(csv.split('\r\n')).toEqual([
-      'Produto;Quantidade;Faturamento (R$);Lucro estimado (R$)',
-      'X-Burguer;2;37,00;19,00',
-      '"Suco; grande";1;8,00;',
+      'Produto;Quantidade;Por tamanho;Faturamento (R$);Lucro estimado (R$)',
+      'X-Burguer;2;;37,00;19,00',
+      '"Suco; grande";1;;8,00;',
     ]);
   });
 });
 
 describe('faturamentoPorDia', () => {
   it('cria uma barra por dia, com zero nos dias sem venda', () => {
-    const pedidos = [pedido(new Date(2026, 8, 23, 10).toISOString(), [['x', 1, 18.5]])];
-    const dias = faturamentoPorDia(pedidos, new Date(2026, 8, 22), new Date(2026, 8, 25));
+    const pedidos = [pedido('2026-09-23T10:00:00-03:00', [['x', 1, 18.5]])];
+    const dias = faturamentoPorDia(pedidos, inicioDoDia('2026-09-22'), inicioDoDia('2026-09-25'));
     expect(dias.map((d) => d.valor)).toEqual([0, 18.5, 0]);
   });
 
   it('não soma pedido cancelado', () => {
-    const vendido = pedido(new Date(2026, 8, 23, 10).toISOString(), [['x', 1, 18.5]]);
-    const cancelado = { ...pedido(new Date(2026, 8, 23, 11).toISOString(), [['x', 2, 18.5]]), status: 'cancelado' };
-    const dias = faturamentoPorDia([vendido, cancelado], new Date(2026, 8, 23), new Date(2026, 8, 24));
+    const vendido = pedido('2026-09-23T10:00:00-03:00', [['x', 1, 18.5]]);
+    const cancelado = { ...pedido('2026-09-23T11:00:00-03:00', [['x', 2, 18.5]]), status: 'cancelado' };
+    const dias = faturamentoPorDia([vendido, cancelado], inicioDoDia('2026-09-23'), inicioDoDia('2026-09-24'));
     expect(dias.map((d) => d.valor)).toEqual([18.5]);
   });
 
   it('conta os pedidos de cada dia', () => {
     const pedidos = [
-      pedido(new Date(2026, 8, 23, 10).toISOString(), [['x', 1, 18.5]]),
-      pedido(new Date(2026, 8, 23, 12).toISOString(), [['b', 1, 15]]),
+      pedido('2026-09-23T10:00:00-03:00', [['x', 1, 18.5]]),
+      // 0h30 com o dia virando às 5h: conta no dia 23, pelo campo dia do banco
+      { ...pedido('2026-09-24T00:30:00-03:00', [['b', 1, 15]]), dia: '2026-09-23' },
     ];
-    const dias = faturamentoPorDia(pedidos, new Date(2026, 8, 22), new Date(2026, 8, 24));
+    const dias = faturamentoPorDia(pedidos, inicioDoDia('2026-09-22'), inicioDoDia('2026-09-24'));
     expect(dias.map((d) => d.pedidos)).toEqual([0, 2]);
+  });
+});
+
+describe('tempoAtePronto', () => {
+  it('mediana e quantos passaram de 15 minutos, sem cancelados e esquecidos', () => {
+    const base = (min, extra = {}) => ({
+      criado_em: '2026-09-23T12:00:00Z',
+      pronto_em: new Date(Date.parse('2026-09-23T12:00:00Z') + min * 60000).toISOString(),
+      status: 'entregue',
+      ...extra,
+    });
+    const r = tempoAtePronto([base(5), base(9), base(20), base(12), base(300), base(2, { status: 'cancelado' })]);
+    expect(r).toEqual({ quantos: 4, medianaMin: 11, acimaDe15: 25 });
+    expect(tempoAtePronto([])).toBeNull();
+  });
+
+  it('pedido só de bebida (nasce pronto, 0 min) não puxa a mediana para baixo', () => {
+    const pedido = (min) => ({
+      criado_em: '2026-09-23T12:00:00Z',
+      pronto_em: new Date(Date.parse('2026-09-23T12:00:00Z') + min * 60000).toISOString(),
+      status: 'pronto',
+    });
+    expect(tempoAtePronto([pedido(0), pedido(0), pedido(10)])).toEqual({ quantos: 1, medianaMin: 10, acimaDe15: 0 });
   });
 });
 

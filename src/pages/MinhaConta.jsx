@@ -8,6 +8,12 @@ import Campo from '../components/ui/Campo';
 import CampoSenha from '../components/ui/CampoSenha';
 import { UserIcon, QrIcon, TrashIcon } from '../components/icons/AppIcons';
 import { useAuth } from '../context/useAuth';
+import EscolhaDoModo from '../components/boasVindas/EscolhaDoModo';
+import EscolhaDaCozinha from '../components/boasVindas/EscolhaDaCozinha';
+import { QuantasMesas, TaxaDeServico } from '../components/mesas/EscolhaDasMesas';
+import { atendeNaMesa, atendeNoBalcao, modoDoNegocio } from '../lib/atendimento';
+import { MESAS_PADRAO } from '../lib/mesas';
+import EscolhaDaRegraMeioAMeio from '../components/produtos/EscolhaDaRegraMeioAMeio';
 
 const ACCENT = 'var(--color-brand-orange)';
 const PERIGO = 'var(--color-accent-cozinha)';
@@ -119,22 +125,132 @@ function SeusDados({ perfil }) {
   );
 }
 
+// Só o dono: como atende, se a cozinha tem aparelho próprio, as mesas e a
+// taxa de serviço (as perguntas de boas-vindas). O dia de trabalho vira
+// sempre às 5h; para fechar antes, "Encerrar o dia" no Caixa.
+function ComoVoceAtende({ perfil }) {
+  const { configurarAtendimento, configurarMesas } = useAuth();
+  const modoSalvo = modoDoNegocio(perfil);
+  const telaSalva = perfil.usa_tela_cozinha !== false;
+  const [modo, setModo] = useState(modoSalvo);
+  // undefined: banco sem a migração das mesas; as perguntas não aparecem.
+  const temMesas = perfil.quantidade_mesas !== undefined;
+  const mesasSalvas = perfil.quantidade_mesas ?? MESAS_PADRAO;
+  const taxaSalva = perfil.taxa_servico ?? null;
+  const [mesas, setMesas] = useState(mesasSalvas);
+  const [taxa, setTaxa] = useState(taxaSalva);
+  const naMesa = temMesas && atendeNaMesa(modo);
+  // Passou a atender na mesa agora (ou nunca respondeu): mesas e taxa entram no salvar.
+  const mudouMesas =
+    naMesa && (mesas !== perfil.quantidade_mesas || taxa !== perfil.taxa_servico);
+  const faltaTaxa = naMesa && taxa === null;
+  const [usaTela, setUsaTela] = useState(telaSalva);
+  const [mensagem, setMensagem] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  const mudouAtendimento = modo !== modoSalvo || usaTela !== telaSalva;
+  const mudouAlgo = mudouAtendimento || mudouMesas;
+
+  async function salvar(e) {
+    e.preventDefault();
+    setMensagem(null);
+    setSalvando(true);
+    let { erro } = mudouMesas ? await configurarMesas({ quantidade: mesas, taxaServico: taxa }) : { erro: null };
+    if (!erro && mudouAtendimento) ({ erro } = await configurarAtendimento({ modo, usaTelaCozinha: usaTela }));
+    setSalvando(false);
+    if (erro) setMensagem({ tipo: 'erro', texto: erro });
+    else setMensagem({ tipo: 'sucesso', texto: 'Salvo.' });
+  }
+
+  return (
+    <Secao titulo="Como você atende" texto="Vale para todos os aparelhos do negócio.">
+      {mensagem && <Aviso tipo={mensagem.tipo}>{mensagem.texto}</Aviso>}
+      <form onSubmit={salvar} className="flex flex-col gap-6">
+        <EscolhaDoModo valor={modo} onMudar={setModo} legendaVisivel colunas="" />
+        <p className="-mt-3 text-sm">
+          <Link to="/ajuda#como-funciona" className="font-semibold text-[var(--texto-laranja)] underline-offset-4 hover:underline">
+            Ver o passo a passo de cada jeito
+          </Link>
+        </p>
+        {naMesa && (
+          <>
+            <QuantasMesas valor={mesas} onMudar={setMesas} rotuloVisivel />
+            <TaxaDeServico taxa={taxa} onMudar={setTaxa} legendaVisivel colunas="" />
+          </>
+        )}
+        <EscolhaDaCozinha valor={usaTela} onMudar={setUsaTela} legendaVisivel colunas="" />
+
+        <Botao
+          type="submit"
+          cor={ACCENT}
+          className="self-start"
+          disabled={!mudouAlgo || salvando || faltaTaxa}
+        >
+          {salvando ? 'Salvando…' : 'Salvar'}
+        </Botao>
+      </form>
+    </Secao>
+  );
+}
+
+// Só o dono: como cobra a pizza meio a meio. Vale para os pedidos novos.
+function MeioAMeio({ perfil }) {
+  const { configurarMeioAMeio } = useAuth();
+  const [regra, setRegra] = useState(perfil.regra_meio_a_meio ?? null);
+  const [mensagem, setMensagem] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar(e) {
+    e.preventDefault();
+    setMensagem(null);
+    setSalvando(true);
+    const { erro } = await configurarMeioAMeio(regra);
+    setSalvando(false);
+    if (erro) setMensagem({ tipo: 'erro', texto: erro });
+    else setMensagem({ tipo: 'sucesso', texto: 'Salvo. Vale para os pedidos novos; os que já foram feitos continuam com o preço de antes.' });
+  }
+
+  return (
+    <Secao
+      titulo="Meio a meio"
+      texto="Para pizza (ou o que mais sai com dois sabores). Os sabores são marcados em Produtos, com “Pode ser meio a meio”."
+    >
+      {mensagem && <Aviso tipo={mensagem.tipo}>{mensagem.texto}</Aviso>}
+      <form onSubmit={salvar} className="flex flex-col gap-4">
+        <EscolhaDaRegraMeioAMeio valor={regra} onMudar={setRegra} />
+        <Botao type="submit" cor={ACCENT} className="self-start" disabled={!regra || regra === perfil.regra_meio_a_meio || salvando}>
+          {salvando ? 'Salvando…' : 'Salvar'}
+        </Botao>
+      </form>
+    </Secao>
+  );
+}
+
 function TrocarSenha() {
-  const { trocarSenha, modoDemo } = useAuth();
+  const { trocarSenha, confirmarSenhaAtual, modoDemo } = useAuth();
   const [mensagem, setMensagem] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
   async function salvar(e) {
     e.preventDefault();
     const formulario = e.currentTarget;
-    const senha = String(new FormData(formulario).get('senha') ?? '');
+    const dados = new FormData(formulario);
+    const atual = String(dados.get('senhaAtual') ?? '');
+    const senha = String(dados.get('senha') ?? '');
     setMensagem(null);
     if (senha.length < 6) {
       setMensagem({ tipo: 'erro', texto: 'A senha precisa ter pelo menos 6 caracteres.' });
       return;
     }
     setSalvando(true);
-    const { erro } = await trocarSenha(senha);
+    // Todos os aparelhos usam a mesma conta: sem a senha atual, quem estivesse
+    // com o celular do balcão na mão poderia tomar a conta do dono.
+    const conferida = await confirmarSenhaAtual(atual);
+    if (conferida.erro) {
+      setSalvando(false);
+      setMensagem({ tipo: 'erro', texto: conferida.erro });
+      return;
+    }
+    const { erro } = await trocarSenha(senha, atual);
     setSalvando(false);
     if (erro) setMensagem({ tipo: 'erro', texto: erro });
     else {
@@ -148,6 +264,7 @@ function TrocarSenha() {
       {modoDemo && <Aviso tipo="info">No modo demonstração não há senha.</Aviso>}
       {mensagem && <Aviso tipo={mensagem.tipo}>{mensagem.texto}</Aviso>}
       <form onSubmit={salvar} className="flex flex-col gap-4">
+        <CampoSenha rotulo="Senha atual" name="senhaAtual" autoComplete="current-password" />
         <CampoSenha rotulo="Senha nova" name="senha" autoComplete="new-password" dica="Mínimo de 6 caracteres." />
         <Botao type="submit" cor={ACCENT} className="self-start" disabled={salvando || modoDemo}>
           {salvando ? 'Salvando…' : 'Trocar senha'}
@@ -207,10 +324,13 @@ export default function MinhaConta() {
       <div className="flex flex-col gap-6">
         <Perfil perfil={perfil} papel={papel} />
         <SeusDados perfil={perfil} />
+        {perfil.papel === 'admin' && <ComoVoceAtende perfil={perfil} />}
+        {/* undefined: banco sem a migração do meio a meio. */}
+        {perfil.papel === 'admin' && perfil.regra_meio_a_meio !== undefined && <MeioAMeio perfil={perfil} />}
         <TrocarSenha />
 
         {/* Atalho para a página do QR code (só o dono configura) */}
-        {perfil.papel === 'admin' && (
+        {perfil.papel === 'admin' && atendeNoBalcao(modoDoNegocio(perfil)) && (
           <Link to="/pagina-do-cliente" className={`${caixa} sm:flex-row sm:items-center gap-4 hover:bg-[var(--surface-card-hover)] transition-colors`}>
             <span
               className="inline-flex items-center justify-center w-12 h-12 rounded-2xl shrink-0 text-[var(--texto-laranja)]"

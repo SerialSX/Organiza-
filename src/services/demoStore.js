@@ -1,12 +1,28 @@
 // Banco local usado quando o Supabase não está configurado. Serve para
 // desenvolver e demonstrar as telas; os dados ficam só neste navegador.
+import { emAberto } from '../lib/fimDoDia';
+
 const CHAVE = 'organiza-demo-db';
 const EVENTO = 'organiza-demo-change';
 
 let memoria = null;
 
+// Mesas da demonstração (o perfil salvo no navegador pode trocar).
+export const MESAS_DEMO = { quantidade_mesas: 8, taxa_servico: 10 };
+
 function vazio() {
-  return { produtos: [], pedidos: [], itens_pedido: [], ingredientes: [], produto_ingredientes: [] };
+  return {
+    produtos: [],
+    pedidos: [],
+    itens_pedido: [],
+    ingredientes: [],
+    produto_ingredientes: [],
+    produto_tamanhos: [],
+    tamanho_ingredientes: [],
+    contas_mesa: [],
+    pagamentos_conta: [],
+    dias_encerrados: [],
+  };
 }
 
 export function lerDemo() {
@@ -19,7 +35,16 @@ export function lerDemo() {
   return memoria ?? vazio();
 }
 
-export function salvarDemo(db) {
+// Como o gatilho reabrir_dia_do_pedido do banco: pedido em aberto num dia
+// encerrado (lançado, desfeito, reaberto) desfaz o encerramento.
+function semEncerramentoComPedidoAberto(db) {
+  if (!db.dias_encerrados?.length) return db;
+  const diasAbertos = new Set(db.pedidos.filter(emAberto).map((p) => p.dia));
+  return { ...db, dias_encerrados: db.dias_encerrados.filter((d) => !diasAbertos.has(d.dia)) };
+}
+
+export function salvarDemo(novo) {
+  const db = semEncerramentoComPedidoAberto(novo);
   memoria = db;
   try {
     localStorage.setItem(CHAVE, JSON.stringify(db));

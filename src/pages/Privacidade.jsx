@@ -5,7 +5,7 @@ import logoDark from '../assets/logo.svg';
 import logoLight from '../assets/logo-light.svg';
 import { EMAIL_CONTATO } from '../lib/contato';
 
-const ATUALIZADA_EM = 'outubro de 2026';
+const ATUALIZADA_EM = 'novembro de 2026';
 
 function Bloco({ titulo, children }) {
   return (
@@ -48,7 +48,13 @@ export default function Privacidade() {
           </p>
           <p>
             <strong className="text-[var(--text-primary)]">Do negócio:</strong> o cardápio (nomes, preços e, se você
-            informar, custos e ingredientes com preço de compra) e os pedidos (itens, quantidades, observações, horários, status e motivo de cancelamento).
+            informar, custos e ingredientes com preço de compra) e os pedidos (itens, quantidades, observações, horários, status,
+            motivo de cancelamento, forma de pagamento e o nome ou a mesa, se o atendente escrever).
+          </p>
+          <p>
+            <strong className="text-[var(--text-primary)]">Do cliente de vocês:</strong> nada, a não ser o nome ou a mesa que o
+            atendente escrever no pedido para chamar a pessoa. Use só a mesa ou o primeiro nome; não anote telefone, CPF ou
+            outro dado.
           </p>
           <p>
             <strong className="text-[var(--text-primary)]">De quem acompanha o pedido pelo QR code:</strong> não pedimos
@@ -68,7 +74,7 @@ export default function Privacidade() {
 
         <Bloco titulo="O que não fazemos">
           <ul className="list-disc pl-5 flex flex-col gap-2">
-            <li>Não vendemos nem compartilhamos seus dados.</li>
+            <li>Não vendemos seus dados nem os compartilhamos, fora a foto do cardápio explicada abaixo, que só é enviada se você usar a importação.</li>
             <li>Não usamos anúncios, rastreadores nem cookies de outras empresas.</li>
             <li>Um negócio nunca vê os dados de outro.</li>
           </ul>
@@ -78,6 +84,19 @@ export default function Privacidade() {
           <p>
             O banco de dados e o login ficam no Supabase, e o site fica hospedado na Vercel. Esses serviços guardam os dados
             para nós e não podem usá-los para outra coisa.
+          </p>
+        </Bloco>
+
+        <Bloco titulo="Leitura do cardápio por foto">
+          <p>
+            Se você usar "Importar do cardápio", a foto que escolher é enviada ao serviço de inteligência artificial do
+            Google (Gemini) só para identificar nomes e preços. O Organiza+ não guarda a foto: fica registrado apenas que o
+            negócio fez uma leitura e quando.
+          </p>
+          <p>
+            Pelos termos do plano gratuito do Google, a foto e a resposta podem ser guardadas, lidas por pessoas e usadas
+            para melhorar os serviços deles, inclusive em servidores fora do Brasil. Por isso, fotografe só o cardápio, sem
+            pessoas, documentos ou dados de clientes, e confira os itens antes de salvar.
           </p>
         </Bloco>
 

@@ -1,0 +1,66 @@
+name: Saúde do sistema
+
+# A cada 6 horas: o site responde, o banco responde e está na versão que o
+# código espera. Se algo falhar, o GitHub manda e-mail para quem cuida do
+# repositório. A chamada ao banco também evita que o Supabase Free pause
+# sozinho por falta de uso (aconteceu em 14/10).
+#
+# Usa os mesmos secrets do "Banco em dia" (VITE_SUPABASE_URL e
+# VITE_SUPABASE_ANON_KEY, a chave publishable do site). O endereço do site é o
+# de produção; para outro, crie a variável SITE_URL em Settings > Secrets and
+# variables > Actions. Sem os secrets do banco, só o site é conferido.
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conferir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SITE_URL: ${{ vars.SITE_URL || 'https://organizaplus-nu.vercel.app' }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Conferir configuração
+        id: config
+        run: |
+          if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_ANON_KEY" ]]; then
+            echo "::notice::Sem os secrets VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY: só o site é conferido."
+            echo "banco=nao" >> "$GITHUB_OUTPUT"
+          else
+            echo "banco=sim" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Site no ar
+        run: |
+          CODIGO=$(curl -s -o pagina.html -w '%{http_code}' --max-time 20 "$SITE_URL/")
+          echo "Site respondeu $CODIGO"
+          test "$CODIGO" = "200"
+          grep -q 'id="root"' pagina.html || { echo "::error::O endereço respondeu, mas não é o Organiza+."; exit 1; }
+
+      - name: Banco no ar e na versão certa
+        if: steps.config.outputs.banco == 'sim'
+        run: |
+          ESPERADA=$(grep -oE '[0-9]{8}' src/lib/versaoDoBanco.js | head -1)
+          VERSAO=$(curl -s --max-time 20 -X POST "$SUPABASE_URL/rest/v1/rpc/versao_do_banco" \
+            -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' -d '{}')
+          echo "Banco na versão $VERSAO (o código espera $ESPERADA)"
+          if ! [[ "$VERSAO" =~ ^[0-9]+$ ]]; then
+            echo "::error::O banco não respondeu. Pode ter pausado: abra o painel do Supabase e clique em Restore."
+            exit 1
+          fi
+          if (( VERSAO < ESPERADA )); then
+            echo "::error::O banco está atrás do código. Rode os arquivos de supabase/migracoes que faltam."
+            exit 1
+          fi

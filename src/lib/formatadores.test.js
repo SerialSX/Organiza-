@@ -5,6 +5,8 @@ import {
   destinoDoPedido,
   formatarEspera,
   formatarSenha,
+  hojeNoNegocio,
+  inicioDoDia,
   lerValor,
   minutosDesde,
   valorParaCampo,
@@ -68,11 +70,26 @@ describe('destinoDoPedido', () => {
   it('a cozinha anuncia a senha e, quando há, a mesa', () => {
     expect(chamadaDoPedido({ numero: 7, mesa: 12 })).toBe('007, mesa 12');
     expect(chamadaDoPedido({ numero: 7, mesa: null })).toBe('007');
+    expect(chamadaDoPedido({ numero: 7, mesa: null, identificacao: 'Carlos' })).toBe('007, Carlos');
+    expect(chamadaDoPedido({ numero: 7, mesa: 3, identificacao: 'Ana' })).toBe('007, mesa 3, Ana');
   });
 });
 
 describe('codigoPedido', () => {
   it('usa os 4 primeiros caracteres do id em maiúsculas', () => {
     expect(codigoPedido('a9c2f1e0-0000-0000-0000-000000000000')).toBe('#A9C2');
+  });
+});
+
+describe('dia de trabalho com virada', () => {
+  it('pedido à 0h10 é do dia anterior quando o dia vira às 5h', () => {
+    expect(hojeNoNegocio(new Date('2026-11-21T00:10:00-03:00'), 5)).toBe('2026-11-20');
+    expect(hojeNoNegocio(new Date('2026-11-21T05:00:00-03:00'), 5)).toBe('2026-11-21');
+    expect(hojeNoNegocio(new Date('2026-11-21T00:10:00-03:00'), 0)).toBe('2026-11-21');
+  });
+
+
+  it('início do dia de trabalho às 5h de Fortaleza', () => {
+    expect(inicioDoDia('2026-11-20', 5).toISOString()).toBe('2026-11-20T08:00:00.000Z');
   });
 });

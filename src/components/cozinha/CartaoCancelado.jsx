@@ -1,8 +1,9 @@
 import Botao from '../ui/Botao';
 import Etiqueta from '../ui/Etiqueta';
 import { CloseIcon } from '../icons/AppIcons';
-import { chamadaDoPedido, numeroDoPedido } from '../../lib/formatadores';
+import { chamadaDoPedido, destinoDoPedido, numeroDoPedido } from '../../lib/formatadores';
 import { rotuloDoMotivo } from '../../lib/pedidoStatus';
+import { resumoDosItens } from '../../lib/combos';
 
 const VERMELHO = 'var(--color-accent-cozinha)';
 
@@ -17,12 +18,12 @@ export default function CartaoCancelado({ pedido, onOk }) {
         <span className="text-3xl font-extrabold tracking-wide tabular-nums text-[var(--text-primary)] line-through" translate="no">
           {numeroDoPedido(pedido)}
         </span>
-        {pedido.mesa && <span className="text-xl font-extrabold tabular-nums text-[var(--text-primary)]">Mesa {pedido.mesa}</span>}
+        {pedido.mesa && <span className="text-xl font-extrabold tabular-nums text-[var(--text-primary)] break-words">{destinoDoPedido(pedido)}</span>}
         <Etiqueta cor={VERMELHO}>Cancelado</Etiqueta>
       </div>
       <p className="text-lg font-bold text-[var(--texto-cozinha)]">Não preparar. {rotuloDoMotivo(pedido.motivo_cancelamento)}.</p>
       <p className="text-sm text-[var(--text-secondary)] line-through break-words">
-        {pedido.itens.map((i) => `${i.quantidade}× ${i.nome}`).join(', ')}
+        {resumoDosItens(pedido.itens)}
       </p>
       <Botao variante="secundaria" className="self-start" onClick={onOk}>
         <CloseIcon className="w-4 h-4" />

@@ -43,6 +43,11 @@ jobs:
       - name: Build
         run: npm run build
 
+      # O front nunca fala com o Google: pega chave ou endereço do Gemini escritos
+      # no código. Variável criada na Vercel só entra no bundle se o código a usar.
+      - name: Nenhuma chave de IA no front
+        run: "! grep -rEn 'AIza[0-9A-Za-z_-]{30,}|generativelanguage|VITE_GEMINI' src dist"
+
   # Job separado: baixar o navegador às vezes demora (servidor do GitHub lento)
   # e não pode derrubar as outras verificações nem estourar o tempo delas.
   telas:

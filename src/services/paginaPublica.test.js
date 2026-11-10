@@ -50,7 +50,7 @@ describe('página do cliente (modo demonstração)', () => {
 
   it('página desligada some, e o nome personalizado aparece', async () => {
     await salvarConfiguracaoPagina({ nomePublico: 'Lanche da Ana', ativa: true });
-    expect(await buscarPaginaPublica('demonstracao')).toEqual({ nome: 'Lanche da Ana' });
+    expect(await buscarPaginaPublica('demonstracao')).toEqual({ nome: 'Lanche da Ana', virada_do_dia: 5 });
     await salvarConfiguracaoPagina({ nomePublico: 'Lanche da Ana', ativa: false });
     expect(await buscarPaginaPublica('demonstracao')).toBeNull();
     expect(await acompanharPedido('demonstracao', 31)).toEqual({ encontrado: false });

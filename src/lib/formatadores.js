@@ -53,22 +53,43 @@ export function numeroDoPedido(pedido) {
   return pedido.numero ? formatarSenha(pedido.numero) : codigoPedido(pedido.id);
 }
 
-// Para onde vai o pedido: a mesa (consumo no salão) ou o balcão, onde o
-// cliente retira quando chamam a senha.
+// Para onde vai o pedido: a mesa (consumo no salão; a mesa extra pelo nome,
+// "Varanda") ou o balcão, onde o cliente retira quando chamam a senha.
 export function destinoDoPedido(pedido) {
-  return pedido.mesa ? `Mesa ${pedido.mesa}` : 'Balcão';
+  if (!pedido.mesa) return 'Balcão';
+  return pedido.nome_mesa || `Mesa ${pedido.mesa}`;
 }
 
-// Como a cozinha anuncia o pedido (e o leitor de tela lê): "007" ou "007, mesa 12".
+// Como a cozinha anuncia o pedido (e o leitor de tela lê): "007", "007, mesa 12"
+// ou "007, Carlos" quando o atendente anotou o nome.
 export function chamadaDoPedido(pedido) {
-  return pedido.mesa ? `${numeroDoPedido(pedido)}, mesa ${pedido.mesa}` : numeroDoPedido(pedido);
+  const partes = [numeroDoPedido(pedido)];
+  if (pedido.mesa) partes.push(pedido.nome_mesa || `mesa ${pedido.mesa}`);
+  if (pedido.identificacao) partes.push(pedido.identificacao);
+  return partes.join(', ');
 }
 
 const diaEmFortaleza = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Fortaleza' });
 
-// Mesmo "dia" que o banco grava em pedidos.dia (AAAA-MM-DD, fuso de Fortaleza),
-// para separar a fila de hoje das pendências mesmo com o relógio do aparelho
-// em outro fuso.
-export function hojeNoNegocio(agora = new Date()) {
-  return diaEmFortaleza.format(agora);
+// Hora em que o dia de trabalho do negócio vira (negocios.virada_do_dia).
+// Com 5, um pedido à 1h da manhã ainda é do dia anterior. Vem do perfil ao
+// entrar; fica aqui para todas as telas usarem a mesma regra do banco.
+let viradaDoDia = 0;
+
+export function definirViradaDoDia(horas) {
+  viradaDoDia = Number.isInteger(horas) && horas >= 0 && horas <= 8 ? horas : 0;
+}
+
+// Mesmo "dia" que o banco grava em pedidos.dia (AAAA-MM-DD, fuso de Fortaleza,
+// descontada a virada), para separar a fila de hoje das pendências mesmo com o
+// relógio do aparelho em outro fuso.
+export function hojeNoNegocio(agora = new Date(), virada = viradaDoDia) {
+  return diaEmFortaleza.format(new Date(new Date(agora).getTime() - virada * 3600000));
+}
+
+
+// Início do dia de trabalho (AAAA-MM-DD) como instante: meia-noite de
+// Fortaleza mais a virada.
+export function inicioDoDia(dia, virada = viradaDoDia) {
+  return new Date(`${dia}T${String(virada).padStart(2, '0')}:00:00-03:00`);
 }

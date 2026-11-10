@@ -12,9 +12,15 @@ dist
 dist-ssr
 *.local
 
-# Environment variables
+# Variáveis de ambiente e segredos, em qualquer pasta (inclui supabase/functions/.env),
+# menos o modelo .env.example
 .env
-.env.local
+.env.*
+!.env.example
+
+# Estado local da CLI do Supabase (ref do projeto, versões)
+supabase/.temp/
+supabase/.branches/
 
 # Editor directories and files
 .vscode/*
@@ -30,6 +36,7 @@ dist-ssr
 # Documentação interna do projeto: nunca vai para o GitHub
 docs/
 CLAUDE.md
+.claude/
 
 # Resultados dos testes de tela
 test-results/

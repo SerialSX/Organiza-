@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { cadastrarProduto, lancarPedido } from './ajuda';
+import { cadastrarProduto, escolherMesa, lancarPedido } from './ajuda';
 
 test('pedido sai do atendente, passa pela cozinha e é entregue', async ({ page }) => {
   await cadastrarProduto(page, 'Pastel de carne', '8,50');
@@ -35,15 +35,19 @@ test('pedido na mesa: sem o número não sai, e a cozinha vê a mesa', async ({ 
   const enviar = page.getByRole('button', { name: /^Enviar( para a cozinha)?$/ }).filter({ visible: true }).first();
 
   await enviar.click();
-  await expect(page.getByText('Digite o número da mesa (de 1 a 999).')).toBeVisible();
+  // No celular o erro também aparece na barra de baixo (escondido do leitor de tela).
+  await expect(page.getByText('Toque na mesa do pedido, no mapa das mesas.').filter({ visible: true }).first()).toBeVisible();
 
-  await page.getByLabel('Número da mesa').fill('12');
+  await escolherMesa(page, 7);
   await enviar.click();
-  await expect(page.getByRole('status').filter({ hasText: 'Diga ao cliente a senha' })).toContainText('Mesa 12');
+  // Mesa: não tem senha para falar; quem atende leva até a mesa.
+  const aviso = page.getByRole('status').filter({ hasText: 'Entrou na conta da mesa.' });
+  await expect(aviso).toContainText('Mesa 7');
+  await expect(aviso).not.toContainText('senha');
 
   await page.goto('/cozinha');
-  const cartao = page.getByRole('listitem', { name: 'Pedido 001, mesa 12' });
-  await expect(cartao).toContainText('Mesa 12');
+  const cartao = page.getByRole('listitem', { name: 'Pedido 001, mesa 7' });
+  await expect(cartao).toContainText('Mesa 7');
   await expect(cartao).toContainText('1º');
 });
 
@@ -72,6 +76,9 @@ test('cancelar pedido pede o motivo', async ({ page }) => {
   const motivos = page.getByRole('group', { name: 'Motivo do cancelamento' });
   await expect(motivos).toBeVisible();
   await motivos.getByRole('button').first().click();
+  // Balcão paga na hora: depois do motivo, pergunta se o dinheiro voltou.
+  await page.getByRole('group', { name: 'O dinheiro foi devolvido?' }).getByRole('button', { name: 'Sim, devolvi' }).click();
+  await expect(motivos).toHaveCount(0);
 
   await page.goto('/cozinha');
   await expect(page.getByRole('listitem', { name: `Pedido ${senha} cancelado` })).toBeVisible();

@@ -1,6 +1,7 @@
 // Roda supabase/schema.sql num Postgres local (PGlite) com um Supabase "de mentira"
 // (schema auth, roles anon/authenticated) e testa as regras do fluxo do pedido.
 import { PGlite } from '@electric-sql/pglite';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import { readFileSync } from 'node:fs';
 
 // Uso: npm run test:banco (ou node fluxo-do-pedido.mjs caminho/do/schema.sql)
@@ -10,7 +11,8 @@ process.on('unhandledRejection', (e) => {
 });
 
 const schema = readFileSync(process.argv[2] ?? new URL('../schema.sql', import.meta.url), 'utf8').replace(/create extension if not exists pgcrypto;/, '');
-const db = new PGlite();
+// No Supabase o pgcrypto fica no schema extensions (senha de auth.users).
+const db = new PGlite({ extensions: { pgcrypto } });
 let falhas = 0;
 
 async function ok(nome, fn) {
@@ -43,7 +45,9 @@ await db.exec(`
   create role anon; create role authenticated;
   create schema auth;
   grant usage on schema auth to anon, authenticated;
-  create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb);
+  create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb, encrypted_password text);
+  create schema extensions;
+  create extension pgcrypto schema extensions;
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant execute on function auth.uid() to anon, authenticated;
@@ -58,6 +62,7 @@ const U2 = '22222222-2222-4222-8222-222222222222';
 await db.exec(`
   insert into auth.users values ('${U1}', 'a@a.com', '{"nome":"Ana","nome_negocio":"Lanche da Ana"}');
   insert into auth.users values ('${U2}', 'b@b.com', '{"nome":"Bia","nome_negocio":"Pastel da Bia"}');
+  update auth.users set encrypted_password = extensions.crypt('senha-da-' || split_part(email, '@', 1), extensions.gen_salt('bf'));
 `);
 
 async function como(usuario, sql, params) {
@@ -294,8 +299,33 @@ await erro('minha conta: quem não é dono não renomeia o negócio', 'Só o don
     await db.query(`update public.usuarios set papel = 'admin' where id = '${U2}'`);
   }
 });
+await ok('excluir conta com a senha errada não apaga nada', async () => {
+  const [r] = await rpc(U2, 'excluir_minha_conta($1)', ['senha-errada']);
+  igual(r.excluir_minha_conta, 'senha_incorreta', 'resposta');
+  const [{ n }] = (await db.query(`select count(*)::int as n from auth.users where id = '${U2}'`)).rows;
+  igual(n, 1, 'usuário continua');
+});
+await ok('excluir conta sem senha não apaga nada', async () => {
+  const [r] = await rpc(U2, 'excluir_minha_conta($1)', ['']);
+  igual(r.excluir_minha_conta, 'senha_incorreta', 'resposta');
+});
+await ok('a versão sem senha não existe mais', async () => {
+  const [{ n }] = (await db.query(`select count(*)::int as n from pg_proc where proname = 'excluir_minha_conta' and pronargs = 0`)).rows;
+  igual(n, 0, 'versões sem senha');
+});
+await erro('5 senhas erradas em 15 minutos: espera, mesmo acertando', 'Muitas tentativas', async () => {
+  for (let i = 0; i < 3; i++) await rpc(U2, 'excluir_minha_conta($1)', ['outra-errada']);
+  await rpc(U2, 'excluir_minha_conta($1)', ['senha-da-b']);
+});
+await ok('passados 15 minutos, a senha certa exclui a conta', async () => {
+  await db.query(`update public.tentativas_senha set criado_em = now() - interval '16 minutes'`);
+});
+await ok('ninguém lê as tentativas de senha', async () => {
+  await erro('leitura', 'permission denied', () => como(U1, 'select * from public.tentativas_senha'));
+});
 await ok('excluir conta apaga o usuário e o negócio dele, sem tocar no dos outros', async () => {
-  await rpc(U2, 'excluir_minha_conta()');
+  const [resposta] = await rpc(U2, 'excluir_minha_conta($1)', ['senha-da-b']);
+  igual(resposta.excluir_minha_conta, 'excluida', 'resposta');
   const r = await db.query(`select
     (select count(*) from auth.users where id = '${U2}')::int as usuario,
     (select count(*) from public.negocios)::int as negocios,
@@ -305,7 +335,7 @@ await ok('excluir conta apaga o usuário e o negócio dele, sem tocar no dos out
 await erro('visitante não exclui conta', 'permission denied', async () => {
   await db.exec('reset role; set role anon;');
   try {
-    await db.query('select public.excluir_minha_conta()');
+    await db.query("select public.excluir_minha_conta('senha-da-a')");
   } finally {
     await db.exec('reset role;');
   }

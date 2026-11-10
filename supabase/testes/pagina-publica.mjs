@@ -1,6 +1,7 @@
 // Testa a página pública (QR) contra supabase/schema.sql num Postgres local,
 // como visitante sem conta (role anon) e como dono (authenticated).
 import { PGlite } from '@electric-sql/pglite';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import { readFileSync } from 'node:fs';
 
 // Uso: npm run test:banco (ou node pagina-publica.mjs caminho/do/schema.sql)
@@ -10,7 +11,8 @@ process.on('unhandledRejection', (e) => {
 });
 
 const schema = readFileSync(process.argv[2] ?? new URL('../schema.sql', import.meta.url), 'utf8').replace(/create extension if not exists pgcrypto;/, '');
-const db = new PGlite();
+// No Supabase o pgcrypto fica no schema extensions (senha de auth.users).
+const db = new PGlite({ extensions: { pgcrypto } });
 let falhas = 0;
 
 async function ok(nome, fn) {
@@ -43,7 +45,9 @@ await db.exec(`
   create role anon; create role authenticated;
   create schema auth;
   grant usage on schema auth to anon, authenticated;
-  create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb);
+  create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb, encrypted_password text);
+  create schema extensions;
+  create extension pgcrypto schema extensions;
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant execute on function auth.uid() to anon, authenticated;
@@ -96,12 +100,12 @@ await ok('código público tem 32 caracteres aleatórios', async () => {
   if (codigo1 === codigo2) throw new Error('códigos iguais');
 });
 
-await ok('visitante vê o nome do negócio', async () => igual(await pagina(codigo1), { nome: 'Lanche da Ana' }, 'página'));
+await ok('visitante vê o nome do negócio', async () => igual(await pagina(codigo1), { nome: 'Lanche da Ana', virada_do_dia: 5 }, 'página'));
 await ok('endereço errado devolve nada', async () => igual(await pagina('naoexiste'), null, 'página'));
 
 await ok('dono personaliza o nome', async () => {
   await dono(U1, `select public.configurar_pagina_publica('  Lanchonete da Ana  ', true)`);
-  igual(await pagina(codigo1), { nome: 'Lanchonete da Ana' }, 'página');
+  igual(await pagina(codigo1), { nome: 'Lanchonete da Ana', virada_do_dia: 5 }, 'página');
 });
 await erro('nome com mais de 60 caracteres', 'no máximo 60', () =>
   dono(U1, `select public.configurar_pagina_publica($1, true)`, ['x'.repeat(61)]),
@@ -118,6 +122,22 @@ await ok('pronto, tempo médio e fila andando', async () => {
   const r1 = await acompanhar(codigo1, p1.numero);
   igual([r1.status, r1.posicao, r1.tempo_medio_min], ['pronto', null, 12], 'pedido 1');
   igual((await acompanhar(codigo1, p3.numero)).posicao, 2, 'terceiro andou');
+});
+
+await ok('pedido só de bebida (nasce pronto) não baixa o tempo médio', async () => {
+  const [{ id: suco }] = await dono(
+    U1,
+    `insert into public.produtos (negocio_id, nome, preco, vai_para_cozinha) values ($1, 'Suco', 5, false) returning id`,
+    [negocio1],
+  );
+  const [b] = await dono(U1, 'select * from public.criar_pedido($1::jsonb, $2::uuid)', [
+    JSON.stringify([{ produto_id: suco, quantidade: 1 }]),
+    'aaaaaaaa-0000-4000-8000-0000000000b1',
+  ]);
+  igual(b.status, 'pronto', 'bebida já pronta');
+  ip = '200.4.4.4';
+  igual((await acompanhar(codigo1, p1.numero)).tempo_medio_min, 12, 'média sem a bebida');
+  ip = '200.1.1.1';
 });
 
 await ok('aviso de item que faltou', async () => {
@@ -138,7 +158,7 @@ await ok('resposta não traz itens, valores nem nomes', async () => {
 await ok('número de outro negócio não é encontrado', async () => {
   const [{ negocio_id: negocio2 }] = await dono(U2, 'select negocio_id from public.usuarios');
   const [{ id: pastel }] = await dono(U2, `insert into public.produtos (negocio_id, nome, preco) values ($1, 'P', 8) returning id`, [negocio2]);
-  // O negócio 1 tem as senhas 1 a 3; a senha 5 só existe no negócio 2.
+  // O negócio 1 tem as senhas 1 a 4; a senha 5 só existe no negócio 2.
   let outro;
   for (let i = 1; i <= 5; i++) {
     [outro] = await dono(U2, 'select * from public.criar_pedido($1::jsonb, $2::uuid)', [

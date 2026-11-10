@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
-import { lerDemo, salvarDemo, limparDemo } from '../services/demoStore';
+import { lerDemo, salvarDemo, limparDemo, MESAS_DEMO } from '../services/demoStore';
 import { AuthContext } from './authContext';
 import { traduzirErroRecuperacao } from '../lib/recuperacaoSenha';
+import { definirViradaDoDia } from '../lib/formatadores';
+import { buscarPerfil } from '../services/perfil';
 
 const PERFIL_DEMO = {
   id: 'demo-usuario',
@@ -11,10 +13,21 @@ const PERFIL_DEMO = {
   papel: 'admin',
   negocio_id: 'demo-negocio',
   negocio_nome: 'Meu negócio (demonstração)',
+  virada_do_dia: 5,
+  usa_tela_cozinha: true,
+  // A demonstração já começa respondida; o teste das perguntas de
+  // boas-vindas apaga este valor para ver a pessoa respondendo.
+  modo_atendimento: 'balcao_e_mesa',
+  ...MESAS_DEMO,
+  // Como no banco: o dono escolhe ao marcar o primeiro produto meio a meio.
+  regra_meio_a_meio: null,
 };
 
 function perfilDemo() {
-  return { ...PERFIL_DEMO, ...lerDemo().perfil };
+  const perfil = { ...PERFIL_DEMO, ...lerDemo().perfil };
+  // Já na primeira tela, antes de qualquer efeito rodar.
+  definirViradaDoDia(perfil.virada_do_dia);
+  return perfil;
 }
 
 // Mensagens do Supabase Auth em português, sempre dizendo o que fazer.
@@ -35,18 +48,6 @@ function traduzirErro(error) {
   return ERROS_AUTH.find(([padrao]) => padrao.test(error.message ?? ''))?.[1] ?? 'Algo deu errado. Tente de novo em instantes.';
 }
 
-async function buscarPerfil(usuario) {
-  const { data, error } = await supabase
-    .from('usuarios')
-    .select('id, nome, papel, negocio_id, negocios ( nome )')
-    .eq('id', usuario.id)
-    .maybeSingle();
-  // Erro de rede não pode virar "perfil inexistente"; quem chama decide.
-  if (error) throw error;
-  if (!data) return null;
-  return { ...data, email: usuario.email, negocio_nome: data.negocios?.nome ?? '' };
-}
-
 function enderecoDoApp(caminho) {
   return `${window.location.origin}${caminho}`;
 }
@@ -56,6 +57,11 @@ export function AuthProvider({ children }) {
   const [perfil, setPerfil] = useState(() => (isSupabaseConfigured ? null : perfilDemo()));
   const [carregando, setCarregando] = useState(isSupabaseConfigured);
   const [semConexao, setSemConexao] = useState(false);
+
+  // Todas as telas contam o "dia" a partir da virada do negócio.
+  useEffect(() => {
+    definirViradaDoDia(perfil?.virada_do_dia ?? 0);
+  }, [perfil?.virada_do_dia]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return undefined;
@@ -146,14 +152,81 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Serve tanto para a recuperação por código quanto para "Minha conta".
-  const trocarSenha = useCallback(async (senha) => {
+  // senhaAtual: na troca pela Minha conta, vai junto para o Supabase conferir
+  // também (com "Secure password change" ligado no painel, ele exige). Na
+  // recuperação por código não existe senha atual.
+  const trocarSenha = useCallback(async (senha, senhaAtual = null) => {
     if (!isSupabaseConfigured) return { erro: null };
-    const { error } = await supabase.auth.updateUser({ password: senha });
+    const { error } = await supabase.auth.updateUser(senhaAtual ? { password: senha, current_password: senhaAtual } : { password: senha });
     return { erro: traduzirErroRecuperacao(error) };
   }, []);
 
+  // Confere a senha antes de algo que não dá para desfazer. Todos os aparelhos
+  // do negócio usam a mesma conta: sem isso, qualquer um com o celular do
+  // balcão na mão poderia excluir o negócio ou trocar a senha do dono.
+  const confirmarSenhaAtual = useCallback(
+    async (senha) => {
+      if (!isSupabaseConfigured) return { erro: null };
+      if (!senha) return { erro: 'Digite sua senha atual.' };
+      const { error } = await supabase.auth.signInWithPassword({ email: perfil?.email ?? '', password: senha });
+      if (!error) return { erro: null };
+      return { erro: /invalid login credentials/i.test(error.message ?? '') ? 'Senha atual incorreta.' : traduzirErro(error) };
+    },
+    [perfil?.email],
+  );
+
+  // Só neste aparelho: o tablet da cozinha continua conectado.
   const sair = useCallback(async () => {
-    if (isSupabaseConfigured) await supabase.auth.signOut();
+    if (isSupabaseConfigured) await supabase.auth.signOut({ scope: 'local' });
+  }, []);
+
+  // Respostas das perguntas de boas-vindas (só o dono). Também usado em
+  // Minha conta para mudar depois.
+  const configurarAtendimento = useCallback(async ({ modo, usaTelaCozinha }) => {
+    if (!isSupabaseConfigured) {
+      const db = lerDemo();
+      salvarDemo({ ...db, perfil: { ...db.perfil, modo_atendimento: modo, usa_tela_cozinha: usaTelaCozinha } });
+      setPerfil(perfilDemo());
+      return { erro: null };
+    }
+    const { error } = await supabase.rpc('configurar_atendimento', { p_modo: modo, p_usa_tela_cozinha: usaTelaCozinha });
+    if (error) return { erro: traduzirErro(error) };
+    setPerfil((p) => ({ ...p, modo_atendimento: modo, usa_tela_cozinha: usaTelaCozinha }));
+    return { erro: null };
+  }, []);
+
+  // Quantas mesas o negócio tem e a taxa de serviço em % (0: não cobra). Só o dono.
+  const configurarMesas = useCallback(async ({ quantidade, taxaServico }) => {
+    if (!isSupabaseConfigured) {
+      const db = lerDemo();
+      salvarDemo({ ...db, perfil: { ...db.perfil, quantidade_mesas: quantidade, taxa_servico: taxaServico } });
+      setPerfil(perfilDemo());
+      return { erro: null };
+    }
+    const { error } = await supabase.rpc('configurar_mesas', { p_quantidade: quantidade, p_taxa_servico: taxaServico });
+    if (error) return { erro: traduzirErro(error) };
+    setPerfil((p) => ({ ...p, quantidade_mesas: quantidade, taxa_servico: taxaServico }));
+    return { erro: null };
+  }, []);
+
+  // Como cobra o meio a meio: 'mais_caro' ou 'media'. Só o dono. Vale para os
+  // pedidos novos; os feitos guardam o preço que tinham.
+  const configurarMeioAMeio = useCallback(async (regra) => {
+    if (!isSupabaseConfigured) {
+      const db = lerDemo();
+      salvarDemo({ ...db, perfil: { ...db.perfil, regra_meio_a_meio: regra } });
+      setPerfil(perfilDemo());
+      return { erro: null };
+    }
+    const { error } = await supabase.rpc('configurar_meio_a_meio', { p_regra: regra });
+    if (error) {
+      if (error.code === 'PGRST202' || error.code === '42883') {
+        return { erro: 'O banco de dados ainda não aceita o meio a meio. Avise quem cuida do sistema.' };
+      }
+      return { erro: traduzirErro(error) };
+    }
+    setPerfil((p) => ({ ...p, regra_meio_a_meio: regra }));
+    return { erro: null };
   }, []);
 
   // Para quando um aparelho foi perdido ou um funcionário saiu com a senha.
@@ -163,20 +236,34 @@ export function AuthProvider({ children }) {
     return { erro: traduzirErro(error) };
   }, []);
 
-  const excluirConta = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      limparDemo();
-      setPerfil(perfilDemo());
+  // A senha é conferida no banco: quem pega o celular com a conta aberta não
+  // apaga o negócio sem saber a senha.
+  const excluirConta = useCallback(
+    async (senha) => {
+      if (!isSupabaseConfigured) {
+        limparDemo();
+        setPerfil(perfilDemo());
+        return { erro: null };
+      }
+      if (!senha) return { erro: 'Digite sua senha atual.' };
+      let { data, error } = await supabase.rpc('excluir_minha_conta', { p_senha: senha });
+      // Banco ainda sem a senha no servidor: confere aqui e exclui como antes.
+      if (error && (error.code === 'PGRST202' || error.code === '42883')) {
+        const conferida = await confirmarSenhaAtual(senha);
+        if (conferida.erro) return conferida;
+        ({ error } = await supabase.rpc('excluir_minha_conta'));
+        data = 'excluida';
+      }
+      if (error) {
+        return { erro: error.code === 'P0001' ? error.message : 'Não foi possível excluir a conta. Tente de novo.' };
+      }
+      if (data === 'senha_incorreta') return { erro: 'Senha atual incorreta.' };
+      // O usuário já não existe no Auth: só limpa a sessão guardada neste aparelho.
+      await supabase.auth.signOut({ scope: 'local' });
       return { erro: null };
-    }
-    const { error } = await supabase.rpc('excluir_minha_conta');
-    if (error) {
-      return { erro: error.code === 'P0001' ? error.message : 'Não foi possível excluir a conta. Tente de novo.' };
-    }
-    // O usuário já não existe no Auth: só limpa a sessão guardada neste aparelho.
-    await supabase.auth.signOut({ scope: 'local' });
-    return { erro: null };
-  }, []);
+    },
+    [confirmarSenhaAtual],
+  );
 
   const valor = useMemo(
     () => ({
@@ -191,6 +278,10 @@ export function AuthProvider({ children }) {
       pedirCodigoSenha,
       confirmarCodigoSenha,
       trocarSenha,
+      confirmarSenhaAtual,
+      configurarAtendimento,
+      configurarMesas,
+      configurarMeioAMeio,
       sair,
       sairDeTodosOsAparelhos,
       excluirConta,
@@ -206,6 +297,10 @@ export function AuthProvider({ children }) {
       pedirCodigoSenha,
       confirmarCodigoSenha,
       trocarSenha,
+      confirmarSenhaAtual,
+      configurarAtendimento,
+      configurarMesas,
+      configurarMeioAMeio,
       sair,
       sairDeTodosOsAparelhos,
       excluirConta,

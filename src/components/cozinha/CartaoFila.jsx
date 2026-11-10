@@ -2,8 +2,9 @@ import { useState } from 'react';
 import Botao from '../ui/Botao';
 import Etiqueta from '../ui/Etiqueta';
 import { AlertIcon, CheckIcon, ClockIcon } from '../icons/AppIcons';
-import { chamadaDoPedido, formatarEspera, formatarHora, minutosDesde, numeroDoPedido } from '../../lib/formatadores';
+import { chamadaDoPedido, destinoDoPedido, formatarEspera, formatarHora, minutosDesde, numeroDoPedido } from '../../lib/formatadores';
 import { LIMITE_ATRASO_MINUTOS } from '../../lib/pedidoStatus';
+import { agruparItens } from '../../lib/combos';
 
 const VERMELHO = 'var(--color-accent-cozinha)';
 const VERDE = 'var(--color-accent-relatorios)';
@@ -19,7 +20,7 @@ function estiloMarcado(marcado) {
 // Produto com ingredientes cadastrados: "Faltou" abre a lista e a cozinha
 // toca no que não tem ("queijo"). Sem ingredientes cadastrados, "Faltou"
 // avisa o item inteiro.
-function ItemDaFila({ item, onFaltou, onFaltouIngrediente }) {
+function ItemDaFila({ item, grande, onFaltou, onFaltouIngrediente }) {
   const [escolhendo, setEscolhendo] = useState(false);
   const porIngrediente = item.ingredientes.length > 0;
   const faltaram = item.faltou_ingredientes;
@@ -27,17 +28,44 @@ function ItemDaFila({ item, onFaltou, onFaltouIngrediente }) {
   const idLista = `faltou-${item.id}`;
 
   return (
-    <li className="flex flex-col gap-2 text-lg">
+    <li className={`flex flex-col gap-2 ${grande ? 'text-2xl' : 'text-lg'}`}>
       <div className="flex items-start gap-3">
         <span className="font-extrabold min-w-10 tabular-nums text-[var(--text-primary)]" style={{ textDecoration: riscado }}>
           {item.quantidade}×
         </span>
         <span className="flex-1 min-w-0">
           <span className="block font-medium text-[var(--text-primary)] break-words" style={{ textDecoration: riscado }}>
-            {item.nome}
+            {/* O tamanho vem antes e grande: a pizza G não pode sair como P. */}
+            {item.tamanho && (
+              <span
+                className={`mr-2 inline-flex min-w-10 items-center justify-center rounded-lg px-2 align-middle font-extrabold text-[var(--sobre-destaque)] ${grande ? 'h-11 text-2xl' : 'h-9 text-xl'}`}
+                style={{ backgroundColor: 'var(--color-accent-pedidos)' }}
+                aria-label={`tamanho ${item.tamanho}`}
+              >
+                {item.tamanho}
+              </span>
+            )}
+            {item.segundo_sabor ? (
+              // Meio a meio: um selo e uma linha para cada metade.
+              <>
+                <span
+                  className={`inline-flex items-center rounded-lg border-2 border-[var(--color-accent-pedidos)] px-2 align-middle font-extrabold text-[var(--text-primary)] ${grande ? 'h-11 text-xl' : 'h-9 text-base'}`}
+                >
+                  Meio a meio
+                </span>
+                <span className="block mt-1">½ {item.produto_nome}</span>
+                <span className="block">½ {item.segundo_sabor}</span>
+              </>
+            ) : item.tamanho ? (
+              item.produto_nome
+            ) : (
+              item.nome
+            )}
           </span>
           {item.observacao && (
-            <span className="mt-1 inline-block rounded-r-lg border-l-4 border-[var(--color-brand-orange)] px-2.5 py-1 text-base font-bold break-words bg-[color-mix(in_srgb,var(--color-brand-orange)_18%,transparent)] text-[var(--text-primary)]">
+            <span
+              className={`mt-1 inline-block rounded-r-lg border-l-4 border-[var(--color-brand-orange)] px-2.5 py-1 ${grande ? 'text-xl' : 'text-base'} font-bold break-words bg-[color-mix(in_srgb,var(--color-brand-orange)_18%,transparent)] text-[var(--text-primary)]`}
+            >
               {item.observacao}
             </span>
           )}
@@ -111,13 +139,60 @@ function ItemDaFila({ item, onFaltou, onFaltouIngrediente }) {
   );
 }
 
+// Combo: o nome em destaque e, embaixo, cada parte que a cozinha prepara. A
+// observação vale para o combo inteiro e aparece uma vez só.
+function ComboDaFila({ grupo, grande, onFaltou, onFaltouIngrediente }) {
+  return (
+    <li className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={`inline-flex items-center rounded-lg px-2.5 font-extrabold text-[var(--sobre-destaque)] break-words ${grande ? 'min-h-11 text-2xl' : 'min-h-9 text-lg'}`}
+          style={{ backgroundColor: 'var(--color-brand-orange)' }}
+        >
+          {grupo.nome}
+        </span>
+        {grupo.quantidade > 1 && (
+          <span className={`font-bold text-[var(--text-primary)] ${grande ? 'text-2xl' : 'text-lg'}`}>{grupo.quantidade} combos</span>
+        )}
+      </div>
+      {grupo.observacao && (
+        <span
+          className={`self-start rounded-r-lg border-l-4 border-[var(--color-brand-orange)] px-2.5 py-1 ${grande ? 'text-xl' : 'text-base'} font-bold break-words bg-[color-mix(in_srgb,var(--color-brand-orange)_18%,transparent)] text-[var(--text-primary)]`}
+        >
+          {grupo.observacao}
+        </span>
+      )}
+      <ul aria-label={`Partes do ${grupo.nome}`} className="flex flex-col gap-3 border-l-4 border-[var(--color-brand-orange)] pl-3">
+        {grupo.itens.map((item) => (
+          <ItemDaFila
+            key={item.id}
+            item={{ ...item, observacao: null }}
+            grande={grande}
+            onFaltou={onFaltou}
+            onFaltouIngrediente={onFaltouIngrediente}
+          />
+        ))}
+      </ul>
+    </li>
+  );
+}
+
+// "1× Coca (Combo Casal)": a bebida do combo sai junto.
+function semPreparoTexto(itens) {
+  return itens.map((i) => `${i.quantidade}× ${i.nome}${i.combo_nome ? ` (${i.combo_nome})` : ''}`).join(', ');
+}
+
 // posicao: lugar na fila (1 = o mais antigo, o próximo a sair).
-export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou, onFaltouIngrediente }) {
+// grande: modo foco (poucos pedidos por vez, letras maiores).
+export default function CartaoFila({ pedido, posicao, agora, grande = false, onPronto, onFaltou, onFaltouIngrediente }) {
   const [salvando, setSalvando] = useState(false);
   const minutos = minutosDesde(pedido.criado_em, agora);
   const atrasado = minutos >= LIMITE_ATRASO_MINUTOS;
   const alterado = Boolean(pedido.alterado_em);
   const borda = atrasado ? VERMELHO : alterado ? 'var(--color-brand-orange)' : 'var(--color-accent-pedidos)';
+  // Bebida e o que já sai pronto não são trabalho da cozinha: só um lembrete.
+  const paraPreparar = pedido.itens.filter((i) => i.vai_para_cozinha !== false);
+  const semPreparo = pedido.itens.filter((i) => i.vai_para_cozinha === false);
 
   async function marcarPronto() {
     setSalvando(true);
@@ -128,6 +203,7 @@ export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou,
   return (
     <li
       aria-label={`Pedido ${chamadaDoPedido(pedido)}`}
+      data-pedido-id={pedido.id}
       className="rounded-2xl border-2 bg-[var(--surface-card)] p-4 sm:p-5 flex flex-col gap-4"
       style={{ borderColor: borda }}
     >
@@ -138,15 +214,23 @@ export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou,
             {posicao}º
           </span>
         )}
-        <span className="text-3xl font-extrabold tracking-wide tabular-nums text-[var(--text-primary)]" translate="no">
+        <span
+          className={`${grande ? 'text-5xl' : 'text-3xl'} font-extrabold tracking-wide tabular-nums text-[var(--text-primary)]`}
+          translate="no"
+        >
           {numeroDoPedido(pedido)}
         </span>
         {pedido.mesa ? (
-          <span className="rounded-lg px-2.5 py-0.5 text-2xl font-extrabold tabular-nums bg-[var(--text-primary)] text-[var(--surface)]">
-            Mesa {pedido.mesa}
+          <span
+            className={`rounded-lg px-2.5 py-0.5 ${grande ? 'text-4xl' : 'text-2xl'} font-extrabold tabular-nums bg-[var(--text-primary)] text-[var(--surface)]`}
+          >
+            {destinoDoPedido(pedido)}
           </span>
         ) : (
           <span className="text-base font-bold text-[var(--text-secondary)]">Balcão</span>
+        )}
+        {pedido.identificacao && (
+          <span className="text-xl font-bold text-[var(--text-primary)] break-words">{pedido.identificacao}</span>
         )}
         {alterado && <Etiqueta cor="var(--color-brand-orange)">Alterado às {formatarHora(pedido.alterado_em)}</Etiqueta>}
         <span
@@ -166,10 +250,25 @@ export default function CartaoFila({ pedido, posicao, agora, onPronto, onFaltou,
       )}
 
       <ul className="flex flex-col gap-3">
-        {pedido.itens.map((item) => (
-          <ItemDaFila key={item.id} item={item} onFaltou={onFaltou} onFaltouIngrediente={onFaltouIngrediente} />
-        ))}
+        {agruparItens(paraPreparar).map((linha) =>
+          linha.combo ? (
+            <ComboDaFila key={linha.grupo} grupo={linha} grande={grande} onFaltou={onFaltou} onFaltouIngrediente={onFaltouIngrediente} />
+          ) : (
+            <ItemDaFila
+              key={linha.item.id}
+              item={linha.item}
+              grande={grande}
+              onFaltou={onFaltou}
+              onFaltouIngrediente={onFaltouIngrediente}
+            />
+          ),
+        )}
       </ul>
+      {semPreparo.length > 0 && (
+        <p className="text-sm text-[var(--text-secondary)] break-words">
+          Sai junto, sem preparo: {semPreparoTexto(semPreparo)}
+        </p>
+      )}
 
       <Botao cor={VERDE} tamanho="grande" larguraTotal className="mt-auto text-lg font-bold" onClick={marcarPronto} disabled={salvando}>
         <CheckIcon className="w-6 h-6" />

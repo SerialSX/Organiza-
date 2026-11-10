@@ -1,19 +1,21 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import AppShell from '../components/ui/AppShell';
 import Aviso from '../components/ui/Aviso';
 import Botao from '../components/ui/Botao';
 import Etiqueta from '../components/ui/Etiqueta';
 import CancelarPedido from '../components/CancelarPedido';
+import ResolverPendencias from '../components/fimDoDia/ResolverPendencias';
 import { atualizarStatusPedido } from '../services/pedidos';
 import { separarPedidos } from '../lib/fila';
-import { numeroDoPedido } from '../lib/formatadores';
+import { hojeNoNegocio, numeroDoPedido } from '../lib/formatadores';
 import { STATUS } from '../lib/pedidoStatus';
 import { useAuth } from '../context/useAuth';
+import { atendeNoBalcao, modoDoNegocio, taxaDoNegocio } from '../lib/atendimento';
 import { usePedidosAbertos } from '../hooks/usePedidosAbertos';
+import { usePendenciasAnteriores } from '../hooks/usePendenciasAnteriores';
 import { ProductsIcon, OrdersIcon, KitchenIcon, ReportsIcon, AlertIcon, CheckIcon, QrIcon } from '../components/icons/AppIcons';
-
-const dataCurta = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
+import { resumoDosItens } from '../lib/combos';
 
 function Pendencia({ pedido, onErro }) {
   const [salvando, setSalvando] = useState(false);
@@ -33,19 +35,16 @@ function Pendencia({ pedido, onErro }) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-xl font-extrabold tabular-nums text-[var(--text-primary)]">{numeroDoPedido(pedido)}</span>
         <Etiqueta cor={STATUS[pedido.status].cor}>{STATUS[pedido.status].rotulo}</Etiqueta>
-        <span className="text-sm tabular-nums text-[var(--text-secondary)]">
-          Pedido de {dataCurta.format(new Date(`${pedido.dia}T12:00:00Z`))}
-        </span>
       </div>
       <p className="text-sm text-[var(--text-secondary)] break-words">
-        {pedido.itens.map((i) => `${i.quantidade}× ${i.nome}`).join(', ')}
+        {resumoDosItens(pedido.itens)}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Botao cor={STATUS.pronto.cor} onClick={entregue} disabled={salvando}>
           <CheckIcon className="w-5 h-5" />
           Foi entregue
         </Botao>
-        <CancelarPedido pedidoId={pedido.id} onErro={onErro} />
+        <CancelarPedido pedidoId={pedido.id} pago={Boolean(pedido.pago_em) && !pedido.conta_id} onErro={onErro} />
       </div>
     </li>
   );
@@ -64,8 +63,21 @@ const classeCartao =
 export default function Home() {
   const { perfil } = useAuth();
   const { pedidos, carregando } = usePedidosAbertos();
+  const { pedidos: anteriores, carregando: carregandoAnteriores } = usePendenciasAnteriores();
   const [erro, setErro] = useState('');
   const { fila, prontos, pendencias } = separarPedidos(pedidos);
+  // Os de dias anteriores ficam em "Pendências do dia anterior" (com contas
+  // sem receber); aqui ficam só os prontos de hoje esquecidos há horas.
+  const hoje = hojeNoNegocio();
+  const esquecidosHoje = pendencias.filter((p) => p.dia >= hoje);
+  const { hash } = useLocation();
+
+  // Veio do aviso de pendências (Pedidos): leva até a lista.
+  useEffect(() => {
+    if (hash === '#pendencias' && !carregandoAnteriores) {
+      document.getElementById('pendencias')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  }, [hash, carregandoAnteriores]);
   const contadores = carregando
     ? {}
     : {
@@ -80,7 +92,16 @@ export default function Home() {
       </h1>
       <p className="text-[var(--text-secondary)] text-sm mb-8">O que você quer fazer agora?</p>
 
-      {pendencias.length > 0 && (
+      <ResolverPendencias
+        pedidos={anteriores}
+        taxa={taxaDoNegocio(perfil)}
+        titulo="Pendências do dia anterior"
+        descricao="Pedidos de dias anteriores que ficaram sem entregar ou sem receber. Nada foi cancelado sozinho: diga o que aconteceu com cada um. O caixa daquele dia fica como não fechado até resolver."
+        idTitulo="pendencias"
+        mostrarDia
+      />
+
+      {esquecidosHoje.length > 0 && (
         <section
           aria-labelledby="titulo-pendencias"
           className="mb-8 rounded-2xl border-2 border-[var(--color-brand-orange)] p-4 sm:p-5 flex flex-col gap-4"
@@ -89,16 +110,14 @@ export default function Home() {
             <AlertIcon className="w-6 h-6 shrink-0 text-[var(--texto-laranja)]" />
             <div>
               <h2 id="titulo-pendencias" className="text-lg font-bold text-[var(--text-primary)]">
-                {pendencias.length === 1 ? '1 pedido ficou em aberto' : `${pendencias.length} pedidos ficaram em aberto`}
+                {esquecidosHoje.length === 1 ? '1 pedido pronto há mais de 2 horas' : `${esquecidosHoje.length} pedidos prontos há mais de 2 horas`}
               </h2>
-              <p className="text-sm text-[var(--text-secondary)]">
-                De dias anteriores ou prontos há mais de 2 horas. Diga o que aconteceu com cada um.
-              </p>
+              <p className="text-sm text-[var(--text-secondary)]">Ninguém marcou como entregue. Diga o que aconteceu com cada um.</p>
             </div>
           </div>
           {erro && <Aviso>{erro}</Aviso>}
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {pendencias.map((p) => (
+            {esquecidosHoje.map((p) => (
               <Pendencia key={p.id} pedido={p} onErro={setErro} />
             ))}
           </ul>
@@ -129,15 +148,18 @@ export default function Home() {
           ))}
         </ul>
 
-        <Link to="/pagina-do-cliente" className={`${classeCartao} mt-4 w-full p-5`}>
-          <span className="inline-flex items-center justify-center w-12 h-12 rounded-2xl shrink-0 bg-[var(--color-brand-orange)]">
-            <QrIcon className="w-6 h-6 text-[var(--sobre-destaque)]" />
-          </span>
-          <span className="flex flex-col">
-            <span className="font-semibold text-[var(--text-primary)]">Página do cliente</span>
-            <span className="text-sm text-[var(--text-secondary)]">QR code para o cliente acompanhar o pedido</span>
-          </span>
-        </Link>
+        {/* Só mesa: não tem número para acompanhar, então não tem QR code. */}
+        {atendeNoBalcao(modoDoNegocio(perfil)) && (
+          <Link to="/pagina-do-cliente" className={`${classeCartao} mt-4 w-full p-5`}>
+            <span className="inline-flex items-center justify-center w-12 h-12 rounded-2xl shrink-0 bg-[var(--color-brand-orange)]">
+              <QrIcon className="w-6 h-6 text-[var(--sobre-destaque)]" />
+            </span>
+            <span className="flex flex-col">
+              <span className="font-semibold text-[var(--text-primary)]">Página do cliente</span>
+              <span className="text-sm text-[var(--text-secondary)]">QR code para o cliente acompanhar o pedido</span>
+            </span>
+          </Link>
+        )}
       </nav>
     </AppShell>
   );

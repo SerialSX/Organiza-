@@ -1,13 +1,17 @@
 import AppNav from '../AppNav';
 import RodapeContato from '../RodapeContato';
 import { useAuth } from '../../context/useAuth';
-import { useOnline } from '../../hooks/useOnline';
 import { useBancoDesatualizado } from '../../hooks/useBancoDesatualizado';
-import { AlertIcon, WifiOffIcon } from '../icons/AppIcons';
+import { FaixaDeInternet, SaidasDaFila } from './AvisosDeInternet';
+import { AlertIcon } from '../icons/AppIcons';
 
-export default function AppShell({ children, largura = 'max-w-5xl' }) {
-  const { modoDemo } = useAuth();
-  const online = useOnline();
+// Pedido guardado sem internet sai sozinho em qualquer tela, não só em
+// Pedidos: a faixa de internet e o aviso "agora é o 014" ficam em todas.
+
+// reservaNoFim: espaço depois do rodapé para uma barra fixa da tela (ex.: o
+// "Enviar" de Pedidos no celular) não cobrir o contato da equipe.
+export default function AppShell({ children, largura = 'max-w-5xl', reservaNoFim = '' }) {
+  const { modoDemo, perfil } = useAuth();
   const bancoAtrasado = useBancoDesatualizado();
 
   return (
@@ -19,6 +23,7 @@ export default function AppShell({ children, largura = 'max-w-5xl' }) {
         Pular para o conteúdo
       </a>
       <AppNav />
+      <FaixaDeInternet perfil={perfil} />
       <div role="region" aria-label="Avisos do sistema" className="empty:hidden">
       {bancoAtrasado && (
         <p
@@ -32,15 +37,7 @@ export default function AppShell({ children, largura = 'max-w-5xl' }) {
           </span>
         </p>
       )}
-      {!online && (
-        <p
-          role="alert"
-          className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-[var(--sobre-destaque)] bg-[var(--color-accent-cozinha)]"
-        >
-          <WifiOffIcon className="w-5 h-5 shrink-0" />
-          Sem internet. Pedidos não estão sendo enviados nem recebidos.
-        </p>
-      )}
+      <SaidasDaFila perfil={perfil} />
       {modoDemo && (
         <p className="text-center text-xs font-medium px-4 py-2 text-[var(--text-primary)] bg-[color-mix(in_srgb,var(--color-brand-orange)_18%,transparent)]">
           Modo demonstração: os dados ficam salvos só neste navegador.
@@ -51,8 +48,9 @@ export default function AppShell({ children, largura = 'max-w-5xl' }) {
         {children}
       </main>
       <footer className="border-t border-[var(--border-subtle)] px-4 py-6">
-        <RodapeContato />
+        <RodapeContato dentroDoSistema />
       </footer>
+      {reservaNoFim && <div className={reservaNoFim} aria-hidden="true" />}
     </div>
   );
 }

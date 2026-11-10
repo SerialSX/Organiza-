@@ -17,6 +17,11 @@
   --text-primary: #FFFFFF;
   --text-secondary: rgba(255, 255, 255, 0.65);
   --border-subtle: rgba(255, 255, 255, 0.1);
+  /* Borda de campo (input, select): precisa ser vista para ser usada, então
+     passa de 3:1 contra o fundo (WCAG 1.4.11). As de cartão seguem suaves. */
+  --borda-campo: #64748B;
+  /* Contorno de foco do teclado: 7,5:1 no escuro. */
+  --cor-foco: #EE9448;
 
   /* Cor de destaque usada como texto. No escuro é a própria cor; no claro,
      um tom mais escuro para manter contraste de pelo menos 4,5:1. */
@@ -44,6 +49,9 @@
   --text-primary: #1A1A1A;
   --text-secondary: rgba(26, 26, 26, 0.68);
   --border-subtle: rgba(0, 0, 0, 0.08);
+  --borda-campo: #878279;
+  /* O laranja da marca fica em 2,15:1 no fundo claro; este tom passa de 5:1. */
+  --cor-foco: #A84F0C;
 
   --texto-laranja: #A84F0C;
   --texto-produtos: #A84F0C;
@@ -119,13 +127,19 @@ input[inputmode='decimal'] {
 
 /* Foco visível em tudo, inclusive campos de texto */
 :focus-visible {
-  outline: 3px solid var(--color-brand-orange);
+  outline: 3px solid var(--cor-foco);
   outline-offset: 2px;
 }
 
 input:focus-visible,
 textarea:focus-visible {
   outline-offset: 0;
+}
+
+/* Títulos que recebem o foco ao trocar de etapa (para o leitor de tela):
+   não são clicáveis, então não ganham o contorno. */
+[tabindex='-1']:focus-visible {
+  outline: none;
 }
 
 .sr-only-focusable:not(:focus) {
@@ -135,6 +149,20 @@ textarea:focus-visible {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* Tutorial: o contorno laranja pisca onde a pessoa vai tocar. Com
+   "reduzir movimento", o contorno fica parado. */
+.toque-aqui {
+  outline: 3px solid var(--color-brand-orange);
+  outline-offset: 2px;
+  animation: toque-pisca 1.4s ease-in-out infinite;
+}
+
+@keyframes toque-pisca {
+  50% {
+    outline-color: transparent;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

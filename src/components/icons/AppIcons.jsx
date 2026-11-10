@@ -313,3 +313,71 @@ export function MailIcon(props) {
     </svg>
   );
 }
+
+export function CameraIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </svg>
+  );
+}
+
+export function HelpIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01" />
+    </svg>
+  );
+}
+
+// O ícone de compartilhar do Safari (quadrado com a seta para cima).
+export function ShareIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M12 3v12M8 7l4-4 4 4" />
+      <path d="M7 10H5v11h14V10h-2" />
+    </svg>
+  );
+}
+
+export function PhoneIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <rect x="6" y="2.5" width="12" height="19" rx="2.5" />
+      <path d="M11 18.5h2" />
+    </svg>
+  );
+}
+
+export function SheetIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <path d="M4 9.5h16M4 15h16M10 4v16" />
+    </svg>
+  );
+}
+
+// Combo: itens juntos numa bandeja.
+export function ComboIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M3 17h18l-1.5 3h-15L3 17z" />
+      <path d="M5 17a4 4 0 0 1 8 0" />
+      <path d="M15 17V9h4l-1 8" />
+      <path d="M17 9l1-4" />
+    </svg>
+  );
+}
+
+// Promoção: etiqueta de preço.
+export function TagIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M3 12V4h8l10 10-8 8L3 12z" />
+      <circle cx="7.5" cy="8.5" r="1.5" />
+    </svg>
+  );
+}

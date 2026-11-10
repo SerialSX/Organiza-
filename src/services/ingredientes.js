@@ -1,6 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
-import { estimarCusto } from '../lib/custos';
 import { lerDemo, salvarDemo, novoId } from './demoStore';
+import { recalcularCustoDemo, tamanhosAtivos } from './custoDemo';
 
 const CAMPOS = 'id, nome, unidade, preco_compra, quantidade_compra, arquivado';
 const LIMITE_POR_PRODUTO = 30;
@@ -37,18 +37,6 @@ function falha(texto) {
 function nomeRepetido(db, nome, id) {
   const chave = nome.trim().toLowerCase();
   return db.ingredientes.some((i) => !i.arquivado && i.id !== id && i.nome.trim().toLowerCase() === chave);
-}
-
-// recalcular_custo_do_produto: só muda o custo de quem tem ingrediente com preço.
-function recalcularDemo(db, produtoIds) {
-  const porId = Object.fromEntries(db.ingredientes.map((i) => [i.id, normalizar(i)]));
-  const produtos = db.produtos.map((p) => {
-    if (!produtoIds.includes(p.id)) return p;
-    const lista = db.produto_ingredientes.filter((pi) => pi.produto_id === p.id);
-    const { total } = estimarCusto(lista, porId);
-    return total === null ? p : { ...p, custo: total };
-  });
-  return { ...db, produtos };
 }
 
 function produtosQueUsam(db, ingredienteId) {
@@ -100,9 +88,13 @@ export async function atualizarIngrediente(id, dados) {
     }
     let novo = { ...db, ingredientes: db.ingredientes.map((i) => (i.id === id ? { ...i, ...alteracoes } : i)) };
     if (alteracoes.arquivado) {
-      novo = { ...novo, produto_ingredientes: novo.produto_ingredientes.filter((pi) => pi.ingrediente_id !== id) };
+      novo = {
+        ...novo,
+        produto_ingredientes: novo.produto_ingredientes.filter((pi) => pi.ingrediente_id !== id),
+        tamanho_ingredientes: (novo.tamanho_ingredientes ?? []).filter((ti) => ti.ingrediente_id !== id),
+      };
     }
-    salvarDemo(recalcularDemo(novo, usadoEm));
+    salvarDemo(recalcularCustoDemo(novo, usadoEm));
     return;
   }
 
@@ -116,22 +108,57 @@ export async function excluirIngrediente(id) {
   await atualizarIngrediente(id, { arquivado: true });
 }
 
-// lista: [{ ingrediente_id, quantidade }] na unidade do ingrediente (g, ml ou un).
+// Sem tamanhos: [{ ingrediente_id, quantidade }] na unidade do ingrediente (g, ml ou un).
+// Com tamanhos: [{ ingrediente_id, por_tamanho: { [tamanho_id]: quantidade } }];
+// o ingrediente pode faltar em algum tamanho (borda só na G), mas não em todos.
 export async function salvarIngredientesDoProduto(produtoId, lista) {
   if (lista.length > LIMITE_POR_PRODUTO) throw new Error(`Um produto pode ter até ${LIMITE_POR_PRODUTO} ingredientes.`);
-  if (lista.some((i) => !(i.quantidade > 0 && i.quantidade <= 100000))) {
-    throw new Error('A quantidade de cada ingrediente precisa ser maior que zero.');
-  }
-  const itens = lista.map((i) => ({ ingrediente_id: i.ingrediente_id, quantidade: Math.round(i.quantidade * 1000) / 1000 }));
+  const valida = (q) => q > 0 && q <= 100000;
+  const arredondar = (q) => Math.round(q * 1000) / 1000;
+  const itens = lista.map((i) => {
+    if (i.por_tamanho) {
+      const quantidades = Object.entries(i.por_tamanho).filter(([, q]) => q !== null && q !== undefined);
+      if (!quantidades.length) falha('Diga quanto vai de cada ingrediente em pelo menos um tamanho.');
+      if (quantidades.some(([, q]) => !valida(q))) falha('A quantidade de cada ingrediente precisa ser maior que zero.');
+      return { ingrediente_id: i.ingrediente_id, por_tamanho: Object.fromEntries(quantidades.map(([t, q]) => [t, arredondar(q)])) };
+    }
+    if (!valida(i.quantidade)) falha('A quantidade de cada ingrediente precisa ser maior que zero.');
+    return { ingrediente_id: i.ingrediente_id, quantidade: arredondar(i.quantidade) };
+  });
 
   if (!isSupabaseConfigured) {
     const db = lerDemo();
     if (!db.produtos.some((p) => p.id === produtoId)) falha('Produto não encontrado.');
     const ativos = new Set(db.ingredientes.filter((i) => !i.arquivado).map((i) => i.id));
     if (itens.some((i) => !ativos.has(i.ingrediente_id))) falha('Um dos ingredientes foi excluído. Revise a lista.');
-    const outros = db.produto_ingredientes.filter((pi) => pi.produto_id !== produtoId);
-    const doProduto = [...new Map(itens.map((i) => [i.ingrediente_id, { produto_id: produtoId, ...i }])).values()];
-    salvarDemo(recalcularDemo({ ...db, produto_ingredientes: [...outros, ...doProduto] }, [produtoId]));
+    const tamanhos = tamanhosAtivos(db, produtoId).map((t) => t.id);
+    const doProdutoTamanhos = new Set((db.produto_tamanhos ?? []).filter((t) => t.produto_id === produtoId).map((t) => t.id));
+    const porTamanho = [];
+    const doProduto = new Map();
+    for (const i of itens) {
+      if (tamanhos.length) {
+        if (!i.por_tamanho) falha('Este produto tem tamanhos. Atualize a página e diga quanto vai em cada tamanho.');
+        const doItem = tamanhos.filter((t) => i.por_tamanho[t] !== undefined).map((t) => ({ tamanho_id: t, ingrediente_id: i.ingrediente_id, quantidade: i.por_tamanho[t] }));
+        if (!doItem.length) falha('Diga quanto vai de cada ingrediente em pelo menos um tamanho.');
+        porTamanho.push(...doItem);
+        doProduto.set(i.ingrediente_id, { produto_id: produtoId, ingrediente_id: i.ingrediente_id, quantidade: Math.max(...doItem.map((d) => d.quantidade)) });
+      } else {
+        if (i.quantidade === undefined) falha('Ingrediente inválido.');
+        doProduto.set(i.ingrediente_id, { produto_id: produtoId, ...i });
+      }
+    }
+    const semEste = (lista) => (lista ?? []).filter((ti) => !doProdutoTamanhos.has(ti.tamanho_id));
+    const porChave = new Map(porTamanho.map((d) => [`${d.tamanho_id}|${d.ingrediente_id}`, d]));
+    salvarDemo(
+      recalcularCustoDemo(
+        {
+          ...db,
+          produto_ingredientes: [...db.produto_ingredientes.filter((pi) => pi.produto_id !== produtoId), ...doProduto.values()],
+          tamanho_ingredientes: [...semEste(db.tamanho_ingredientes), ...porChave.values()],
+        },
+        [produtoId],
+      ),
+    );
     return;
   }
 

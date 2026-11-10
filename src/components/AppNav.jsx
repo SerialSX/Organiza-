@@ -5,12 +5,13 @@ import logoDark from '../assets/logo.svg';
 import logoLight from '../assets/logo-light.svg';
 import ThemeToggle from './ThemeToggle';
 import { corDeTexto } from '../lib/cores';
-import { ProductsIcon, OrdersIcon, KitchenIcon, ReportsIcon, LogoutIcon, UserIcon } from './icons/AppIcons';
+import { ProductsIcon, OrdersIcon, KitchenIcon, ReportsIcon, LogoutIcon, UserIcon, MoneyIcon, HelpIcon } from './icons/AppIcons';
 
-const items = [
+const todosOsItens = [
   { label: 'Produtos', route: '/produtos', icon: ProductsIcon, accent: 'var(--color-accent-produtos)' },
   { label: 'Pedidos', route: '/pedidos', icon: OrdersIcon, accent: 'var(--color-accent-pedidos)' },
-  { label: 'Cozinha', route: '/cozinha', icon: KitchenIcon, accent: 'var(--color-accent-cozinha)' },
+  { label: 'Cozinha', route: '/cozinha', icon: KitchenIcon, accent: 'var(--color-accent-cozinha)', soComTelaCozinha: true },
+  { label: 'Caixa', route: '/caixa', icon: MoneyIcon, accent: 'var(--color-accent-relatorios)' },
   { label: 'Relatórios', route: '/relatorios', icon: ReportsIcon, accent: 'var(--color-accent-relatorios)' },
 ];
 
@@ -20,7 +21,9 @@ const botaoRedondo =
 export default function AppNav() {
   const navigate = useNavigate();
   const { mode } = useTheme();
-  const { sair, modoDemo } = useAuth();
+  const { sair, modoDemo, perfil } = useAuth();
+  // Cozinha do lado do balcão: o "Pronto" fica em Pedidos e a tela some do menu.
+  const items = todosOsItens.filter((i) => !i.soComTelaCozinha || perfil?.usa_tela_cozinha !== false);
 
   async function handleSair() {
     await sair();
@@ -34,8 +37,17 @@ export default function AppNav() {
   );
 
   const acoes = (
-    <div className="ml-auto flex items-center gap-2">
+    <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
       <ThemeToggle />
+      {/* Sempre à vista: abre a Ajuda já no "Travou? Veja o que fazer". */}
+      <Link
+        to="/ajuda#travou"
+        title="Ajuda: travou? Veja o que fazer"
+        className="inline-flex items-center gap-1.5 h-11 rounded-full border border-[var(--border-subtle)] px-3 text-sm font-bold text-[var(--text-primary)] hover:bg-[var(--surface-card-hover)] transition-colors"
+      >
+        <HelpIcon className="hidden sm:block w-5 h-5" />
+        Travou?
+      </Link>
       <Link to="/minha-conta" aria-label="Minha conta" title="Minha conta" className={botaoRedondo}>
         <UserIcon className="w-5 h-5" />
       </Link>
@@ -49,14 +61,16 @@ export default function AppNav() {
     <>
       {/* Desktop / tablet: barra fixa no topo */}
       <header className="hidden md:block sticky top-0 z-20 bg-[var(--surface-alt)]/95 backdrop-blur border-b border-[var(--border-subtle)]">
-        <div className="max-w-6xl mx-auto flex items-center gap-6 lg:gap-8 px-6 py-3">
+        {/* Tablet (768 a 1023px): ícone em cima e nome embaixo, para os cinco
+            itens e os botões da direita caberem sem empurrar a página de lado. */}
+        <div className="max-w-6xl mx-auto flex items-center gap-3 lg:gap-8 px-4 lg:px-6 py-2 lg:py-3">
           {logo}
-          <nav aria-label="Principal" className="flex items-center gap-1">
+          <nav aria-label="Principal" className="flex items-center gap-0.5 lg:gap-1">
             {items.map(({ label, route, icon: Icon, accent }) => (
               <NavLink
                 key={route}
                 to={route}
-                className="flex items-center gap-2 min-h-11 px-3 lg:px-4 rounded-lg text-sm font-medium transition-colors"
+                className="flex flex-col lg:flex-row items-center gap-0.5 lg:gap-2 min-h-11 px-2 lg:px-4 py-1 lg:py-0 rounded-lg text-xs lg:text-sm font-medium transition-colors"
                 style={({ isActive }) => ({
                   color: isActive ? corDeTexto(accent) : 'var(--text-secondary)',
                   backgroundColor: isActive ? `color-mix(in srgb, ${accent} 15%, transparent)` : 'transparent',
@@ -89,11 +103,11 @@ export default function AppNav() {
             <NavLink
               key={route}
               to={route}
-              className="flex-1 flex flex-col items-center gap-1 py-2.5 min-h-14"
+              className="flex-1 min-w-0 flex flex-col items-center gap-1 py-2.5 min-h-14"
               style={({ isActive }) => ({ color: isActive ? corDeTexto(accent) : 'var(--text-secondary)' })}
             >
               <Icon className="w-6 h-6" />
-              <span className="text-xs font-medium">{label}</span>
+              <span className="text-xs font-medium truncate max-w-full">{label}</span>
             </NavLink>
           ))}
         </div>

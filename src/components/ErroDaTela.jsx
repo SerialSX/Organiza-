@@ -1,4 +1,6 @@
-import { Component } from 'react';
+import { Component, Fragment } from 'react';
+import { Link } from 'react-router-dom';
+import AppShell from './ui/AppShell';
 import { ehArquivoDeVersaoAntiga, recarregarUmaVez, semInternet } from '../lib/recarga';
 
 const LINK = 'min-h-12 inline-flex items-center rounded-xl px-4 font-semibold underline underline-offset-2 text-[var(--text-primary)]';
@@ -22,7 +24,9 @@ export default class ErroDaTela extends Component {
   render() {
     if (!this.state.erro) return this.props.children;
     const offline = semInternet() && ehArquivoDeVersaoAntiga(this.state.erro);
+    const Moldura = this.props.comMenu ? AppShell : Fragment;
     return (
+      <Moldura>
       <div className="min-h-svh bg-[var(--surface)] flex items-center justify-center px-5">
         <div role="alert" className="max-w-md text-center flex flex-col items-center gap-4">
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">
@@ -30,27 +34,29 @@ export default class ErroDaTela extends Component {
           </h1>
           <p className="text-[var(--text-secondary)]">
             {offline
-              ? 'Os pedidos guardados continuam neste aparelho. A tela abre sozinha quando a conexão voltar.'
+              ? 'Os pedidos guardados continuam neste aparelho. Volte para Pedidos para continuar atendendo.'
               : 'Seus pedidos estão salvos. Recarregue a página para continuar. Se acontecer de novo, fale com a equipe pela página de Ajuda.'}
           </p>
-          <button
+          {!offline && <button
             type="button"
             onClick={() => window.location.reload()}
             className="min-h-12 rounded-xl px-6 font-bold text-[var(--sobre-destaque)]"
             style={{ backgroundColor: 'var(--color-brand-orange)' }}
           >
             Recarregar
-          </button>
+          </button>}
           <nav aria-label="Outras telas" className="flex flex-wrap justify-center gap-2">
-            <a href="/home" className={LINK}>
+            <Link to="/pedidos" className={LINK}>Voltar para Pedidos</Link>
+            <Link to="/home" className={LINK}>
               Ir para o início
-            </a>
-            <a href="/ajuda" className={LINK}>
+            </Link>
+            <Link to="/ajuda" className={LINK}>
               Ajuda
-            </a>
+            </Link>
           </nav>
         </div>
       </div>
+      </Moldura>
     );
   }
 }

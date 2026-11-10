@@ -12,7 +12,7 @@ import { hojeNoNegocio, numeroDoPedido } from '../lib/formatadores';
 import { STATUS } from '../lib/pedidoStatus';
 import { useAuth } from '../context/useAuth';
 import { atendeNoBalcao, modoDoNegocio, taxaDoNegocio } from '../lib/atendimento';
-import { usePedidosAbertos } from '../hooks/usePedidosAbertos';
+import { CONFERENCIA_LONGA, usePedidosAbertos } from '../hooks/usePedidosAbertos';
 import { usePendenciasAnteriores } from '../hooks/usePendenciasAnteriores';
 import { ProductsIcon, OrdersIcon, KitchenIcon, ReportsIcon, AlertIcon, CheckIcon, QrIcon } from '../components/icons/AppIcons';
 import { resumoDosItens } from '../lib/combos';
@@ -62,7 +62,7 @@ const classeCartao =
 
 export default function Home() {
   const { perfil } = useAuth();
-  const { pedidos, carregando } = usePedidosAbertos();
+  const { pedidos, carregando } = usePedidosAbertos(CONFERENCIA_LONGA);
   const { pedidos: anteriores, carregando: carregandoAnteriores } = usePendenciasAnteriores();
   const [erro, setErro] = useState('');
   const { fila, prontos, pendencias } = separarPedidos(pedidos);
@@ -99,6 +99,7 @@ export default function Home() {
         descricao="Pedidos de dias anteriores que ficaram sem entregar ou sem receber. Nada foi cancelado sozinho: diga o que aconteceu com cada um. O caixa daquele dia fica como não fechado até resolver."
         idTitulo="pendencias"
         mostrarDia
+        comDevolucoes
       />
 
       {esquecidosHoje.length > 0 && (

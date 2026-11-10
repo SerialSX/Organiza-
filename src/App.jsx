@@ -1,5 +1,6 @@
 import { lazy as lazyDoReact, Suspense, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from './context/useAuth';
 import { ThemeProvider } from './context/ThemeProvider';
 import { AuthProvider } from './context/AuthProvider';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -47,19 +48,27 @@ function TelaCarregando() {
   );
 }
 
-function App() {
-  // Abriu bem: a próxima falha depois de um deploy pode recarregar de novo.
+// Pré-carrega sem bloquear o primeiro pedido; falha offline será tratada ao abrir.
+function Rotas() {
+  const { pathname } = useLocation();
+  const { perfil } = useAuth();
   useEffect(() => {
-    const id = setTimeout(limparMarcaDeRecarga, 10000);
-    return () => clearTimeout(id);
-  }, []);
-
-  return (
-    <ErroDaTela>
-      <ThemeProvider>
-        <AuthProvider>
-          <BrowserRouter>
-            <AvisoNavegadorDeDentro />
+    if (!perfil) return undefined;
+    const carregar = () => { Promise.allSettled([
+      import('./pages/Pedidos'), import('./pages/Cozinha'), import('./pages/Caixa'),
+      import('./pages/Produtos'), import('./pages/Relatorios'), import('./pages/MinhaConta'),
+      import('./pages/Ajuda'),
+    ]); };
+    if (window.requestIdleCallback) {
+      const id=window.requestIdleCallback(carregar);
+      return ()=>window.cancelIdleCallback(id);
+    }
+    const id=setTimeout(carregar,2000);
+    return ()=>clearTimeout(id);
+  }, [perfil]);
+  // Dois avisos de erro: o de dentro mostra o menu; se o erro for no próprio
+  // menu, o de fora mostra o aviso simples, em vez da tela em branco.
+  return <ErroDaTela key={pathname}><ErroDaTela comMenu={Boolean(perfil)}>
             <Suspense fallback={<TelaCarregando />}>
               <Routes>
                 <Route path="/" element={<Landing />} />
@@ -88,10 +97,25 @@ function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
+  </ErroDaTela></ErroDaTela>;
+}
+
+function App() {
+  // Abriu bem: a próxima falha depois de um deploy pode recarregar de novo.
+  useEffect(() => {
+    const id = setTimeout(limparMarcaDeRecarga, 10000);
+    return () => clearTimeout(id);
+  }, []);
+
+  return (
+      <ThemeProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <AvisoNavegadorDeDentro />
+            <Rotas />
           </BrowserRouter>
         </AuthProvider>
       </ThemeProvider>
-    </ErroDaTela>
   );
 }
 

@@ -15,7 +15,7 @@ function quandoGuardou(guardadoEm) {
 
 // Pedidos guardados porque a internet caiu. Saem sozinhos quando ela volta;
 // o atendente vê o que está esperando e pode forçar ou desistir.
-export default function FilaDeEnvio({ fila, onTentar, onDescartar }) {
+export default function FilaDeEnvio({ fila, onTentar, onTentarDeNovo, onDescartar }) {
   if (!fila.length) return null;
   const esperando = fila.filter((e) => !e.erro);
 
@@ -65,6 +65,9 @@ export default function FilaDeEnvio({ fila, onTentar, onDescartar }) {
             {envio.erro && (
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="font-medium text-[var(--texto-cozinha)]">{envio.erro}</span>
+                <Botao variante="secundaria" onClick={() => onTentarDeNovo(envio.chaveEnvio)}>
+                  Tentar de novo
+                </Botao>
                 <Botao variante="texto" onClick={() => onDescartar(envio.chaveEnvio)}>
                   Descartar
                 </Botao>

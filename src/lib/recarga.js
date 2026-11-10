@@ -12,26 +12,9 @@ export function semInternet() {
   return typeof navigator !== 'undefined' && navigator.onLine === false;
 }
 
-let esperandoInternet = false;
-
-// Sem internet, o arquivo não veio porque a rede caiu, não por deploy. Recarregar
-// agora trocaria o sistema pela página de erro do navegador (e o atendente
-// perderia a tela). Espera a conexão voltar e só então recarrega.
+// Offline mantém o documento aberto para o atendente continuar na fila local.
 export function recarregarUmaVez() {
-  if (semInternet()) {
-    if (!esperandoInternet) {
-      esperandoInternet = true;
-      window.addEventListener(
-        'online',
-        () => {
-          esperandoInternet = false;
-          recarregarUmaVez();
-        },
-        { once: true },
-      );
-    }
-    return false;
-  }
+  if (semInternet()) return false;
   try {
     if (sessionStorage.getItem(CHAVE_RECARGA)) return false;
     sessionStorage.setItem(CHAVE_RECARGA, String(Date.now()));

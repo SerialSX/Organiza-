@@ -271,3 +271,16 @@ describe('coluna Meio a meio?', () => {
     ]);
   });
 });
+
+it.each([
+  [['Produto','Preço de custo','Preço de venda'],['X-Burguer',8,20]],
+  [['Produto','Valor de custo','Valor de venda'],['X-Burguer',8,20]],
+])('TEL-02: distingue custo de venda em %j',(cabecalho,linha)=>{
+  expect(interpretarPlanilha([cabecalho,linha]).itens[0]).toMatchObject({nome:'X-Burguer',preco:'20,00',custo:'8,00'});
+});
+it('TEL-02: prefere descrição a item numérico',()=>{
+  expect(interpretarPlanilha([['Item','Descrição','Preço'],[1,'X-Burguer',20]]).itens[0].nome).toBe('X-Burguer');
+});
+it('TEL-02: não usa coluna de nome inteiramente numérica',()=>{
+  expect(interpretarPlanilha([['Nome','Descrição','Preço'],[123,'X-Burguer',20]]).itens[0].nome).toBe('X-Burguer');
+});

@@ -1,11 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { criarPedido } from '../services/pedidos';
+import { criarPedido, SemInternet } from '../services/pedidos';
 import { assinarFila, lerFila, marcarErroNaFila, registrarSaida, tirarDaFila } from '../services/filaDeEnvio';
+import { agoraDoServidor } from '../lib/relogioServidor';
 import { hojeNoNegocio } from '../lib/formatadores';
 
 const INTERVALO_MS = 10000;
 const EVENTO_ENVIADO = 'organiza-fila-enviado';
 export const ERRO_OUTRO_DIA = 'Pedido de outro dia: confira com o cliente e descarte.';
+
+// Falta de internet ou servidor fora do ar por um momento (502, 503, 504,
+// página HTML no lugar da resposta): o pedido espera e tenta de novo. Qualquer
+// outro erro (o banco recusou, dado que não serve mais) vira erro na fila, com
+// "Descartar" e "Tentar de novo", para não travar os pedidos de trás.
+export function ehPassageiro(e) {
+  if (e instanceof SemInternet || e?.semInternet) return true;
+  if (/^50[234]$/.test(String(e?.status ?? e?.code ?? ''))) return true;
+  return /<html/i.test(e?.message ?? '');
+}
 
 // Um reenvio por vez no aparelho, mesmo com o hook em mais de um lugar (o
 // AppShell de toda tela e a tela de Pedidos).
@@ -14,7 +25,7 @@ let tentando = false;
 // Guardado num dia de trabalho que já passou: a senha sairia no dia de hoje,
 // para um cliente que provavelmente já foi embora. Para e espera o atendente.
 function deOutroDia(envio) {
-  return Boolean(envio.guardadoEm) && hojeNoNegocio(new Date(envio.guardadoEm)) !== hojeNoNegocio();
+  return Boolean(envio.guardadoEm) && hojeNoNegocio(new Date(envio.guardadoEm)) !== hojeNoNegocio(new Date(agoraDoServidor()));
 }
 
 // Reenvia sozinho os pedidos guardados sem internet: quando a conexão volta,
@@ -60,7 +71,7 @@ export function useFilaDeEnvio({ negocioId, usuarioId, onEnviado }) {
           const pedido = await criarPedido({
             negocioId,
             usuarioId,
-            itens: envio.itens,
+            itens: envio.itens.map(i => ({ ...i, promocao_em: envio.guardadoEm })),
             chaveEnvio: envio.chaveEnvio,
             mesa: envio.mesa ?? null,
             nomeMesa: envio.nomeMesa ?? null,
@@ -79,8 +90,8 @@ export function useFilaDeEnvio({ negocioId, usuarioId, onEnviado }) {
           });
           window.dispatchEvent(new CustomEvent(EVENTO_ENVIADO, { detail: { negocioId, pedido, envio } }));
         } catch (e) {
-          // Ainda sem internet: para e tenta mais tarde, na mesma ordem.
-          if (e.semInternet) break;
+          // Sem internet ou servidor fora do ar: para e tenta mais tarde, na mesma ordem.
+          if (ehPassageiro(e)) break;
           marcarErroNaFila(negocioId, envio.chaveEnvio, e.message);
         }
       }
@@ -105,5 +116,10 @@ export function useFilaDeEnvio({ negocioId, usuarioId, onEnviado }) {
 
   const descartar = useCallback((chaveEnvio) => tirarDaFila(negocioId, chaveEnvio), [negocioId]);
 
-  return { fila, tentarAgora, descartar };
+  const tentarDeNovo = useCallback((chaveEnvio) => {
+    marcarErroNaFila(negocioId,chaveEnvio,null);
+    return tentarAgora();
+  },[negocioId,tentarAgora]);
+
+  return { fila, tentarAgora, tentarDeNovo, descartar };
 }

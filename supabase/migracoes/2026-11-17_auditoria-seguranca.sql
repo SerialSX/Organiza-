@@ -1,5 +1,5 @@
 -- Migração para o Supabase que já está no ar. Rodar UMA vez no SQL Editor,
--- DEPOIS de 2026-11-15_combos-e-promocoes.sql (sobe a versão do banco para
+-- DEPOIS de 2026-11-16_correcoes-de-preco-e-caixa.sql (sobe a versão do banco para
 -- 20261117). Quem cria um projeto novo roda só o supabase/schema.sql.
 --
 -- Correções da auditoria de segurança de 09/11/2026 (skill security-audit):
@@ -11,8 +11,8 @@
 -- 4. produtos: grants só nas colunas que a tela grava; preço NaN recusado.
 -- 5. limpar_nome_mesa sem execute para authenticated.
 --
--- ATENÇÃO: se a migração 2026-11-16 (PR da etapa 10) ainda não rodou, rode-a
--- ANTES desta: as duas mexem na versão do banco.
+-- ATENÇÃO: a migração 2026-11-16 (etapa 10) precisa ter rodado antes:
+-- as duas mexem na versão do banco (esta sobe de 20261116 para 20261117).
 begin;
 
 -- 1. Página pública (QR code): limite de consultas -------------------------------

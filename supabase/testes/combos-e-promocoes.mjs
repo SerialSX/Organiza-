@@ -329,14 +329,14 @@ await ok('editar: o mesmo combo com as mesmas escolhas mantém o preço, mesmo c
   const p = await pedir(U1, [pedidoDoCasal(coca)]);
   await salvarCombo(U1, comboCasal, 'Combo Casal', 70, casal());
   await dono(U1, 'update public.produtos set disponivel = false where id = $1', [batata]);
-  const editado = await editar(U1, p, [pedidoDoCasal(coca, 3), { produto_id: coca, quantidade: 1 }]);
+  const editado = await editar(U1, p, [pedidoDoCasal(coca, 1), { produto_id: coca, quantidade: 1 }]);
   const itens = await itensDo(editado.id);
   igual(itens.map((i) => [i.nome, i.quantidade, i.preco]), [
     ['Coca', 1, 6],
-    ['X-Burguer', 3, 17.25],
-    ['X-Burguer', 3, 17.24],
-    ['Batata', 3, 10.34],
-    ['Coca', 3, 5.17],
+    ['X-Burguer', 1, 17.25],
+    ['X-Burguer', 1, 17.24],
+    ['Batata', 1, 10.34],
+    ['Coca', 1, 5.17],
   ], 'itens');
   igual(itens[1].combo_nome, 'Combo Casal', 'nome do combo');
   await dono(U1, 'update public.produtos set disponivel = true where id = $1', [batata]);
@@ -350,8 +350,8 @@ await ok('editar: combo excluído depois continua no pedido que já tinha', asyn
   const p = await pedir(U1, [pedidoDoCasal(coca)]);
   await dono(U1, 'update public.combos set arquivado = true where id = $1', [comboCasal]);
   await erro('  combo novo não entra', 'O combo Combo Casal saiu do cardápio', () => pedir(U1, [pedidoDoCasal(coca)]));
-  const editado = await editar(U1, p, [pedidoDoCasal(coca, 2)]);
-  igual(somar(await itensDo(editado.id)), 140, '2 × 70');
+  const editado = await editar(U1, p, [pedidoDoCasal(coca, 1)]);
+  igual(somar(await itensDo(editado.id)), 70, '1 × 70');
   await dono(U1, 'update public.combos set arquivado = false where id = $1', [comboCasal]);
 });
 await ok('editar: o item avulso não pega o preço da parte do combo', async () => {
@@ -517,13 +517,14 @@ await ok('editar depois que a promoção acabou: o que já estava mantém o pre�
   const itens = await itensDo(editado.id);
   igual(itens.map((i) => [i.nome, i.quantidade, i.preco, i.promocao]), [
     ['Batata', 1, 12, null],
-    ['X-Burguer', 3, 15, 'Semana do lanche'],
+    ['X-Burguer', 1, 15, 'Semana do lanche'],
+    ['X-Burguer', 2, 20, null],
   ], 'itens');
 });
 await ok('apagar a promoção: os pedidos guardam o nome dela', async () => {
   await dono(U1, 'delete from public.promocoes where id = $1', [promocao]);
   const itens = await itensDo(pedidoNaPromocao.id);
-  const burg = itens.find((i) => i.nome === 'X-Burguer');
+  const burg = itens.find((i) => i.nome === 'X-Burguer' && i.quantidade === 1);
   igual([burg.promocao, burg.promocao_id, burg.preco], ['Semana do lanche', null, 15], 'item');
   const [{ alterado_em }] = await db.query('select alterado_em from public.pedidos where id = $1', [pedidoNaPromocao.id]).then((r) => r.rows);
   const deNovo = await editar(U1, { ...pedidoNaPromocao, alterado_em }, [{ produto_id: burguer, quantidade: 1 }]);

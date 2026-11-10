@@ -11,7 +11,8 @@ import { cancelarConta, marcarEntregues, marcarNaoRecebido } from '../../service
 import { destinoDoPedido, formatarMoeda, numeroDoPedido } from '../../lib/formatadores';
 import { MOTIVOS_CANCELAMENTO, STATUS } from '../../lib/pedidoStatus';
 import { totalDoPedido } from '../../lib/caixa';
-import { pendenciasDoDia, quantosPedidos } from '../../lib/fimDoDia';
+import ADevolver from './ADevolver';
+import { aDevolver, pendenciasDoDia, quantosPedidos } from '../../lib/fimDoDia';
 import { rotuloDaMesa } from '../../lib/mesas';
 import { resumoDosItens as juntarItens } from '../../lib/combos';
 
@@ -211,7 +212,7 @@ function CartaoConta({ conta, mostrarDia, onErro, onReceberMesa }) {
 // O que impede encerrar o dia, com um jeito de resolver cada coisa.
 // pedidos: com valores (do dia, ou pendências de dias anteriores).
 // mostrarDia: mostra de que dia é cada pedido (pendências de dias anteriores).
-export default function ResolverPendencias({ pedidos, taxa = 0, titulo, descricao, idTitulo, mostrarDia = false }) {
+export default function ResolverPendencias({ pedidos, taxa = 0, titulo, descricao, idTitulo, mostrarDia = false, comDevolucoes = false }) {
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const [receberMesa, setReceberMesa] = useState(null);
@@ -233,7 +234,8 @@ export default function ResolverPendencias({ pedidos, taxa = 0, titulo, descrica
     }
   }
 
-  if (!contas.length && !aEntregar.length) {
+  const devolucoes = comDevolucoes ? pedidos.filter(aDevolver) : [];
+  if (!contas.length && !aEntregar.length && !devolucoes.length) {
     return aviso ? (
       <div aria-live="polite" className="mb-6">
         <Aviso tipo="sucesso">{aviso}</Aviso>
@@ -258,6 +260,12 @@ export default function ResolverPendencias({ pedidos, taxa = 0, titulo, descrica
         {aviso && <Aviso tipo="sucesso">{aviso}</Aviso>}
       </div>
 
+      {devolucoes.length > 0 && (
+        <div>
+          <h3 className="font-semibold">A devolver</h3>
+          <ul>{devolucoes.map((p) => <ADevolver key={p.id} pedido={p} onErro={setErro} />)}</ul>
+        </div>
+      )}
       {contas.length > 0 && (
         <div className="flex flex-col gap-3">
           <h3 className="font-semibold text-[var(--text-primary)]">

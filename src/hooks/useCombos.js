@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { agoraDoServidor } from '../lib/relogioServidor';
 import { useAuth } from '../context/useAuth';
 import { useRecarregarAoVoltar } from './useRecarregarAoVoltar';
 import { listarCombos, assinarCombos } from '../services/combos';
@@ -42,10 +43,12 @@ export function useCombos() {
 // Hora atual que muda sozinha a cada 30 segundos: a promoção começa e acaba
 // com a tela aberta.
 export function useAgora(intervalo = 30000) {
-  const [agora, setAgora] = useState(() => new Date());
+  const [agora, setAgora] = useState(() => new Date(agoraDoServidor()));
   useEffect(() => {
-    const id = setInterval(() => setAgora(new Date()), intervalo);
-    return () => clearInterval(id);
+    const atualizar = () => setAgora(new Date(agoraDoServidor()));
+    const id = setInterval(atualizar, intervalo);
+    window.addEventListener('organiza-relogio',atualizar);
+    return () => { clearInterval(id); window.removeEventListener('organiza-relogio',atualizar); };
   }, [intervalo]);
   return agora;
 }

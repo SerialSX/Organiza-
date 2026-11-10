@@ -324,8 +324,11 @@ function baixarCsv(relatorio, periodo) {
   const hoje = new Date().toLocaleDateString('sv-SE');
   link.href = url;
   link.download = `organiza-relatorio-${periodo}-${hoje}.csv`;
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  // Revogar na hora cancela o download no Safari e em alguns WebViews.
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 function textoCancelados(relatorio) {

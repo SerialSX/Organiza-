@@ -103,6 +103,10 @@ describe('intervaloDoPeriodo', () => {
 });
 
 describe('rankingParaCsv', () => {
+  it('CSV: lucro negativo continua número; nome com fórmula vira texto', () => {
+    const linha = rankingParaCsv([{ nome: '=1+1', quantidade: 1, faturamento: 10, lucro: -3.5 }]).split('\r\n')[1];
+    expect(linha).toBe("'=1+1;1;;10,00;-3,50");
+  });
   it('gera planilha com ";" e vírgula decimal, deixando lucro vazio sem custo', () => {
     const csv = rankingParaCsv([
       { nome: 'X-Burguer', quantidade: 2, faturamento: 37, lucro: 19 },

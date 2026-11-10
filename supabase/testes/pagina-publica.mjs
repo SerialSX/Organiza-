@@ -201,9 +201,9 @@ await ok('outro aparelho continua consultando', async () => {
   ip = '200.2.2.2';
   igual((await pagina(codigo1)).nome, 'Lanchonete da Ana', 'outro ip');
 });
-await erro('mais de 60 consultas no minuto é barrado', 'Muitas consultas', async () => {
+await erro('mais de 300 consultas no minuto é barrado', 'Muitas consultas', async () => {
   ip = '200.3.3.3';
-  for (let n = 0; n < 61; n++) await pagina(codigo1);
+  for (let n = 0; n < 301; n++) await pagina(codigo1);
 });
 await ok('IP não é guardado, só o hash', async () => {
   const r = await db.query(`select count(*)::int as n from public.limite_consultas where chave like '200.%'`);

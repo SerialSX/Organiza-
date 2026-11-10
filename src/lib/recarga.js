@@ -19,7 +19,13 @@ export function recarregarUmaVez() {
     if (sessionStorage.getItem(CHAVE_RECARGA)) return false;
     sessionStorage.setItem(CHAVE_RECARGA, String(Date.now()));
   } catch {
-    // sem sessionStorage: recarrega mesmo assim
+    // Sem sessionStorage (armazenamento bloqueado): a marca vai na URL. Sem
+    // nenhuma marca, um arquivo que continua faltando recarregava para sempre.
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('recarregou')) return false;
+    url.searchParams.set('recarregou', '1');
+    window.location.replace(url.href);
+    return true;
   }
   window.location.reload();
   return true;

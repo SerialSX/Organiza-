@@ -60,7 +60,7 @@ export default function EscolherCombo({ combo, porId, precoBase, onEscolher, onT
   const idTitulo = `combo-${combo.id}`;
 
   const escolhas = combo.partes.map((parte, i) => {
-    const [primeira, segunda] = tocadas[i];
+    const [primeira, segunda] = tocadas[i] ?? []; // parte nova chegou com a janela aberta
     if (!primeira || (meio[i] && !segunda)) return null;
     return escolhaDaOpcao(primeira, meio[i] ? segunda : null);
   });
@@ -76,7 +76,7 @@ export default function EscolherCombo({ combo, porId, precoBase, onEscolher, onT
       if (produto) onToqueEsgotado?.(produto);
       return;
     }
-    const [primeira, segunda] = tocadas[i];
+    const [primeira, segunda] = tocadas[i] ?? []; // parte nova chegou com a janela aberta
     if (meio[i] && primeira && primeira.id !== opcao.id && segunda?.id !== opcao.id && !metadesCombinam(primeira, opcao, porId)) {
       setErro(`${nomeDaOpcao(opcao, porId)} não combina com ${nomeDaOpcao(primeira, porId)} no meio a meio.`);
       return;

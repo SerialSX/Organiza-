@@ -149,7 +149,7 @@ function celulaCsv(valor) {
   let texto = String(valor ?? '');
   // Nome começando com = + - @ (ou tab/CR) vira fórmula no Excel/LibreOffice:
   // o apóstrofo faz a planilha mostrar como texto (injeção de fórmula em CSV).
-  if (typeof valor === 'string' && /^[=+@\t\r-]/.test(texto)) texto = `'${texto}`;
+  if (typeof valor === 'string' && /^[=+@\t\r-]/.test(texto) && !/^-\d+(,\d+)?$/.test(texto)) texto = `'${texto}`;
   return /[;"\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
 

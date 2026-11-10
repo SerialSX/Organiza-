@@ -3926,6 +3926,9 @@ begin
 
   insert into public.leituras_cardapio (negocio_id, conta) values (v_negocio_id, v_conta);
   delete from public.leituras_cardapio where criado_em < now() - interval '90 days';
+  -- O hash do e-mail só serve para a cota do dia: não fica guardado depois.
+  update public.leituras_cardapio set conta = null
+  where conta is not null and criado_em < now() - interval '2 days';
 end;
 $$;
 
